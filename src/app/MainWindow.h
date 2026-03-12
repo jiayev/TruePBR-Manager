@@ -3,6 +3,8 @@
 #include "core/Project.h"
 
 #include <QMainWindow>
+#include <QLineEdit>
+#include <QPushButton>
 
 namespace tpbr {
 
@@ -23,7 +25,11 @@ private slots:
     void onNewProject();
     void onOpenProject();
     void onSaveProject();
+    void onSaveProjectAs();
+    void onRenameProject();
     void onExportMod();
+    void onBrowseExportFolder();
+    void onExportPathEdited();
 
     void onTextureSetSelected(int index);
     void onAddTextureSet();
@@ -42,10 +48,13 @@ private:
     void setupMenuBar();
     void setupCentralWidget();
     void setupStatusBar();
+    bool saveProjectToPath(const QString& path);
+    QString promptProjectSavePath() const;
     void refreshUI();
     void refreshPreview();
 
     Project m_project;
+    std::filesystem::path m_projectFilePath;
     int     m_currentSetIndex = -1;
 
     // UI components
@@ -54,6 +63,9 @@ private:
     FeatureTogglePanel*   m_featurePanel     = nullptr;
     ParameterPanel*       m_paramPanel       = nullptr;
     TexturePreviewWidget* m_previewWidget    = nullptr;
+    ::QLineEdit*          m_exportPathEdit   = nullptr;
+    ::QPushButton*        m_exportBrowseBtn  = nullptr;
+    ::QPushButton*        m_exportBtn        = nullptr;
 };
 
 } // namespace tpbr

@@ -3,7 +3,6 @@
 #include "core/JsonExporter.h"
 #include "core/ModExporter.h"
 #include "core/TextureImporter.h"
-#include "ui/ExportDialog.h"
 #include "ui/FeatureTogglePanel.h"
 #include "ui/ParameterPanel.h"
 #include "ui/SlotEditorWidget.h"
@@ -13,11 +12,14 @@
 #include "utils/DDSUtils.h"
 #include "utils/FileUtils.h"
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QHBoxLayout>
 #include <QImage>
 #include <QInputDialog>
+#include <QLineEdit>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QPushButton>
 #include <QScrollArea>
 #include <QSplitter>
 #include <QStatusBar>
@@ -62,6 +64,17 @@ static QImage loadPreviewImage(const std::filesystem::path& path)
     return QImage(QString::fromStdString(path.string()));
 }
 
+static QString defaultProjectName(const Project& project)
+{
+    const QString projectName = QString::fromStdString(project.name).trimmed();
+    return projectName.isEmpty() ? QStringLiteral("Untitled") : projectName;
+}
+
+static bool isPlaceholderProjectName(const Project& project)
+{
+    return defaultProjectName(project).compare(QStringLiteral("Untitled"), Qt::CaseInsensitive) == 0;
+}
+
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
@@ -86,8 +99,8 @@ void MainWindow::setupMenuBar()
     fileMenu->addAction(tr("&New Project"),  this, &MainWindow::onNewProject,  QKeySequence::New);
     fileMenu->addAction(tr("&Open Project"), this, &MainWindow::onOpenProject, QKeySequence::Open);
     fileMenu->addAction(tr("&Save Project"), this, &MainWindow::onSaveProject, QKeySequence::Save);
-    fileMenu->addSeparator();
-    fileMenu->addAction(tr("&Export Mod..."), this, &MainWindow::onExportMod);
+    fileMenu->addAction(tr("Save Project &As..."), this, &MainWindow::onSaveProjectAs, QKeySequence::SaveAs);
+    fileMenu->addAction(tr("Project &Name..."), this, &MainWindow::onRenameProject);
     fileMenu->addSeparator();
     fileMenu->addAction(tr("E&xit"), this, &QWidget::close, QKeySequence::Quit);
 }
@@ -96,6 +109,22 @@ void MainWindow::setupMenuBar()
 
 void MainWindow::setupCentralWidget()
 {
+    auto* rootWidget = new QWidget(this);
+    auto* rootLayout = new QVBoxLayout(rootWidget);
+
+    auto* exportRow = new QHBoxLayout();
+    auto* exportLabel = new QLabel(tr("Export Folder:"), rootWidget);
+    exportLabel->setFixedWidth(100);
+    m_exportPathEdit = new QLineEdit(rootWidget);
+    m_exportPathEdit->setPlaceholderText(tr("Select the target mod folder"));
+    m_exportBrowseBtn = new QPushButton(tr("Browse..."), rootWidget);
+    m_exportBtn = new QPushButton(tr("Export Mod"), rootWidget);
+    exportRow->addWidget(exportLabel);
+    exportRow->addWidget(m_exportPathEdit, 1);
+    exportRow->addWidget(m_exportBrowseBtn);
+    exportRow->addWidget(m_exportBtn);
+    rootLayout->addLayout(exportRow);
+
     auto* splitter = new QSplitter(Qt::Horizontal, this);
 
     // Left: Texture Set List
@@ -130,9 +159,16 @@ void MainWindow::setupCentralWidget()
     splitter->setStretchFactor(1, 2);  // editor
     splitter->setStretchFactor(2, 3);  // preview
 
-    setCentralWidget(splitter);
+        rootLayout->addWidget(splitter, 1);
+        setCentralWidget(rootWidget);
 
     // Connections
+        connect(m_exportPathEdit, &QLineEdit::editingFinished,
+            this, &MainWindow::onExportPathEdited);
+        connect(m_exportBrowseBtn, &QPushButton::clicked,
+            this, &MainWindow::onBrowseExportFolder);
+        connect(m_exportBtn, &QPushButton::clicked,
+            this, &MainWindow::onExportMod);
     connect(m_textureSetPanel, &TextureSetPanel::textureSetSelected,
             this, &MainWindow::onTextureSetSelected);
     connect(m_textureSetPanel, &TextureSetPanel::addRequested,
@@ -170,6 +206,7 @@ void MainWindow::onNewProject()
 {
     m_project = Project{};
     m_project.name = "Untitled";
+    m_projectFilePath.clear();
     m_currentSetIndex = -1;
     refreshUI();
     statusBar()->showMessage(tr("New project created"));
@@ -181,6 +218,7 @@ void MainWindow::onOpenProject()
     if (path.isEmpty()) return;
 
     m_project = Project::load(path.toStdString());
+    m_projectFilePath = path.toStdString();
     m_currentSetIndex = -1;
     refreshUI();
     statusBar()->showMessage(tr("Opened: %1").arg(path));
@@ -188,24 +226,135 @@ void MainWindow::onOpenProject()
 
 void MainWindow::onSaveProject()
 {
-    auto path = QFileDialog::getSaveFileName(this, tr("Save Project"), QString(), tr("TruePBR Project (*.tpbr)"));
-    if (path.isEmpty()) return;
+    if (!m_projectFilePath.empty()) {
+        saveProjectToPath(QString::fromStdString(m_projectFilePath.string()));
+        return;
+    }
 
-    m_project.save(path.toStdString());
+    const QString path = promptProjectSavePath();
+    if (path.isEmpty()) {
+        return;
+    }
+
+    saveProjectToPath(path);
+}
+
+void MainWindow::onSaveProjectAs()
+{
+    const QString path = promptProjectSavePath();
+    if (path.isEmpty()) {
+        return;
+    }
+
+    saveProjectToPath(path);
+}
+
+void MainWindow::onRenameProject()
+{
+    bool ok = false;
+    const QString currentName = defaultProjectName(m_project);
+    const QString newName = QInputDialog::getText(
+        this,
+        tr("Project Name"),
+        tr("Project name:"),
+        QLineEdit::Normal,
+        currentName,
+        &ok).trimmed();
+
+    if (!ok || newName.isEmpty()) {
+        return;
+    }
+
+    m_project.name = newName.toStdString();
+    refreshUI();
+    statusBar()->showMessage(tr("Project renamed to: %1").arg(newName));
+}
+
+QString MainWindow::promptProjectSavePath() const
+{
+    QString suggestedPath;
+    if (!m_projectFilePath.empty()) {
+        suggestedPath = QString::fromStdString(m_projectFilePath.string());
+    } else {
+        suggestedPath = defaultProjectName(m_project) + QStringLiteral(".tpbr");
+    }
+
+    QString path = QFileDialog::getSaveFileName(
+        const_cast<MainWindow*>(this),
+        tr("Save Project"),
+        suggestedPath,
+        tr("TruePBR Project (*.tpbr)"));
+
+    if (path.isEmpty()) {
+        return {};
+    }
+
+    if (!path.endsWith(QStringLiteral(".tpbr"), Qt::CaseInsensitive)) {
+        path += QStringLiteral(".tpbr");
+    }
+
+    return path;
+}
+
+bool MainWindow::saveProjectToPath(const QString& path)
+{
+    if (isPlaceholderProjectName(m_project)) {
+        m_project.name = QFileInfo(path).completeBaseName().toStdString();
+    }
+
+    if (!m_project.save(path.toStdString())) {
+        QMessageBox::warning(this, tr("Save Project"), tr("Failed to save project."));
+        return false;
+    }
+
+    m_projectFilePath = path.toStdString();
+    refreshUI();
     statusBar()->showMessage(tr("Saved: %1").arg(path));
+    return true;
 }
 
 void MainWindow::onExportMod()
 {
-    ExportDialog dlg(this);
-    if (dlg.exec() == QDialog::Accepted) {
-        m_project.outputModFolder = dlg.modFolderPath().toStdString();
-        if (ModExporter::exportMod(m_project)) {
-            QMessageBox::information(this, tr("Export"), tr("Export successful!"));
-        } else {
-            QMessageBox::warning(this, tr("Export"), tr("Export failed. Check log for details."));
-        }
+    onExportPathEdited();
+
+    if (m_project.outputModFolder.empty()) {
+        QMessageBox::warning(this, tr("Export"), tr("Please choose an export folder first."));
+        return;
     }
+
+    if (ModExporter::exportMod(m_project)) {
+        QMessageBox::information(this, tr("Export"), tr("Export successful!"));
+    } else {
+        QMessageBox::warning(this, tr("Export"), tr("Export failed. Check log for details."));
+    }
+}
+
+void MainWindow::onBrowseExportFolder()
+{
+    const QString currentPath = m_exportPathEdit ? m_exportPathEdit->text() : QString();
+    const QString dir = QFileDialog::getExistingDirectory(
+        this,
+        tr("Select Mod Folder"),
+        currentPath);
+
+    if (dir.isEmpty()) {
+        return;
+    }
+
+    m_project.outputModFolder = dir.toStdString();
+    if (m_exportPathEdit) {
+        m_exportPathEdit->setText(dir);
+    }
+    statusBar()->showMessage(tr("Export folder set: %1").arg(dir));
+}
+
+void MainWindow::onExportPathEdited()
+{
+    if (!m_exportPathEdit) {
+        return;
+    }
+
+    m_project.outputModFolder = m_exportPathEdit->text().trimmed().toStdString();
 }
 
 void MainWindow::onTextureSetSelected(int index)
@@ -390,7 +539,14 @@ void MainWindow::onParametersChanged(const PBRParameters& params)
 void MainWindow::refreshUI()
 {
     m_textureSetPanel->setTextureSets(m_project.textureSets);
-    setWindowTitle(tr("TruePBR Manager - %1").arg(QString::fromStdString(m_project.name)));
+    setWindowTitle(tr("TruePBR Manager - %1").arg(defaultProjectName(m_project)));
+
+    if (m_exportPathEdit) {
+        const QString exportPath = QString::fromStdString(m_project.outputModFolder.string());
+        if (m_exportPathEdit->text() != exportPath) {
+            m_exportPathEdit->setText(exportPath);
+        }
+    }
 
     if (m_currentSetIndex < 0 || m_currentSetIndex >= static_cast<int>(m_project.textureSets.size())) {
         m_previewWidget->clear();
