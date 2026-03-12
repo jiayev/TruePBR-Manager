@@ -85,11 +85,16 @@ static bool compressAndSave(const DirectX::ScratchImage& source,
     // Ensure parent directory exists
     std::filesystem::create_directories(path.parent_path());
 
+    DirectX::TEX_COMPRESS_FLAGS compressFlags = DirectX::TEX_COMPRESS_PARALLEL;
+    if (targetFormat == DXGI_FORMAT_BC7_UNORM || targetFormat == DXGI_FORMAT_BC7_UNORM_SRGB) {
+        compressFlags = static_cast<DirectX::TEX_COMPRESS_FLAGS>(compressFlags | DirectX::TEX_COMPRESS_BC7_QUICK);
+    }
+
     DirectX::ScratchImage compressed;
     HRESULT hr = DirectX::Compress(
         source.GetImages(), source.GetImageCount(), source.GetMetadata(),
         targetFormat,
-        DirectX::TEX_COMPRESS_DEFAULT,
+        compressFlags,
         DirectX::TEX_THRESHOLD_DEFAULT,
         compressed);
 

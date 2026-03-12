@@ -1,9 +1,13 @@
 #include "SlotEditorWidget.h"
 
+#include "utils/DDSUtils.h"
+#include "utils/FileUtils.h"
+
 #include <QDragEnterEvent>
 #include <QDropEvent>
 #include <QGroupBox>
 #include <QHBoxLayout>
+#include <QImage>
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
@@ -13,6 +17,27 @@
 #include <algorithm>
 
 namespace tpbr {
+
+static QPixmap loadThumbnailPixmap(const std::filesystem::path& path)
+{
+    const auto ext = FileUtils::getExtensionLower(path);
+
+    if (ext == ".dds") {
+        int width = 0;
+        int height = 0;
+        std::vector<uint8_t> rgbaPixels;
+        if (!DDSUtils::loadDDS(path, width, height, rgbaPixels) || rgbaPixels.empty()) {
+            return {};
+        }
+
+        QImage image(rgbaPixels.data(), width, height, width * 4, QImage::Format_RGBA8888);
+        return QPixmap::fromImage(image.copy());
+    }
+
+    QPixmap pix;
+    pix.load(QString::fromStdString(path.string()));
+    return pix;
+}
 
 // ─── DropZoneLabel ─────────────────────────────────────────
 
@@ -42,20 +67,12 @@ void DropZoneLabel::setFile(const std::filesystem::path& path)
 {
     m_filename = QString::fromStdString(path.filename().string());
 
-    // Try to load thumbnail. For DDS we skip (QPixmap can't read DDS);
-    // for PNG/TGA/BMP/JPG Qt can load directly.
-    auto ext = path.extension().string();
-    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-
-    QPixmap pix;
-    if (ext != ".dds") {
-        pix.load(QString::fromStdString(path.string()));
-    }
+    auto ext = FileUtils::getExtensionLower(path);
+    QPixmap pix = loadThumbnailPixmap(path);
 
     if (!pix.isNull()) {
         m_thumbnail = pix.scaled(ThumbnailSize, ThumbnailSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
     } else {
-        // For DDS or failed loads, show a colored placeholder
         m_thumbnail = QPixmap(ThumbnailSize, ThumbnailSize);
         m_thumbnail.fill(QColor(60, 60, 80));
         QPainter p(&m_thumbnail);

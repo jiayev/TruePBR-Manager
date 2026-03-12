@@ -10,8 +10,11 @@
 #include "ui/TexturePreviewWidget.h"
 #include "ui/TextureSetPanel.h"
 
+#include "utils/DDSUtils.h"
+#include "utils/FileUtils.h"
 #include <QFileDialog>
 #include <QHBoxLayout>
+#include <QImage>
 #include <QInputDialog>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -23,6 +26,25 @@
 #include "utils/Log.h"
 
 namespace tpbr {
+
+static QImage loadPreviewImage(const std::filesystem::path& path)
+{
+    const auto ext = FileUtils::getExtensionLower(path);
+
+    if (ext == ".dds") {
+        int width = 0;
+        int height = 0;
+        std::vector<uint8_t> rgbaPixels;
+        if (!DDSUtils::loadDDS(path, width, height, rgbaPixels) || rgbaPixels.empty()) {
+            return {};
+        }
+
+        QImage image(rgbaPixels.data(), width, height, width * 4, QImage::Format_RGBA8888);
+        return image.copy();
+    }
+
+    return QImage(QString::fromStdString(path.string()));
+}
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
@@ -175,6 +197,8 @@ void MainWindow::onTextureSetSelected(int index)
         m_featurePanel->setFeatures(ts.features);
         m_paramPanel->setParameters(ts.params, ts.features);
     }
+
+    refreshPreview();
 }
 
 void MainWindow::onAddTextureSet()
@@ -228,6 +252,7 @@ void MainWindow::onImportTexture(PBRTextureSlot slot)
     m_project.textureSets[m_currentSetIndex].textures[slot] = entry;
 
     m_slotEditor->setTextureSet(m_project.textureSets[m_currentSetIndex]);
+    refreshPreview();
     statusBar()->showMessage(tr("Imported %1: %2 (%3x%4)")
         .arg(slotDisplayName(slot))
         .arg(QString::fromStdString(entry.sourcePath.filename().string()))
@@ -252,6 +277,7 @@ void MainWindow::onImportChannel(ChannelMap channel)
     m_project.textureSets[m_currentSetIndex].channelMaps[channel] = path.toStdString();
 
     m_slotEditor->setTextureSet(m_project.textureSets[m_currentSetIndex]);
+    refreshPreview();
     statusBar()->showMessage(tr("Imported %1 channel: %2").arg(name).arg(path));
 }
 
@@ -263,6 +289,7 @@ void MainWindow::onDroppedOnSlot(PBRTextureSlot slot, const QString& filePath)
     m_project.textureSets[m_currentSetIndex].textures[slot] = entry;
 
     m_slotEditor->setTextureSet(m_project.textureSets[m_currentSetIndex]);
+    refreshPreview();
     statusBar()->showMessage(tr("Dropped %1: %2 (%3x%4)")
         .arg(slotDisplayName(slot))
         .arg(QString::fromStdString(entry.sourcePath.filename().string()))
@@ -280,6 +307,7 @@ void MainWindow::onDroppedOnChannel(ChannelMap channel, const QString& filePath)
     m_project.textureSets[m_currentSetIndex].channelMaps[channel] = filePath.toStdString();
 
     m_slotEditor->setTextureSet(m_project.textureSets[m_currentSetIndex]);
+    refreshPreview();
     statusBar()->showMessage(tr("Dropped %1 channel: %2").arg(name).arg(filePath));
 }
 
@@ -310,6 +338,45 @@ void MainWindow::refreshUI()
 {
     m_textureSetPanel->setTextureSets(m_project.textureSets);
     setWindowTitle(tr("TruePBR Manager - %1").arg(QString::fromStdString(m_project.name)));
+
+    if (m_currentSetIndex < 0 || m_currentSetIndex >= static_cast<int>(m_project.textureSets.size())) {
+        m_previewWidget->clear();
+    }
+}
+
+void MainWindow::refreshPreview()
+{
+    if (m_currentSetIndex < 0 || m_currentSetIndex >= static_cast<int>(m_project.textureSets.size())) {
+        m_previewWidget->clear();
+        return;
+    }
+
+    const auto& textureSet = m_project.textureSets[m_currentSetIndex];
+
+    const auto tryShowTexture = [this](PBRTextureSlot slot, const PBRTextureSet& set) {
+        auto it = set.textures.find(slot);
+        if (it == set.textures.end() || it->second.sourcePath.empty()) {
+            return false;
+        }
+
+        const QImage image = loadPreviewImage(it->second.sourcePath);
+        if (image.isNull()) {
+            return false;
+        }
+
+        m_previewWidget->setImage(image);
+        return true;
+    };
+
+    if (tryShowTexture(PBRTextureSlot::Diffuse, textureSet)) {
+        return;
+    }
+
+    if (tryShowTexture(PBRTextureSlot::Normal, textureSet)) {
+        return;
+    }
+
+    m_previewWidget->clear();
 }
 
 } // namespace tpbr

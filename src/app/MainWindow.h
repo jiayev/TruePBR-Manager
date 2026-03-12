@@ -41,6 +41,7 @@ private:
     void setupCentralWidget();
     void setupStatusBar();
     void refreshUI();
+    void refreshPreview();
 
     Project m_project;
     int     m_currentSetIndex = -1;
