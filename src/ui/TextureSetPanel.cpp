@@ -45,6 +45,7 @@ void TextureSetPanel::setupUI()
 
 void TextureSetPanel::setTextureSets(const std::vector<PBRTextureSet>& sets)
 {
+    const QSignalBlocker blocker(m_listWidget);
     m_listWidget->clear();
     for (const auto& ts : sets) {
         m_listWidget->addItem(QString::fromStdString(ts.name));

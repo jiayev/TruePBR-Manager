@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <cmath>
 #include <nlohmann/json.hpp>
 #include "utils/Log.h"
 
@@ -15,6 +16,20 @@ enum class EffectiveMatchField {
     Diffuse,
     Normal,
 };
+
+static double rounded3(double value)
+{
+    return std::round(value * 1000.0) / 1000.0;
+}
+
+static json rounded3Array(const std::array<float, 3>& values)
+{
+    return json::array({
+        rounded3(values[0]),
+        rounded3(values[1]),
+        rounded3(values[2])
+    });
+}
 
 static std::string sanitizedTextureSetStem(const PBRTextureSet& ts)
 {
@@ -230,19 +245,15 @@ static json serializeEntryToJson(const PBRTextureSet& ts)
     entry["subsurface"]          = ts.features.subsurface;
 
     // Base parameters
-    entry["specular_level"]      = ts.params.specularLevel;
-    entry["roughness_scale"]     = ts.params.roughnessScale;
-    entry["subsurface_opacity"]  = ts.params.subsurfaceOpacity;
-    entry["displacement_scale"]  = ts.params.displacementScale;
-    entry["subsurface_color"]    = {
-        ts.params.subsurfaceColor[0],
-        ts.params.subsurfaceColor[1],
-        ts.params.subsurfaceColor[2]
-    };
+    entry["specular_level"]      = rounded3(ts.params.specularLevel);
+    entry["roughness_scale"]     = rounded3(ts.params.roughnessScale);
+    entry["subsurface_opacity"]  = rounded3(ts.params.subsurfaceOpacity);
+    entry["displacement_scale"]  = rounded3(ts.params.displacementScale);
+    entry["subsurface_color"]    = rounded3Array(ts.params.subsurfaceColor);
 
     // Emissive
     if (ts.features.emissive) {
-        entry["emissive_scale"] = ts.params.emissiveScale;
+        entry["emissive_scale"] = rounded3(ts.params.emissiveScale);
         if (!hasExportedSlot(ts, PBRTextureSlot::Emissive)) {
             entry["lock_emissive"] = true;
         }
@@ -251,9 +262,9 @@ static json serializeEntryToJson(const PBRTextureSet& ts)
     // Multilayer
     if (ts.features.multilayer || ts.features.coatNormal) {
         entry["coat_normal"]         = ts.features.coatNormal;
-        entry["coat_strength"]       = ts.params.coatStrength;
-        entry["coat_roughness"]      = ts.params.coatRoughness;
-        entry["coat_specular_level"] = ts.params.coatSpecularLevel;
+        entry["coat_strength"]       = rounded3(ts.params.coatStrength);
+        entry["coat_roughness"]      = rounded3(ts.params.coatRoughness);
+        entry["coat_specular_level"] = rounded3(ts.params.coatSpecularLevel);
         entry["coat_diffuse"]        = ts.features.coatDiffuse;
         entry["coat_parallax"]       = ts.features.coatParallax;
 
@@ -283,18 +294,18 @@ static json serializeEntryToJson(const PBRTextureSet& ts)
         json fuzzObj;
         bool hasFuzzTexture = ts.textures.count(PBRTextureSlot::Fuzz) > 0;
         fuzzObj["texture"] = hasFuzzTexture;
-        fuzzObj["color"]   = {ts.params.fuzzColor[0], ts.params.fuzzColor[1], ts.params.fuzzColor[2]};
-        fuzzObj["weight"]  = ts.params.fuzzWeight;
+        fuzzObj["color"]   = rounded3Array(ts.params.fuzzColor);
+        fuzzObj["weight"]  = rounded3(ts.params.fuzzWeight);
         entry["fuzz"]      = fuzzObj;
     }
 
     // Glint
     if (ts.features.glint) {
         json glintObj;
-        glintObj["screen_space_scale"]     = ts.params.glintScreenSpaceScale;
-        glintObj["log_microfacet_density"] = ts.params.glintLogMicrofacetDensity;
-        glintObj["microfacet_roughness"]   = ts.params.glintMicrofacetRoughness;
-        glintObj["density_randomization"]  = ts.params.glintDensityRandomization;
+        glintObj["screen_space_scale"]     = rounded3(ts.params.glintScreenSpaceScale);
+        glintObj["log_microfacet_density"] = rounded3(ts.params.glintLogMicrofacetDensity);
+        glintObj["microfacet_roughness"]   = rounded3(ts.params.glintMicrofacetRoughness);
+        glintObj["density_randomization"]  = rounded3(ts.params.glintDensityRandomization);
         entry["glint"]                     = glintObj;
     }
 
@@ -308,10 +319,10 @@ static json serializeEntryToJson(const PBRTextureSet& ts)
         entry["vertex_colors"] = false;
     }
     if (ts.params.vertexColorLumMult != 1.0f) {
-        entry["vertex_color_lum_mult"] = ts.params.vertexColorLumMult;
+        entry["vertex_color_lum_mult"] = rounded3(ts.params.vertexColorLumMult);
     }
     if (ts.params.vertexColorSatMult != 1.0f) {
-        entry["vertex_color_sat_mult"] = ts.params.vertexColorSatMult;
+        entry["vertex_color_sat_mult"] = rounded3(ts.params.vertexColorSatMult);
     }
 
     setExplicitSlotIfNeeded(entry, ts, PBRTextureSlot::Diffuse, 	"slot1");

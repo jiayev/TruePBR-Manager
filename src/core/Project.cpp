@@ -1,6 +1,7 @@
 #include "Project.h"
 
 #include <fstream>
+#include <cmath>
 #include <nlohmann/json.hpp>
 #include "utils/Log.h"
 #include <stdexcept>
@@ -8,6 +9,20 @@
 namespace tpbr {
 
 using json = nlohmann::json;
+
+static double rounded3(double value)
+{
+    return std::round(value * 1000.0) / 1000.0;
+}
+
+static json rounded3Array(const std::array<float, 3>& values)
+{
+    return json::array({
+        rounded3(values[0]),
+        rounded3(values[1]),
+        rounded3(values[2])
+    });
+}
 
 // ─── CRUD ──────────────────────────────────────────────────
 
@@ -66,24 +81,24 @@ static PBRFeatureFlags featuresFromJson(const json& j)
 static json paramsToJson(const PBRParameters& p)
 {
     return json{
-        {"specular_level",       p.specularLevel},
-        {"roughness_scale",      p.roughnessScale},
-        {"displacement_scale",   p.displacementScale},
-        {"subsurface_opacity",   p.subsurfaceOpacity},
-        {"subsurface_color",     {p.subsurfaceColor[0], p.subsurfaceColor[1], p.subsurfaceColor[2]}},
-        {"emissive_scale",       p.emissiveScale},
-        {"coat_strength",        p.coatStrength},
-        {"coat_roughness",       p.coatRoughness},
-        {"coat_specular_level",  p.coatSpecularLevel},
-        {"fuzz_color",           {p.fuzzColor[0], p.fuzzColor[1], p.fuzzColor[2]}},
-        {"fuzz_weight",          p.fuzzWeight},
-        {"glint_screen_space_scale",     p.glintScreenSpaceScale},
-        {"glint_log_microfacet_density", p.glintLogMicrofacetDensity},
-        {"glint_microfacet_roughness",   p.glintMicrofacetRoughness},
-        {"glint_density_randomization",  p.glintDensityRandomization},
+        {"specular_level",       rounded3(p.specularLevel)},
+        {"roughness_scale",      rounded3(p.roughnessScale)},
+        {"displacement_scale",   rounded3(p.displacementScale)},
+        {"subsurface_opacity",   rounded3(p.subsurfaceOpacity)},
+        {"subsurface_color",     rounded3Array(p.subsurfaceColor)},
+        {"emissive_scale",       rounded3(p.emissiveScale)},
+        {"coat_strength",        rounded3(p.coatStrength)},
+        {"coat_roughness",       rounded3(p.coatRoughness)},
+        {"coat_specular_level",  rounded3(p.coatSpecularLevel)},
+        {"fuzz_color",           rounded3Array(p.fuzzColor)},
+        {"fuzz_weight",          rounded3(p.fuzzWeight)},
+        {"glint_screen_space_scale",     rounded3(p.glintScreenSpaceScale)},
+        {"glint_log_microfacet_density", rounded3(p.glintLogMicrofacetDensity)},
+        {"glint_microfacet_roughness",   rounded3(p.glintMicrofacetRoughness)},
+        {"glint_density_randomization",  rounded3(p.glintDensityRandomization)},
         {"vertex_colors",        p.vertexColors},
-        {"vertex_color_lum_mult", p.vertexColorLumMult},
-        {"vertex_color_sat_mult", p.vertexColorSatMult},
+        {"vertex_color_lum_mult", rounded3(p.vertexColorLumMult)},
+        {"vertex_color_sat_mult", rounded3(p.vertexColorSatMult)},
     };
 }
 
