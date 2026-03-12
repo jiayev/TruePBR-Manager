@@ -32,6 +32,7 @@ private slots:
     void onImportChannel(ChannelMap channel);
     void onDroppedOnSlot(PBRTextureSlot slot, const QString& filePath);
     void onDroppedOnChannel(ChannelMap channel, const QString& filePath);
+    void onRmaosSourceModeChanged(RMAOSSourceMode mode);
     void onMatchTextureChanged(const QString& newPath);
     void onExportCompressionChanged(PBRTextureSlot slot, DDSCompressionMode mode);
     void onFeaturesChanged(const PBRFeatureFlags& flags);

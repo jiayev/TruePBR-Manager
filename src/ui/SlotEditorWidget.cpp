@@ -12,6 +12,7 @@
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QRadioButton>
 #include <QUrl>
 #include <QVBoxLayout>
 
@@ -91,9 +92,10 @@ DropZoneLabel::DropZoneLabel(QWidget* parent)
     setText(tr("(drop image here)"));
 }
 
-void DropZoneLabel::setFile(const std::filesystem::path& path)
+void DropZoneLabel::setFile(const std::filesystem::path& path, const QString& detailText)
 {
     m_filename = QString::fromStdString(path.filename().string());
+    m_detailText = detailText;
 
     auto ext = FileUtils::getExtensionLower(path);
     QPixmap pix = loadThumbnailPixmap(path);
@@ -115,6 +117,7 @@ void DropZoneLabel::clear()
 {
     m_thumbnail = QPixmap();
     m_filename.clear();
+    m_detailText.clear();
     setText(tr("(drop image here)"));
     update();
 }
@@ -192,8 +195,14 @@ void DropZoneLabel::paintEvent(QPaintEvent* /*event*/)
 
         // Draw filename to the right of thumbnail
         p.setPen(QColor(200, 200, 200));
-        QRect textRect(ThumbnailSize + 12, 0, width() - ThumbnailSize - 16, height());
-        p.drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter, m_filename);
+        QRect titleRect(ThumbnailSize + 12, 6, width() - ThumbnailSize - 16, (height() / 2));
+        p.drawText(titleRect, Qt::AlignLeft | Qt::AlignBottom, m_filename);
+
+        if (!m_detailText.isEmpty()) {
+            p.setPen(QColor(150, 150, 150));
+            QRect detailRect(ThumbnailSize + 12, (height() / 2) - 2, width() - ThumbnailSize - 16, (height() / 2));
+            p.drawText(detailRect, Qt::AlignLeft | Qt::AlignTop, m_detailText);
+        }
     } else {
         // Empty state
         p.setPen(QColor(120, 120, 120));
@@ -237,6 +246,37 @@ void SlotEditorWidget::setupUI()
     // ── Required Texture Slots ─────────────────────────────
     addSlotRow(PBRTextureSlot::Diffuse,  tr("Albedo"), true);
     addSlotRow(PBRTextureSlot::Normal,   tr("Normal"),  true);
+
+    m_rmaosModeContainer = new QWidget(this);
+    auto* rmaosModeLayout = new QHBoxLayout(m_rmaosModeContainer);
+    rmaosModeLayout->setContentsMargins(0, 2, 0, 2);
+    rmaosModeLayout->setSpacing(10);
+    auto* rmaosModeLabel = new QLabel(tr("RMAOS Source:"), m_rmaosModeContainer);
+    rmaosModeLabel->setFixedWidth(100);
+    m_packedRmaosRadio = new QRadioButton(tr("Packed RMAOS"), m_rmaosModeContainer);
+    m_splitRmaosRadio = new QRadioButton(tr("Split Channels"), m_rmaosModeContainer);
+    m_packedRmaosRadio->setChecked(true);
+    rmaosModeLayout->addWidget(rmaosModeLabel);
+    rmaosModeLayout->addWidget(m_packedRmaosRadio);
+    rmaosModeLayout->addWidget(m_splitRmaosRadio);
+    rmaosModeLayout->addStretch();
+
+    connect(m_packedRmaosRadio, &QRadioButton::toggled, this, [this](bool checked) {
+        if (!checked) {
+            return;
+        }
+        updateRmaosModeUI(RMAOSSourceMode::PackedTexture);
+        emit rmaosSourceModeChanged(RMAOSSourceMode::PackedTexture);
+    });
+
+    connect(m_splitRmaosRadio, &QRadioButton::toggled, this, [this](bool checked) {
+        if (!checked) {
+            return;
+        }
+        updateRmaosModeUI(RMAOSSourceMode::SeparateChannels);
+        emit rmaosSourceModeChanged(RMAOSSourceMode::SeparateChannels);
+    });
+
     addSlotRow(PBRTextureSlot::RMAOS,    tr("RMAOS"),   true);
 
     // ── RMAOS Channel Import Section ───────────────────────
@@ -264,6 +304,9 @@ void SlotEditorWidget::setupUI()
 
     // Add all slot rows to layout
     for (auto& [slot, row] : m_slotRows) {
+        if (slot == PBRTextureSlot::RMAOS) {
+            mainLayout->addWidget(m_rmaosModeContainer);
+        }
         mainLayout->addWidget(row.container);
         if (slot == PBRTextureSlot::RMAOS) {
             mainLayout->addWidget(m_channelSection);
@@ -271,6 +314,8 @@ void SlotEditorWidget::setupUI()
     }
 
     mainLayout->addStretch();
+
+    updateRmaosModeUI(RMAOSSourceMode::PackedTexture);
 }
 
 void SlotEditorWidget::addSlotRow(PBRTextureSlot slot, const QString& label, bool visible)
@@ -357,9 +402,29 @@ void SlotEditorWidget::updateSlots(const PBRFeatureFlags& features)
     show(PBRTextureSlot::CoatColor,           features.coatDiffuse);
 }
 
+void SlotEditorWidget::updateRmaosModeUI(RMAOSSourceMode mode)
+{
+    if (m_slotRows.count(PBRTextureSlot::RMAOS)) {
+        auto& row = m_slotRows[PBRTextureSlot::RMAOS];
+        row.container->setVisible(true);
+        row.dropZone->setVisible(mode == RMAOSSourceMode::PackedTexture);
+    }
+    if (m_channelSection != nullptr) {
+        m_channelSection->setVisible(mode == RMAOSSourceMode::SeparateChannels);
+    }
+}
+
 void SlotEditorWidget::setTextureSet(const PBRTextureSet& ts)
 {
     m_matchTextureEdit->setText(QString::fromStdString(ts.matchTexture));
+
+    m_packedRmaosRadio->blockSignals(true);
+    m_splitRmaosRadio->blockSignals(true);
+    m_packedRmaosRadio->setChecked(ts.rmaosSourceMode == RMAOSSourceMode::PackedTexture);
+    m_splitRmaosRadio->setChecked(ts.rmaosSourceMode == RMAOSSourceMode::SeparateChannels);
+    m_packedRmaosRadio->blockSignals(false);
+    m_splitRmaosRadio->blockSignals(false);
+    updateRmaosModeUI(ts.rmaosSourceMode);
 
     // Update slot rows
     for (auto& [slot, row] : m_slotRows) {
@@ -377,7 +442,11 @@ void SlotEditorWidget::setTextureSet(const PBRTextureSet& ts)
 
         auto it = ts.textures.find(slot);
         if (it != ts.textures.end() && !it->second.sourcePath.empty()) {
-            row.dropZone->setFile(it->second.sourcePath);
+            QString detailText;
+            if (it->second.width > 0 && it->second.height > 0) {
+                detailText = tr("%1 x %2").arg(it->second.width).arg(it->second.height);
+            }
+            row.dropZone->setFile(it->second.sourcePath, detailText);
         } else {
             row.dropZone->clear();
         }
@@ -386,8 +455,12 @@ void SlotEditorWidget::setTextureSet(const PBRTextureSet& ts)
     // Update channel rows
     for (auto& [ch, row] : m_channelRows) {
         auto it = ts.channelMaps.find(ch);
-        if (it != ts.channelMaps.end() && !it->second.empty()) {
-            row.dropZone->setFile(it->second);
+        if (it != ts.channelMaps.end() && !it->second.sourcePath.empty()) {
+            QString detailText;
+            if (it->second.width > 0 && it->second.height > 0) {
+                detailText = tr("%1 x %2").arg(it->second.width).arg(it->second.height);
+            }
+            row.dropZone->setFile(it->second.sourcePath, detailText);
         } else {
             row.dropZone->clear();
         }

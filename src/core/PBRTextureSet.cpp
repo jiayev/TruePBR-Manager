@@ -131,4 +131,30 @@ bool tryParseCompressionMode(const std::string& value, DDSCompressionMode& mode)
     return false;
 }
 
+const char* rmaosSourceModeKey(RMAOSSourceMode mode)
+{
+    switch (mode) {
+    case RMAOSSourceMode::PackedTexture:
+        return "packed";
+    case RMAOSSourceMode::SeparateChannels:
+        return "split";
+    default:
+        return "packed";
+    }
+}
+
+bool tryParseRmaosSourceMode(const std::string& value, RMAOSSourceMode& mode)
+{
+    if (value == "packed") {
+        mode = RMAOSSourceMode::PackedTexture;
+        return true;
+    }
+    if (value == "split") {
+        mode = RMAOSSourceMode::SeparateChannels;
+        return true;
+    }
+
+    return false;
+}
+
 } // namespace tpbr

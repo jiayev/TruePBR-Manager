@@ -30,6 +30,12 @@ enum class ChannelMap {
     Specular,
 };
 
+/// Defines whether RMAOS comes from a packed texture or from split channels.
+enum class RMAOSSourceMode {
+    PackedTexture,
+    SeparateChannels,
+};
+
 /// Output DDS compression mode for exported textures.
 enum class DDSCompressionMode {
     BC7_sRGB,
@@ -61,6 +67,12 @@ const char* compressionModeKey(DDSCompressionMode mode);
 /// Parse a serialized compression mode key.
 bool tryParseCompressionMode(const std::string& value, DDSCompressionMode& mode);
 
+/// Get stable serialization key for the active RMAOS source mode.
+const char* rmaosSourceModeKey(RMAOSSourceMode mode);
+
+/// Parse a serialized RMAOS source mode key.
+bool tryParseRmaosSourceMode(const std::string& value, RMAOSSourceMode& mode);
+
 // ─── Texture Entry ──────────────────────────────────────────
 
 struct TextureEntry {
@@ -70,6 +82,14 @@ struct TextureEntry {
     int                   height   = 0;
     int                   channels = 0;
     std::string           format;      // "png", "dds", "tga", etc.
+};
+
+struct ChannelMapEntry {
+    std::filesystem::path sourcePath;
+    int                   width    = 0;
+    int                   height   = 0;
+    int                   channels = 0;
+    std::string           format;
 };
 
 // ─── PBR Feature Flags ─────────────────────────────────────
@@ -134,8 +154,11 @@ struct PBRTextureSet {
     /// Export compression override per slot.
     std::map<PBRTextureSlot, DDSCompressionMode> exportCompression;
 
+    /// Active RMAOS authoring mode.
+    RMAOSSourceMode rmaosSourceMode = RMAOSSourceMode::PackedTexture;
+
     /// Individual channel maps before RMAOS packing
-    std::map<ChannelMap, std::filesystem::path> channelMaps;
+    std::map<ChannelMap, ChannelMapEntry> channelMaps;
 
     PBRFeatureFlags features;
     PBRParameters   params;

@@ -27,6 +27,22 @@
 
 namespace tpbr {
 
+static const char* channelDisplayName(ChannelMap channel)
+{
+    switch (channel) {
+    case ChannelMap::Roughness:
+        return "Roughness";
+    case ChannelMap::Metallic:
+        return "Metallic";
+    case ChannelMap::AO:
+        return "AO";
+    case ChannelMap::Specular:
+        return "Specular";
+    default:
+        return "Unknown";
+    }
+}
+
 static QImage loadPreviewImage(const std::filesystem::path& path)
 {
     const auto ext = FileUtils::getExtensionLower(path);
@@ -131,6 +147,8 @@ void MainWindow::setupCentralWidget()
             this, &MainWindow::onDroppedOnSlot);
     connect(m_slotEditor, &SlotEditorWidget::fileDroppedOnChannel,
             this, &MainWindow::onDroppedOnChannel);
+        connect(m_slotEditor, &SlotEditorWidget::rmaosSourceModeChanged,
+            this, &MainWindow::onRmaosSourceModeChanged);
     connect(m_slotEditor, &SlotEditorWidget::matchTextureChanged,
             this, &MainWindow::onMatchTextureChanged);
     connect(m_slotEditor, &SlotEditorWidget::exportCompressionChanged,
@@ -251,6 +269,9 @@ void MainWindow::onImportTexture(PBRTextureSlot slot)
     if (path.isEmpty()) return;
 
     auto entry = TextureImporter::importTexture(path.toStdString(), slot);
+    if (slot == PBRTextureSlot::RMAOS) {
+        m_project.textureSets[m_currentSetIndex].rmaosSourceMode = RMAOSSourceMode::PackedTexture;
+    }
     m_project.textureSets[m_currentSetIndex].textures[slot] = entry;
 
     m_slotEditor->setTextureSet(m_project.textureSets[m_currentSetIndex]);
@@ -266,8 +287,7 @@ void MainWindow::onImportChannel(ChannelMap channel)
 {
     if (m_currentSetIndex < 0) return;
 
-    const char* channelNames[] = {"Roughness", "Metallic", "AO", "Specular"};
-    const char* name = channelNames[static_cast<int>(channel)];
+    const char* name = channelDisplayName(channel);
 
     auto path = QFileDialog::getOpenFileName(this,
         tr("Import %1 Channel").arg(name),
@@ -276,11 +296,17 @@ void MainWindow::onImportChannel(ChannelMap channel)
 
     if (path.isEmpty()) return;
 
-    m_project.textureSets[m_currentSetIndex].channelMaps[channel] = path.toStdString();
+    auto entry = TextureImporter::importChannelMap(path.toStdString(), channel);
+    m_project.textureSets[m_currentSetIndex].rmaosSourceMode = RMAOSSourceMode::SeparateChannels;
+    m_project.textureSets[m_currentSetIndex].channelMaps[channel] = entry;
 
     m_slotEditor->setTextureSet(m_project.textureSets[m_currentSetIndex]);
     refreshPreview();
-    statusBar()->showMessage(tr("Imported %1 channel: %2").arg(name).arg(path));
+    statusBar()->showMessage(tr("Imported %1 channel: %2 (%3x%4)")
+        .arg(name)
+        .arg(QString::fromStdString(entry.sourcePath.filename().string()))
+        .arg(entry.width)
+        .arg(entry.height));
 }
 
 void MainWindow::onDroppedOnSlot(PBRTextureSlot slot, const QString& filePath)
@@ -288,6 +314,9 @@ void MainWindow::onDroppedOnSlot(PBRTextureSlot slot, const QString& filePath)
     if (m_currentSetIndex < 0) return;
 
     auto entry = TextureImporter::importTexture(filePath.toStdString(), slot);
+    if (slot == PBRTextureSlot::RMAOS) {
+        m_project.textureSets[m_currentSetIndex].rmaosSourceMode = RMAOSSourceMode::PackedTexture;
+    }
     m_project.textureSets[m_currentSetIndex].textures[slot] = entry;
 
     m_slotEditor->setTextureSet(m_project.textureSets[m_currentSetIndex]);
@@ -303,14 +332,27 @@ void MainWindow::onDroppedOnChannel(ChannelMap channel, const QString& filePath)
 {
     if (m_currentSetIndex < 0) return;
 
-    const char* channelNames[] = {"Roughness", "Metallic", "AO", "Specular"};
-    const char* name = channelNames[static_cast<int>(channel)];
+    const char* name = channelDisplayName(channel);
 
-    m_project.textureSets[m_currentSetIndex].channelMaps[channel] = filePath.toStdString();
+    auto entry = TextureImporter::importChannelMap(filePath.toStdString(), channel);
+    m_project.textureSets[m_currentSetIndex].rmaosSourceMode = RMAOSSourceMode::SeparateChannels;
+    m_project.textureSets[m_currentSetIndex].channelMaps[channel] = entry;
 
     m_slotEditor->setTextureSet(m_project.textureSets[m_currentSetIndex]);
     refreshPreview();
-    statusBar()->showMessage(tr("Dropped %1 channel: %2").arg(name).arg(filePath));
+    statusBar()->showMessage(tr("Dropped %1 channel: %2 (%3x%4)")
+        .arg(name)
+        .arg(QString::fromStdString(entry.sourcePath.filename().string()))
+        .arg(entry.width)
+        .arg(entry.height));
+}
+
+void MainWindow::onRmaosSourceModeChanged(RMAOSSourceMode mode)
+{
+    if (m_currentSetIndex < 0) return;
+
+    m_project.textureSets[m_currentSetIndex].rmaosSourceMode = mode;
+    m_slotEditor->setTextureSet(m_project.textureSets[m_currentSetIndex]);
 }
 
 void MainWindow::onMatchTextureChanged(const QString& newPath)

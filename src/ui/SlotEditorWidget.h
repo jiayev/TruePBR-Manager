@@ -5,6 +5,7 @@
 #include <QComboBox>
 #include <QLabel>
 #include <QLineEdit>
+#include <QRadioButton>
 #include <QWidget>
 
 #include <functional>
@@ -24,7 +25,7 @@ public:
     explicit DropZoneLabel(QWidget* parent = nullptr);
 
     /// Set the displayed image from a file path. Shows thumbnail + filename.
-    void setFile(const std::filesystem::path& path);
+    void setFile(const std::filesystem::path& path, const QString& detailText = QString());
 
     /// Clear the display back to "(empty)" / "(drop here)"
     void clear();
@@ -43,6 +44,7 @@ protected:
 private:
     QPixmap m_thumbnail;
     QString m_filename;
+    QString m_detailText;
     bool    m_dragHover = false;
 
     static constexpr int ThumbnailSize = 48;
@@ -64,6 +66,7 @@ public:
 signals:
     void importRequested(PBRTextureSlot slot);
     void importChannelRequested(ChannelMap channel);
+    void rmaosSourceModeChanged(RMAOSSourceMode mode);
     void matchTextureChanged(const QString& newPath);
     void exportCompressionChanged(PBRTextureSlot slot, DDSCompressionMode mode);
 
@@ -76,8 +79,11 @@ private:
     void setupUI();
     void addSlotRow(PBRTextureSlot slot, const QString& label, bool visible);
     void addChannelRow(ChannelMap channel, const QString& label);
+    void updateRmaosModeUI(RMAOSSourceMode mode);
 
     QLineEdit* m_matchTextureEdit = nullptr;
+    QRadioButton* m_packedRmaosRadio = nullptr;
+    QRadioButton* m_splitRmaosRadio = nullptr;
 
     struct SlotRow {
         QLabel*        labelWidget  = nullptr;
@@ -94,6 +100,7 @@ private:
 
     std::map<PBRTextureSlot, SlotRow>      m_slotRows;
     std::map<ChannelMap, ChannelRowData>    m_channelRows;
+    QWidget* m_rmaosModeContainer = nullptr;
     QWidget* m_channelSection = nullptr;
 };
 

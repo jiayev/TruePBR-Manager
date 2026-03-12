@@ -169,6 +169,33 @@ static ChannelMap channelFromString(const std::string& s)
     return ChannelMap::Roughness;
 }
 
+static json channelMapEntryToJson(const ChannelMapEntry& entry)
+{
+    return json{
+        {"path", entry.sourcePath.string()},
+        {"width", entry.width},
+        {"height", entry.height},
+        {"channels", entry.channels},
+        {"format", entry.format},
+    };
+}
+
+static ChannelMapEntry channelMapEntryFromJson(const json& j)
+{
+    ChannelMapEntry entry;
+    if (j.is_string()) {
+        entry.sourcePath = j.get<std::string>();
+        return entry;
+    }
+
+    entry.sourcePath = j.value("path", "");
+    entry.width      = j.value("width", 0);
+    entry.height     = j.value("height", 0);
+    entry.channels   = j.value("channels", 0);
+    entry.format     = j.value("format", "");
+    return entry;
+}
+
 static json textureSetToJson(const PBRTextureSet& ts)
 {
     json j;
@@ -178,6 +205,7 @@ static json textureSetToJson(const PBRTextureSet& ts)
     j["notes"]         = ts.notes;
     j["features"]      = featuresToJson(ts.features);
     j["params"]        = paramsToJson(ts.params);
+    j["rmaos_source_mode"] = rmaosSourceModeKey(ts.rmaosSourceMode);
 
     // Textures
     json texArr = json::array();
@@ -201,8 +229,8 @@ static json textureSetToJson(const PBRTextureSet& ts)
 
     // Channel maps
     json chArr = json::object();
-    for (const auto& [ch, path] : ts.channelMaps) {
-        chArr[channelToString(ch)] = path.string();
+    for (const auto& [ch, entry] : ts.channelMaps) {
+        chArr[channelToString(ch)] = channelMapEntryToJson(entry);
     }
     j["channel_maps"] = chArr;
 
@@ -218,6 +246,12 @@ static PBRTextureSet textureSetFromJson(const json& j)
     if (j.contains("notes"))         ts.notes         = j["notes"];
     if (j.contains("features"))      ts.features      = featuresFromJson(j["features"]);
     if (j.contains("params"))        ts.params        = paramsFromJson(j["params"]);
+    if (j.contains("rmaos_source_mode")) {
+        RMAOSSourceMode mode;
+        if (tryParseRmaosSourceMode(j["rmaos_source_mode"].get<std::string>(), mode)) {
+            ts.rmaosSourceMode = mode;
+        }
+    }
 
     if (j.contains("textures") && j["textures"].is_array()) {
         for (const auto& t : j["textures"]) {
@@ -244,7 +278,14 @@ static PBRTextureSet textureSetFromJson(const json& j)
 
     if (j.contains("channel_maps") && j["channel_maps"].is_object()) {
         for (auto& [key, val] : j["channel_maps"].items()) {
-            ts.channelMaps[channelFromString(key)] = val.get<std::string>();
+            ts.channelMaps[channelFromString(key)] = channelMapEntryFromJson(val);
+        }
+    }
+
+    if (!j.contains("rmaos_source_mode")) {
+        const bool hasPackedRmaos = ts.textures.find(PBRTextureSlot::RMAOS) != ts.textures.end();
+        if (!hasPackedRmaos && !ts.channelMaps.empty()) {
+            ts.rmaosSourceMode = RMAOSSourceMode::SeparateChannels;
         }
     }
 

@@ -119,6 +119,10 @@ bool ModExporter::exportTextures(
     bool allOk = true;
 
     for (const auto& [slot, entry] : textureSet.textures) {
+        if (slot == PBRTextureSlot::RMAOS && textureSet.rmaosSourceMode == RMAOSSourceMode::SeparateChannels) {
+            continue;
+        }
+
         auto outPath = buildOutputPath(modFolder, textureSet.matchTexture, slot);
         auto compressionMode = exportCompressionForSlot(textureSet, slot);
 
@@ -136,13 +140,22 @@ bool ModExporter::exportTextures(
         }
     }
 
-    // If there are individual channel maps but no RMAOS texture, pack them
-    if (textureSet.textures.find(PBRTextureSlot::RMAOS) == textureSet.textures.end()
-        && !textureSet.channelMaps.empty())
+    if (textureSet.rmaosSourceMode == RMAOSSourceMode::SeparateChannels && !textureSet.channelMaps.empty())
     {
+        std::map<ChannelMap, fs::path> channelPaths;
+        for (const auto& [channel, entry] : textureSet.channelMaps) {
+            if (!entry.sourcePath.empty()) {
+                channelPaths[channel] = entry.sourcePath;
+            }
+        }
+
+        if (channelPaths.empty()) {
+            return allOk;
+        }
+
         auto rmaosPath = buildOutputPath(modFolder, textureSet.matchTexture, PBRTextureSlot::RMAOS);
         auto compressionMode = exportCompressionForSlot(textureSet, PBRTextureSlot::RMAOS);
-        if (!ChannelPacker::packRMAOS(textureSet.channelMaps, rmaosPath, compressionMode)) {
+        if (!ChannelPacker::packRMAOS(channelPaths, rmaosPath, compressionMode)) {
             spdlog::error("ModExporter: RMAOS packing failed for {}", textureSet.name);
             allOk = false;
         }

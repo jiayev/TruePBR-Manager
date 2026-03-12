@@ -9,6 +9,22 @@
 
 namespace tpbr {
 
+static const char* channelDisplayName(ChannelMap channel)
+{
+    switch (channel) {
+    case ChannelMap::Roughness:
+        return "Roughness";
+    case ChannelMap::Metallic:
+        return "Metallic";
+    case ChannelMap::AO:
+        return "AO";
+    case ChannelMap::Specular:
+        return "Specular";
+    default:
+        return "Unknown";
+    }
+}
+
 TextureEntry TextureImporter::importTexture(const std::filesystem::path& filePath, PBRTextureSlot slot)
 {
     TextureEntry entry;
@@ -40,6 +56,44 @@ TextureEntry TextureImporter::importTexture(const std::filesystem::path& filePat
             entry.channels = c;
             spdlog::info("Imported image: {} ({}x{}, {}ch) -> {}",
                          filePath.filename().string(), w, h, c, slotDisplayName(slot));
+        } else {
+            spdlog::warn("Failed to read image metadata: {}", filePath.string());
+        }
+    }
+
+    return entry;
+}
+
+ChannelMapEntry TextureImporter::importChannelMap(const std::filesystem::path& filePath, ChannelMap channel)
+{
+    ChannelMapEntry entry;
+    entry.sourcePath = filePath;
+
+    auto ext = FileUtils::getExtensionLower(filePath);
+    entry.format = ext;
+
+    if (ext == ".dds") {
+        DDSUtils::DDSInfo info;
+        if (DDSUtils::getDDSInfo(filePath, info)) {
+            entry.width    = info.width;
+            entry.height   = info.height;
+            entry.channels = info.channels;
+            spdlog::info("Imported RMAOS channel: {} ({}x{}, {}) -> {}",
+                         filePath.filename().string(), info.width, info.height,
+                         info.formatName, channelDisplayName(channel));
+        } else {
+            spdlog::warn("Failed to read DDS metadata: {}", filePath.string());
+        }
+    } else {
+        int w = 0;
+        int h = 0;
+        int c = 0;
+        if (ImageUtils::getImageInfo(filePath, w, h, c)) {
+            entry.width    = w;
+            entry.height   = h;
+            entry.channels = c;
+            spdlog::info("Imported RMAOS channel: {} ({}x{}, {}ch) -> {}",
+                         filePath.filename().string(), w, h, c, channelDisplayName(channel));
         } else {
             spdlog::warn("Failed to read image metadata: {}", filePath.string());
         }

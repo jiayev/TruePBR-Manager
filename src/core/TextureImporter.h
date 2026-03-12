@@ -12,6 +12,9 @@ public:
     /// Import a texture file into a given slot. Fills width/height/channels/format.
     static TextureEntry importTexture(const std::filesystem::path& filePath, PBRTextureSlot slot);
 
+    /// Import a single RMAOS channel source file. Fills width/height/channels/format.
+    static ChannelMapEntry importChannelMap(const std::filesystem::path& filePath, ChannelMap channel);
+
     /// Detect whether a DDS file is a packed RMAOS texture (heuristic).
     static bool isPackedRMAOS(const std::filesystem::path& ddsPath);
 
