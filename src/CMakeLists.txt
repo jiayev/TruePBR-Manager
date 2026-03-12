@@ -94,14 +94,31 @@ if(WIN32)
     )
 endif()
 
-# --- Qt Runtime Deployment ---
-# Copy Qt platform plugins and DLLs next to the executable so it can run.
-# This uses Qt's official deployment tool (windeployqt) if available,
-# otherwise manually copies the platform plugin.
+# --- Output directly to dist/ ---
+# Put exe and DLLs straight into dist/TruePBR-Manager/ so there's no
+# need to copy anything after the build. Just zip that folder.
 
-# Find windeployqt
+set(DIST_DIR "${CMAKE_SOURCE_DIR}/dist/TruePBR-Manager")
+
+set_target_properties(TruePBR-Manager PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${DIST_DIR}"
+)
+
+# Qt and vcpkg DLLs: CMake copies dependent DLLs next to the exe automatically
+# when this generator expression is used (CMake 3.21+, Ninja/VS):
+if(WIN32)
+    add_custom_command(TARGET TruePBR-Manager POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_RUNTIME_DLLS:TruePBR-Manager>
+            "${DIST_DIR}"
+        COMMAND_EXPAND_LISTS
+        COMMENT "Copying runtime DLLs to dist/..."
+    )
+endif()
+
+# Qt platform plugins (windeployqt handles plugins, styles, imageformats)
 find_program(WINDEPLOYQT_EXECUTABLE windeployqt
-    HINTS "${_qt_bin_dir}" "${Qt6_DIR}/../../../tools/Qt6/bin"
+    HINTS "${Qt6_DIR}/../../../tools/Qt6/bin"
     PATHS ENV PATH
 )
 
@@ -112,7 +129,7 @@ if(WINDEPLOYQT_EXECUTABLE)
             --no-translations
             --no-opengl-sw
             "$<TARGET_FILE:TruePBR-Manager>"
-        COMMENT "Running windeployqt..."
+        COMMENT "Running windeployqt in dist/..."
     )
 else()
     # Fallback: manually copy the platform plugin
@@ -120,14 +137,19 @@ else()
     get_filename_component(_qt_bin_dir "${_qt_core_loc}" DIRECTORY)
     get_filename_component(_qt_root "${_qt_bin_dir}" DIRECTORY)
 
-    set(_qt_plugins_src "${_qt_root}/plugins/platforms")
-    set(_qt_plugins_dst "$<TARGET_FILE_DIR:TruePBR-Manager>/platforms")
-
     add_custom_command(TARGET TruePBR-Manager POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${_qt_plugins_dst}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${DIST_DIR}/platforms"
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${_qt_plugins_src}/qwindows.dll"
-            "${_qt_plugins_dst}/qwindows.dll"
-        COMMENT "Copying Qt platform plugin (qwindows.dll)..."
+            "${_qt_root}/plugins/platforms/qwindows.dll"
+            "${DIST_DIR}/platforms/qwindows.dll"
+        COMMENT "Copying Qt platform plugin to dist/..."
     )
 endif()
+
+# Copy LICENSE
+add_custom_command(TARGET TruePBR-Manager POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/LICENSE"
+        "${DIST_DIR}/LICENSE"
+    COMMENT "Copying LICENSE to dist/..."
+)

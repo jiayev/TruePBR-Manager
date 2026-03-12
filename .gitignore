@@ -2,6 +2,7 @@
 build/
 out/
 cmake-build-*/
+dist/
 
 # IDE
 .vs/
