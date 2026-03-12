@@ -1,5 +1,8 @@
 # TruePBR Manager
 
+[![CI](https://github.com/jiayev/TruePBR-Manager/actions/workflows/ci.yml/badge.svg)](https://github.com/jiayev/TruePBR-Manager/actions/workflows/ci.yml)
+[![Release](https://github.com/jiayev/TruePBR-Manager/actions/workflows/release.yml/badge.svg)](https://github.com/jiayev/TruePBR-Manager/actions/workflows/release.yml)
+
 TruePBR Manager is a Windows desktop tool for assembling and exporting Skyrim True PBR texture sets compatible with [Community Shaders True PBR](https://github.com/doodlum/skyrim-community-shaders/wiki/True-PBR) and [PGPatcher](https://github.com/hakasapl/PGPatcher).
 
 Each texture set maps to one vanilla diffuse path and stores the textures, feature flags, parameters, and export settings needed to generate a mod-ready True PBR package.
@@ -104,6 +107,19 @@ If you are using the reference `pre-commit` CLI instead, the equivalent commands
 pre-commit install
 pre-commit run --all-files
 ```
+
+## GitHub Actions
+
+The repository now includes two GitHub Actions workflows:
+
+- [`CI`](https://github.com/jiayev/TruePBR-Manager/actions/workflows/ci.yml): runs `prek` on every pull request and on pushes to `main`, then builds the application on `windows-latest`
+- [`Release`](https://github.com/jiayev/TruePBR-Manager/actions/workflows/release.yml): triggers on tags matching `v*`, builds the distributable, zips `dist/TruePBR-Manager/`, and uploads it to the GitHub Release page
+
+Recommended baseline for this project:
+
+- `CI` for formatting, lint-style checks, and build validation
+- `Release` for tagged packaging and downloadable binaries
+- `Tests` later, once the project has automated tests to run
 
 ### Requirements
 
