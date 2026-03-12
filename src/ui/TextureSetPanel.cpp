@@ -21,13 +21,21 @@ void TextureSetPanel::setupUI()
 
     auto* buttonLayout = new QHBoxLayout();
     m_addButton    = new QPushButton(tr("Add"), this);
+    m_renameButton = new QPushButton(tr("Rename"), this);
     m_removeButton = new QPushButton(tr("Remove"), this);
     buttonLayout->addWidget(m_addButton);
+    buttonLayout->addWidget(m_renameButton);
     buttonLayout->addWidget(m_removeButton);
     layout->addLayout(buttonLayout);
 
     connect(m_listWidget, &QListWidget::currentRowChanged, this, &TextureSetPanel::textureSetSelected);
     connect(m_addButton,  &QPushButton::clicked, this, &TextureSetPanel::addRequested);
+    connect(m_renameButton, &QPushButton::clicked, this, [this]() {
+        int idx = m_listWidget->currentRow();
+        if (idx >= 0) {
+            emit renameRequested(idx);
+        }
+    });
     connect(m_removeButton, &QPushButton::clicked, this, [this]() {
         int idx = m_listWidget->currentRow();
         if (idx >= 0)
@@ -42,7 +50,9 @@ void TextureSetPanel::setTextureSets(const std::vector<PBRTextureSet>& sets)
         m_listWidget->addItem(QString::fromStdString(ts.name));
     }
 
-    m_removeButton->setEnabled(!sets.empty());
+    const bool hasSets = !sets.empty();
+    m_renameButton->setEnabled(hasSets);
+    m_removeButton->setEnabled(hasSets);
 }
 
 void TextureSetPanel::setCurrentIndex(int index)

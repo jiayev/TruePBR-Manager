@@ -13,6 +13,38 @@ namespace tpbr {
 
 namespace fs = std::filesystem;
 
+static std::string sanitizedTextureSetStem(const PBRTextureSet& textureSet)
+{
+    std::string stem = textureSet.name;
+    if (stem.empty()) {
+        stem = fs::path(textureSet.matchTexture).stem().string();
+    }
+
+    for (char& ch : stem) {
+        switch (ch) {
+        case '<':
+        case '>':
+        case ':':
+        case '"':
+        case '/':
+        case '\\':
+        case '|':
+        case '?':
+        case '*':
+            ch = '_';
+            break;
+        default:
+            break;
+        }
+    }
+
+    if (stem.empty()) {
+        stem = "texture_set";
+    }
+
+    return stem;
+}
+
 enum class ExportAlphaMode {
     Opaque,
     Transparent,
@@ -198,13 +230,12 @@ static bool saveTextureWithCompression(const fs::path& outputPath,
 
 fs::path ModExporter::buildOutputPath(
     const fs::path& modFolder,
-    const std::string& matchTexture,
+    const PBRTextureSet& textureSet,
     PBRTextureSlot slot)
 {
-    // PBR textures go under textures/pbr/<original_path><suffix>
-    // matchTexture example: "architecture\\whiterun\\wrwoodplank01"
-    fs::path relative = fs::path("textures") / "pbr" / matchTexture;
-    std::string filename = relative.stem().string() + slotSuffix(slot);
+    // PBR textures go under textures/pbr/<original_parent>/<texture_set_name><suffix>
+    fs::path relative = fs::path("textures") / "pbr" / fs::path(textureSet.matchTexture);
+    std::string filename = sanitizedTextureSetStem(textureSet) + slotSuffix(slot);
     return modFolder / relative.parent_path() / filename;
 }
 
@@ -250,7 +281,7 @@ bool ModExporter::exportTextures(
             continue;
         }
 
-        auto outPath = buildOutputPath(modFolder, textureSet.matchTexture, slot);
+        auto outPath = buildOutputPath(modFolder, textureSet, slot);
         auto compressionMode = exportCompressionForSlot(textureSet, slot);
 
         if (!fs::exists(entry.sourcePath)) {
@@ -280,7 +311,7 @@ bool ModExporter::exportTextures(
             return allOk;
         }
 
-        auto rmaosPath = buildOutputPath(modFolder, textureSet.matchTexture, PBRTextureSlot::RMAOS);
+        auto rmaosPath = buildOutputPath(modFolder, textureSet, PBRTextureSlot::RMAOS);
         auto compressionMode = exportCompressionForSlot(textureSet, PBRTextureSlot::RMAOS);
         if (!ChannelPacker::packRMAOS(channelPaths, rmaosPath, compressionMode)) {
             spdlog::error("ModExporter: RMAOS packing failed for {}", textureSet.name);

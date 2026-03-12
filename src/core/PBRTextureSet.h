@@ -36,6 +36,12 @@ enum class RMAOSSourceMode {
     SeparateChannels,
 };
 
+enum class TextureMatchMode {
+    Auto,
+    Diffuse,
+    Normal,
+};
+
 /// Output DDS compression mode for exported textures.
 enum class DDSCompressionMode {
     BC7_sRGB,
@@ -80,6 +86,15 @@ const char* rmaosSourceModeKey(RMAOSSourceMode mode);
 
 /// Parse a serialized RMAOS source mode key.
 bool tryParseRmaosSourceMode(const std::string& value, RMAOSSourceMode& mode);
+
+/// Get stable serialization key for the vanilla match mode.
+const char* textureMatchModeKey(TextureMatchMode mode);
+
+/// Get UI display name for the vanilla match mode.
+const char* textureMatchModeDisplayName(TextureMatchMode mode);
+
+/// Parse a serialized vanilla match mode key.
+bool tryParseTextureMatchMode(const std::string& value, TextureMatchMode& mode);
 
 // ─── Texture Entry ──────────────────────────────────────────
 
@@ -156,6 +171,7 @@ struct PBRParameters {
 struct PBRTextureSet {
     std::string name;           // Display name (e.g. "WhiterunWoodPlank01")
     std::string matchTexture;   // Vanilla diffuse path to match (e.g. "architecture\\whiterun\\wrwoodplank01")
+    TextureMatchMode matchMode = TextureMatchMode::Auto;
 
     /// Assigned textures per slot
     std::map<PBRTextureSlot, TextureEntry> textures;

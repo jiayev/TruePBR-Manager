@@ -183,6 +183,7 @@ Each `PBRTextureSet` currently contains:
 
 - Display name
 - Vanilla match texture path
+- Vanilla match mode: auto, diffuse, or normal
 - Imported textures map
 - Per-slot export compression map
 - Active RMAOS source mode
@@ -224,6 +225,7 @@ Top-level fields currently written by the app:
 Each texture set currently serializes:
 
 - Name and match texture
+- Match texture mode
 - Tags and notes
 - `features`
 - `params`
@@ -248,6 +250,12 @@ RMAOS source mode uses:
 
 - `packed`
 - `split`
+
+Match texture mode uses:
+
+- `auto`
+- `diffuse`
+- `normal`
 
 ## 7. PGPatcher JSON Output
 
@@ -281,6 +289,8 @@ Representative entry shape:
 Conditional fields currently emitted by implementation:
 
 - `emissive_scale` when emissive is enabled
+- `match_normal` when a set is configured to match vanilla normal instead of diffuse
+- `rename` when exported PBR texture base name differs from the matched vanilla base name
 - Coat fields when multilayer or coat normal is enabled
 - `fuzz` object when fuzz is enabled
 - `glint` object when glint is enabled
@@ -311,6 +321,8 @@ If `matchTexture` is `architecture\whiterun\wrwoodplank01`, the diffuse export p
 ```text
 textures/pbr/architecture/whiterun/wrwoodplank01.dds
 ```
+
+If the texture set name is changed, the exporter keeps the vanilla match directory but uses the texture set name as the PBR file base name. The PGPatcher JSON uses `rename` when possible, and falls back to explicit `slotN` paths when needed.
 
 ### 8.2 Export rules
 
@@ -352,7 +364,8 @@ Current defaults from the code:
 Current UI composition:
 
 - `TextureSetPanel`: list of texture sets with add/remove actions
-- `SlotEditorWidget`: match path, slot imports, RMAOS mode, split-channel rows, compression selectors
+- `TextureSetPanel`: list of texture sets with add/remove/rename actions
+- `SlotEditorWidget`: match path, match mode, slot imports, RMAOS mode, split-channel rows, compression selectors
 - `FeatureTogglePanel`: feature checkboxes
 - `ParameterPanel`: parameter editors grouped by feature
 - `TexturePreviewWidget`: basic image display with wheel zoom and drag pan

@@ -19,10 +19,10 @@ public:
         const std::filesystem::path& modFolder);
 
 private:
-    /// Build the output path for a texture: textures/pbr/<matchPath><suffix>
+    /// Build the output path for a texture: textures/pbr/<matchParent>/<textureSetName><suffix>
     static std::filesystem::path buildOutputPath(
         const std::filesystem::path& modFolder,
-        const std::string& matchTexture,
+    const PBRTextureSet& textureSet,
         PBRTextureSlot slot);
 };
 

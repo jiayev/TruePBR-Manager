@@ -198,6 +198,8 @@ void MainWindow::setupCentralWidget()
             this, &MainWindow::onTextureSetSelected);
     connect(m_textureSetPanel, &TextureSetPanel::addRequested,
             this, &MainWindow::onAddTextureSet);
+        connect(m_textureSetPanel, &TextureSetPanel::renameRequested,
+            this, &MainWindow::onRenameTextureSet);
     connect(m_textureSetPanel, &TextureSetPanel::removeRequested,
             this, &MainWindow::onRemoveTextureSet);
     connect(m_slotEditor, &SlotEditorWidget::importRequested,
@@ -212,6 +214,8 @@ void MainWindow::setupCentralWidget()
             this, &MainWindow::onRmaosSourceModeChanged);
     connect(m_slotEditor, &SlotEditorWidget::matchTextureChanged,
             this, &MainWindow::onMatchTextureChanged);
+        connect(m_slotEditor, &SlotEditorWidget::matchTextureModeChanged,
+            this, &MainWindow::onMatchTextureModeChanged);
     connect(m_slotEditor, &SlotEditorWidget::exportCompressionChanged,
             this, &MainWindow::onExportCompressionChanged);
     connect(m_featurePanel, &FeatureTogglePanel::featuresChanged,
@@ -420,6 +424,34 @@ void MainWindow::onAddTextureSet()
     statusBar()->showMessage(tr("Added texture set: %1").arg(name));
 }
 
+void MainWindow::onRenameTextureSet(int index)
+{
+    if (index < 0 || index >= static_cast<int>(m_project.textureSets.size())) {
+        return;
+    }
+
+    bool ok = false;
+    const QString currentName = QString::fromStdString(m_project.textureSets[index].name);
+    const QString newName = QInputDialog::getText(
+        this,
+        tr("Rename Texture Set"),
+        tr("Texture Set name:"),
+        QLineEdit::Normal,
+        currentName,
+        &ok).trimmed();
+
+    if (!ok || newName.isEmpty() || newName == currentName) {
+        return;
+    }
+
+    m_project.textureSets[index].name = newName.toStdString();
+    refreshUI();
+    if (index == m_currentSetIndex) {
+        onTextureSetSelected(index);
+    }
+    statusBar()->showMessage(tr("Renamed texture set to: %1").arg(newName));
+}
+
 void MainWindow::onRemoveTextureSet(int index)
 {
     if (index < 0 || index >= static_cast<int>(m_project.textureSets.size())) return;
@@ -549,6 +581,13 @@ void MainWindow::onMatchTextureChanged(const QString& newPath)
     if (m_currentSetIndex < 0) return;
     m_project.textureSets[m_currentSetIndex].matchTexture = newPath.toStdString();
     spdlog::debug("Match texture updated: {}", newPath.toStdString());
+}
+
+void MainWindow::onMatchTextureModeChanged(TextureMatchMode mode)
+{
+    if (m_currentSetIndex < 0) return;
+    m_project.textureSets[m_currentSetIndex].matchMode = mode;
+    spdlog::debug("Match texture mode updated: {}", textureMatchModeKey(mode));
 }
 
 void MainWindow::onExportCompressionChanged(PBRTextureSlot slot, DDSCompressionMode mode)

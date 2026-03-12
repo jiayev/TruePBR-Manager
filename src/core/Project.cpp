@@ -227,6 +227,7 @@ static json textureSetToJson(const PBRTextureSet& ts)
     json j;
     j["name"]          = ts.name;
     j["match_texture"] = ts.matchTexture;
+    j["match_texture_mode"] = textureMatchModeKey(ts.matchMode);
     j["tags"]          = ts.tags;
     j["notes"]         = ts.notes;
     j["features"]      = featuresToJson(ts.features);
@@ -269,6 +270,12 @@ static PBRTextureSet textureSetFromJson(const json& j)
     PBRTextureSet ts;
     if (j.contains("name"))          ts.name          = j["name"];
     if (j.contains("match_texture")) ts.matchTexture  = j["match_texture"];
+    if (j.contains("match_texture_mode")) {
+        TextureMatchMode mode;
+        if (tryParseTextureMatchMode(j["match_texture_mode"].get<std::string>(), mode)) {
+            ts.matchMode = mode;
+        }
+    }
     if (j.contains("tags"))          ts.tags          = j["tags"];
     if (j.contains("notes"))         ts.notes         = j["notes"];
     if (j.contains("features"))      ts.features      = featuresFromJson(j["features"]);

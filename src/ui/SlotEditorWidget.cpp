@@ -306,16 +306,27 @@ void SlotEditorWidget::setupUI()
 
     // ── Match Texture Path ─────────────────────────────────
     auto* matchLayout = new QHBoxLayout();
-    auto* matchLabel  = new QLabel(tr("Vanilla Texture:"), this);
+    auto* matchLabel  = new QLabel(tr("Vanilla Match:"), this);
     matchLabel->setFixedWidth(100);
     m_matchTextureEdit = new QLineEdit(this);
-    m_matchTextureEdit->setPlaceholderText(tr("e.g. architecture\\whiterun\\wrwoodplank01"));
+    m_matchTextureEdit->setPlaceholderText(tr("e.g. architecture\\whiterun\\wrwoodplank01 or wrwoodplank01_n"));
+    m_matchModeCombo = new QComboBox(this);
+    m_matchModeCombo->addItem(tr("Auto"), static_cast<int>(TextureMatchMode::Auto));
+    m_matchModeCombo->addItem(tr("Match Diffuse"), static_cast<int>(TextureMatchMode::Diffuse));
+    m_matchModeCombo->addItem(tr("Match Normal"), static_cast<int>(TextureMatchMode::Normal));
     matchLayout->addWidget(matchLabel);
     matchLayout->addWidget(m_matchTextureEdit, 1);
+    matchLayout->addWidget(m_matchModeCombo);
     mainLayout->addLayout(matchLayout);
 
     connect(m_matchTextureEdit, &QLineEdit::editingFinished, this, [this]() {
         emit matchTextureChanged(m_matchTextureEdit->text());
+    });
+    connect(m_matchModeCombo, &QComboBox::currentIndexChanged, this, [this](int index) {
+        if (index < 0) {
+            return;
+        }
+        emit matchTextureModeChanged(static_cast<TextureMatchMode>(m_matchModeCombo->itemData(index).toInt()));
     });
 
     // ── Separator ──────────────────────────────────────────
@@ -498,6 +509,10 @@ void SlotEditorWidget::updateRmaosModeUI(RMAOSSourceMode mode)
 void SlotEditorWidget::setTextureSet(const PBRTextureSet& ts)
 {
     m_matchTextureEdit->setText(QString::fromStdString(ts.matchTexture));
+    m_matchModeCombo->blockSignals(true);
+    const int matchModeIndex = m_matchModeCombo->findData(static_cast<int>(ts.matchMode));
+    m_matchModeCombo->setCurrentIndex(matchModeIndex >= 0 ? matchModeIndex : 0);
+    m_matchModeCombo->blockSignals(false);
 
     m_packedRmaosRadio->blockSignals(true);
     m_splitRmaosRadio->blockSignals(true);

@@ -68,6 +68,7 @@ signals:
     void importChannelRequested(ChannelMap channel);
     void rmaosSourceModeChanged(RMAOSSourceMode mode);
     void matchTextureChanged(const QString& newPath);
+    void matchTextureModeChanged(TextureMatchMode mode);
     void exportCompressionChanged(PBRTextureSlot slot, DDSCompressionMode mode);
 
     /// Emitted when a file is dropped onto a texture slot
@@ -82,6 +83,7 @@ private:
     void updateRmaosModeUI(RMAOSSourceMode mode);
 
     QLineEdit* m_matchTextureEdit = nullptr;
+    QComboBox* m_matchModeCombo = nullptr;
     QRadioButton* m_packedRmaosRadio = nullptr;
     QRadioButton* m_splitRmaosRadio = nullptr;
 

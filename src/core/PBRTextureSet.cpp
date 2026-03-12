@@ -163,4 +163,50 @@ bool tryParseRmaosSourceMode(const std::string& value, RMAOSSourceMode& mode)
     return false;
 }
 
+const char* textureMatchModeKey(TextureMatchMode mode)
+{
+    switch (mode) {
+    case TextureMatchMode::Auto:
+        return "auto";
+    case TextureMatchMode::Diffuse:
+        return "diffuse";
+    case TextureMatchMode::Normal:
+        return "normal";
+    default:
+        return "auto";
+    }
+}
+
+const char* textureMatchModeDisplayName(TextureMatchMode mode)
+{
+    switch (mode) {
+    case TextureMatchMode::Auto:
+        return "Auto";
+    case TextureMatchMode::Diffuse:
+        return "Match Diffuse";
+    case TextureMatchMode::Normal:
+        return "Match Normal";
+    default:
+        return "Auto";
+    }
+}
+
+bool tryParseTextureMatchMode(const std::string& value, TextureMatchMode& mode)
+{
+    if (value == "auto") {
+        mode = TextureMatchMode::Auto;
+        return true;
+    }
+    if (value == "diffuse") {
+        mode = TextureMatchMode::Diffuse;
+        return true;
+    }
+    if (value == "normal") {
+        mode = TextureMatchMode::Normal;
+        return true;
+    }
+
+    return false;
+}
+
 } // namespace tpbr
