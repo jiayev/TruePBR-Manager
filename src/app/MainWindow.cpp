@@ -10,12 +10,12 @@
 #include "ui/TexturePreviewWidget.h"
 #include "ui/TextureSetPanel.h"
 
-#include <QDockWidget>
 #include <QFileDialog>
 #include <QHBoxLayout>
 #include <QInputDialog>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QScrollArea>
 #include <QSplitter>
 #include <QStatusBar>
 #include <QVBoxLayout>
@@ -64,7 +64,11 @@ void MainWindow::setupCentralWidget()
     m_textureSetPanel = new TextureSetPanel(this);
     splitter->addWidget(m_textureSetPanel);
 
-    // Middle: Slot Editor + Feature Toggles + Parameters (stacked)
+    // Middle: Slot Editor + Feature Toggles + Parameters (scrollable)
+    auto* middleScroll = new QScrollArea(this);
+    middleScroll->setWidgetResizable(true);
+    middleScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+
     auto* middleWidget = new QWidget(this);
     auto* middleLayout = new QVBoxLayout(middleWidget);
 
@@ -72,11 +76,13 @@ void MainWindow::setupCentralWidget()
     m_featurePanel = new FeatureTogglePanel(this);
     m_paramPanel   = new ParameterPanel(this);
 
-    middleLayout->addWidget(m_slotEditor,   3);
-    middleLayout->addWidget(m_featurePanel, 2);
-    middleLayout->addWidget(m_paramPanel,   2);
+    middleLayout->addWidget(m_slotEditor);
+    middleLayout->addWidget(m_featurePanel);
+    middleLayout->addWidget(m_paramPanel);
+    middleLayout->addStretch();
 
-    splitter->addWidget(middleWidget);
+    middleScroll->setWidget(middleWidget);
+    splitter->addWidget(middleScroll);
 
     // Right: Texture Preview
     m_previewWidget = new TexturePreviewWidget(this);
@@ -97,6 +103,10 @@ void MainWindow::setupCentralWidget()
             this, &MainWindow::onRemoveTextureSet);
     connect(m_slotEditor, &SlotEditorWidget::importRequested,
             this, &MainWindow::onImportTexture);
+    connect(m_slotEditor, &SlotEditorWidget::importChannelRequested,
+            this, &MainWindow::onImportChannel);
+    connect(m_slotEditor, &SlotEditorWidget::matchTextureChanged,
+            this, &MainWindow::onMatchTextureChanged);
     connect(m_featurePanel, &FeatureTogglePanel::featuresChanged,
             this, &MainWindow::onFeaturesChanged);
     connect(m_paramPanel, &ParameterPanel::parametersChanged,
@@ -176,6 +186,12 @@ void MainWindow::onAddTextureSet()
 
     m_project.addTextureSet(name.toStdString(), match.toStdString());
     refreshUI();
+
+    // Auto-select the new set
+    int newIndex = static_cast<int>(m_project.textureSets.size()) - 1;
+    m_textureSetPanel->setTextureSets(m_project.textureSets);
+    onTextureSetSelected(newIndex);
+
     statusBar()->showMessage(tr("Added texture set: %1").arg(name));
 }
 
@@ -208,7 +224,38 @@ void MainWindow::onImportTexture(PBRTextureSlot slot)
     m_project.textureSets[m_currentSetIndex].textures[slot] = entry;
 
     m_slotEditor->setTextureSet(m_project.textureSets[m_currentSetIndex]);
-    statusBar()->showMessage(tr("Imported: %1").arg(path));
+    statusBar()->showMessage(tr("Imported %1: %2 (%3x%4)")
+        .arg(slotDisplayName(slot))
+        .arg(QString::fromStdString(entry.sourcePath.filename().string()))
+        .arg(entry.width)
+        .arg(entry.height));
+}
+
+void MainWindow::onImportChannel(ChannelMap channel)
+{
+    if (m_currentSetIndex < 0) return;
+
+    const char* channelNames[] = {"Roughness", "Metallic", "AO", "Specular"};
+    const char* name = channelNames[static_cast<int>(channel)];
+
+    auto path = QFileDialog::getOpenFileName(this,
+        tr("Import %1 Channel").arg(name),
+        QString(),
+        TextureImporter::fileFilter());
+
+    if (path.isEmpty()) return;
+
+    m_project.textureSets[m_currentSetIndex].channelMaps[channel] = path.toStdString();
+
+    m_slotEditor->setTextureSet(m_project.textureSets[m_currentSetIndex]);
+    statusBar()->showMessage(tr("Imported %1 channel: %2").arg(name).arg(path));
+}
+
+void MainWindow::onMatchTextureChanged(const QString& newPath)
+{
+    if (m_currentSetIndex < 0) return;
+    m_project.textureSets[m_currentSetIndex].matchTexture = newPath.toStdString();
+    spdlog::debug("Match texture updated: {}", newPath.toStdString());
 }
 
 void MainWindow::onFeaturesChanged(const PBRFeatureFlags& flags)
