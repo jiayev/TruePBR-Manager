@@ -11,7 +11,7 @@
 | GUI Framework     | Qt 6                         |
 | Package Manager   | vcpkg                        |
 | Target Platform   | Windows (x64)                |
-| License           | TBD                          |
+| License           | CC BY-NC 4.0                 |
 
 ## 2. Purpose
 
