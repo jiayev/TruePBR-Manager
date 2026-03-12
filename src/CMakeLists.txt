@@ -93,3 +93,41 @@ if(WIN32)
         _UNICODE
     )
 endif()
+
+# --- Qt Runtime Deployment ---
+# Copy Qt platform plugins and DLLs next to the executable so it can run.
+# This uses Qt's official deployment tool (windeployqt) if available,
+# otherwise manually copies the platform plugin.
+
+# Find windeployqt
+find_program(WINDEPLOYQT_EXECUTABLE windeployqt
+    HINTS "${_qt_bin_dir}" "${Qt6_DIR}/../../../tools/Qt6/bin"
+    PATHS ENV PATH
+)
+
+if(WINDEPLOYQT_EXECUTABLE)
+    add_custom_command(TARGET TruePBR-Manager POST_BUILD
+        COMMAND "${WINDEPLOYQT_EXECUTABLE}"
+            --no-compiler-runtime
+            --no-translations
+            --no-opengl-sw
+            "$<TARGET_FILE:TruePBR-Manager>"
+        COMMENT "Running windeployqt..."
+    )
+else()
+    # Fallback: manually copy the platform plugin
+    get_target_property(_qt_core_loc Qt6::Core LOCATION)
+    get_filename_component(_qt_bin_dir "${_qt_core_loc}" DIRECTORY)
+    get_filename_component(_qt_root "${_qt_bin_dir}" DIRECTORY)
+
+    set(_qt_plugins_src "${_qt_root}/plugins/platforms")
+    set(_qt_plugins_dst "$<TARGET_FILE_DIR:TruePBR-Manager>/platforms")
+
+    add_custom_command(TARGET TruePBR-Manager POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${_qt_plugins_dst}"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${_qt_plugins_src}/qwindows.dll"
+            "${_qt_plugins_dst}/qwindows.dll"
+        COMMENT "Copying Qt platform plugin (qwindows.dll)..."
+    )
+endif()

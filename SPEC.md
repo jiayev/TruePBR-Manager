@@ -392,15 +392,39 @@ TruePBR-Manager/
 
 ## 10. Build Instructions
 
+### Prerequisites
+- Visual Studio 2022+ with C++ Desktop workload
+- vcpkg installed, with `VCPKG_ROOT` environment variable set
+- CMake 3.21+ (or use the one bundled with VS)
+
+### Option A: Using build.bat (recommended)
+
+Open a **VS Developer Command Prompt** (or any terminal where `cl.exe` is in PATH):
+
+```bat
+set VCPKG_ROOT=<your_vcpkg_path>
+build.bat
+```
+
+Output: `build/src/TruePBR-Manager.exe`
+
+### Option B: Using CMake presets
+
+Requires `VCPKG_ROOT` environment variable to be set:
+
 ```bash
-# Configure (first time, with vcpkg toolchain)
 cmake --preset default
-
-# Build
 cmake --build build --config Release
+```
 
-# Run
-./build/Release/TruePBR-Manager.exe
+### Option C: Manual CMake
+
+```bash
+cmake -S . -B build -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake \
+    -DVCPKG_TARGET_TRIPLET=x64-windows
+cmake --build build
 ```
 
 ## 11. Coding Conventions
