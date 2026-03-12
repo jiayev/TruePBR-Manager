@@ -26,9 +26,9 @@ void FeatureTogglePanel::setupUI()
     addCheck(m_subsurface,        tr("Subsurface Scattering"));
     addCheck(m_subsurfaceFoliage, tr("Two-Sided Foliage"));
     addCheck(m_multilayer,        tr("Multilayer Parallax"));
-    addCheck(m_coatNormal,        tr("  Coat Normal"));
-    addCheck(m_coatDiffuse,       tr("  Coat Diffuse Color"));
-    addCheck(m_coatParallax,      tr("  Coat Parallax"));
+    addCheck(m_coatNormal,        tr("Coat Normal"));
+    addCheck(m_coatDiffuse,       tr("Coat Diffuse Color"));
+    addCheck(m_coatParallax,      tr("Coat Parallax"));
     addCheck(m_fuzz,              tr("Fuzz (Cloth/Velvet)"));
     addCheck(m_glint,             tr("Glint (Sparkle)"));
     addCheck(m_hair,              tr("Hair Model"));
