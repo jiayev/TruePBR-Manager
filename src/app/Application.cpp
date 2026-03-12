@@ -1,7 +1,6 @@
 #include "Application.h"
 #include "MainWindow.h"
-
-#include <spdlog/spdlog.h>
+#include "utils/Log.h"
 
 namespace tpbr {
 
@@ -16,17 +15,26 @@ Application::Application(int& argc, char** argv)
     initStyle();
 }
 
-Application::~Application() = default;
+Application::~Application()
+{
+    Log::shutdown();
+}
 
 void Application::initLogging()
 {
-    spdlog::set_level(spdlog::level::debug);
-    spdlog::info("TruePBR Manager v{}", m_app.applicationVersion().toStdString());
+#ifdef NDEBUG
+    // Release: console at info, file at info
+    Log::init(spdlog::level::info, spdlog::level::info);
+#else
+    // Debug: console at debug, file at debug
+    Log::init(spdlog::level::debug, spdlog::level::debug);
+#endif
+
+    SPDLOG_INFO("TruePBR Manager v{}", m_app.applicationVersion().toStdString());
 }
 
 void Application::initStyle()
 {
-    // Use Fusion style for a clean, consistent look across Windows versions
     m_app.setStyle("Fusion");
 }
 

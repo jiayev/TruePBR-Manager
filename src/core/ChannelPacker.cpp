@@ -3,7 +3,7 @@
 #include "utils/FileUtils.h"
 #include "utils/ImageUtils.h"
 
-#include <spdlog/spdlog.h>
+#include "utils/Log.h"
 
 #include <algorithm>
 #include <cstring>

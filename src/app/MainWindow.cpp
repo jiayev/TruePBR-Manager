@@ -20,7 +20,7 @@
 #include <QStatusBar>
 #include <QVBoxLayout>
 
-#include <spdlog/spdlog.h>
+#include "utils/Log.h"
 
 namespace tpbr {
 

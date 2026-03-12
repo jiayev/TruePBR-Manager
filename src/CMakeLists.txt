@@ -39,6 +39,8 @@ set(APP_SOURCES
 )
 
 set(UTIL_SOURCES
+    utils/Log.h
+    utils/Log.cpp
     utils/FileUtils.h
     utils/FileUtils.cpp
     utils/ImageUtils.h

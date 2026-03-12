@@ -1,7 +1,7 @@
 #include "DDSUtils.h"
 
 #include <DirectXTex.h>
-#include <spdlog/spdlog.h>
+#include "utils/Log.h"
 
 #include <algorithm>
 

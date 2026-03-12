@@ -6,7 +6,7 @@
 #include "utils/ImageUtils.h"
 
 #include <filesystem>
-#include <spdlog/spdlog.h>
+#include "utils/Log.h"
 
 namespace tpbr {
 
