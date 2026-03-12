@@ -2,6 +2,7 @@
 
 #include "core/PBRTextureSet.h"
 
+#include <QComboBox>
 #include <QLabel>
 #include <QLineEdit>
 #include <QWidget>
@@ -64,6 +65,7 @@ signals:
     void importRequested(PBRTextureSlot slot);
     void importChannelRequested(ChannelMap channel);
     void matchTextureChanged(const QString& newPath);
+    void exportCompressionChanged(PBRTextureSlot slot, DDSCompressionMode mode);
 
     /// Emitted when a file is dropped onto a texture slot
     void fileDroppedOnSlot(PBRTextureSlot slot, const QString& filePath);
@@ -80,6 +82,7 @@ private:
     struct SlotRow {
         QLabel*        labelWidget  = nullptr;
         DropZoneLabel* dropZone     = nullptr;
+        QComboBox*     compressionCombo = nullptr;
         QWidget*       container    = nullptr;
     };
 

@@ -133,6 +133,8 @@ void MainWindow::setupCentralWidget()
             this, &MainWindow::onDroppedOnChannel);
     connect(m_slotEditor, &SlotEditorWidget::matchTextureChanged,
             this, &MainWindow::onMatchTextureChanged);
+    connect(m_slotEditor, &SlotEditorWidget::exportCompressionChanged,
+            this, &MainWindow::onExportCompressionChanged);
     connect(m_featurePanel, &FeatureTogglePanel::featuresChanged,
             this, &MainWindow::onFeaturesChanged);
     connect(m_paramPanel, &ParameterPanel::parametersChanged,
@@ -208,7 +210,7 @@ void MainWindow::onAddTextureSet()
     if (!ok || name.isEmpty()) return;
 
     auto match = QInputDialog::getText(this, tr("Vanilla Texture Match"),
-        tr("Vanilla diffuse path (e.g. architecture\\whiterun\\wrwoodplank01):"),
+        tr("Vanilla albedo path (e.g. architecture\\whiterun\\wrwoodplank01):"),
         QLineEdit::Normal, "", &ok);
     if (!ok || match.isEmpty()) return;
 
@@ -316,6 +318,15 @@ void MainWindow::onMatchTextureChanged(const QString& newPath)
     if (m_currentSetIndex < 0) return;
     m_project.textureSets[m_currentSetIndex].matchTexture = newPath.toStdString();
     spdlog::debug("Match texture updated: {}", newPath.toStdString());
+}
+
+void MainWindow::onExportCompressionChanged(PBRTextureSlot slot, DDSCompressionMode mode)
+{
+    if (m_currentSetIndex < 0) return;
+
+    m_project.textureSets[m_currentSetIndex].exportCompression[slot] = mode;
+    spdlog::debug("Export compression updated: {} -> {}",
+                  slotDisplayName(slot), compressionModeKey(mode));
 }
 
 void MainWindow::onFeaturesChanged(const PBRFeatureFlags& flags)

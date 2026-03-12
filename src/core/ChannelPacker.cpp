@@ -68,6 +68,7 @@ static bool loadGreyscale(const std::filesystem::path& path,
 bool ChannelPacker::packRMAOS(
     const std::map<ChannelMap, std::filesystem::path>& channels,
     const std::filesystem::path& outputPath,
+    DDSCompressionMode compressionMode,
     int width,
     int height)
 {
@@ -144,8 +145,38 @@ bool ChannelPacker::packRMAOS(
         rgba[i * 4 + 3] = specular[i];
     }
 
-    // Save as BC7 compressed DDS (preserves all 4 channels with good quality)
-    if (!DDSUtils::saveDDS_BC7(outputPath, width, height, rgba.data())) {
+    bool ok = false;
+    switch (compressionMode) {
+    case DDSCompressionMode::BC7_sRGB:
+        ok = DDSUtils::saveDDS_BC7(outputPath, width, height, rgba.data(), true);
+        break;
+    case DDSCompressionMode::BC7_Linear:
+        ok = DDSUtils::saveDDS_BC7(outputPath, width, height, rgba.data(), false);
+        break;
+    case DDSCompressionMode::BC6H_UF16:
+        ok = DDSUtils::saveDDS_BC6H(outputPath, width, height, rgba.data());
+        break;
+    case DDSCompressionMode::BC5_Linear:
+        ok = DDSUtils::saveDDS_BC5(outputPath, width, height, rgba.data());
+        break;
+    case DDSCompressionMode::BC4_Linear:
+        ok = DDSUtils::saveDDS_BC4(outputPath, width, height, roughness.data());
+        break;
+    case DDSCompressionMode::BC1_sRGB:
+        ok = DDSUtils::saveDDS_BC1(outputPath, width, height, rgba.data(), true);
+        break;
+    case DDSCompressionMode::BC1_Linear:
+        ok = DDSUtils::saveDDS_BC1(outputPath, width, height, rgba.data(), false);
+        break;
+    case DDSCompressionMode::RGBA8_sRGB:
+        ok = DDSUtils::saveDDS_RGBA(outputPath, width, height, rgba.data(), true);
+        break;
+    case DDSCompressionMode::RGBA8_Linear:
+        ok = DDSUtils::saveDDS_RGBA(outputPath, width, height, rgba.data(), false);
+        break;
+    }
+
+    if (!ok) {
         spdlog::error("ChannelPacker: failed to save RMAOS DDS");
         return false;
     }

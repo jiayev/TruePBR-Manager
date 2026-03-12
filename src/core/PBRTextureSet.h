@@ -30,11 +30,36 @@ enum class ChannelMap {
     Specular,
 };
 
+/// Output DDS compression mode for exported textures.
+enum class DDSCompressionMode {
+    BC7_sRGB,
+    BC7_Linear,
+    BC6H_UF16,
+    BC5_Linear,
+    BC4_Linear,
+    BC1_sRGB,
+    BC1_Linear,
+    RGBA8_sRGB,
+    RGBA8_Linear,
+};
+
 /// Get the standard DDS suffix for a given slot
 const char* slotSuffix(PBRTextureSlot slot);
 
 /// Get display name for a slot
 const char* slotDisplayName(PBRTextureSlot slot);
+
+/// Get the default export compression mode for a slot.
+DDSCompressionMode defaultCompressionForSlot(PBRTextureSlot slot);
+
+/// Get UI display name for a compression mode.
+const char* compressionModeDisplayName(DDSCompressionMode mode);
+
+/// Get stable serialization key for a compression mode.
+const char* compressionModeKey(DDSCompressionMode mode);
+
+/// Parse a serialized compression mode key.
+bool tryParseCompressionMode(const std::string& value, DDSCompressionMode& mode);
 
 // ─── Texture Entry ──────────────────────────────────────────
 
@@ -105,6 +130,9 @@ struct PBRTextureSet {
 
     /// Assigned textures per slot
     std::map<PBRTextureSlot, TextureEntry> textures;
+
+    /// Export compression override per slot.
+    std::map<PBRTextureSlot, DDSCompressionMode> exportCompression;
 
     /// Individual channel maps before RMAOS packing
     std::map<ChannelMap, std::filesystem::path> channelMaps;

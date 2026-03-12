@@ -33,7 +33,18 @@ public:
     /// Save RGBA8 pixels to a BC7_UNORM compressed DDS file.
     static bool saveDDS_BC7(const std::filesystem::path& path,
                             int width, int height,
+                            const uint8_t* rgbaPixels,
+                            bool srgb = false);
+
+    /// Save RGBA8 pixels to a BC5_UNORM compressed DDS file.
+    static bool saveDDS_BC5(const std::filesystem::path& path,
+                            int width, int height,
                             const uint8_t* rgbaPixels);
+
+    /// Save RGBA8 pixels to a BC6H_UF16 compressed DDS file.
+    static bool saveDDS_BC6H(const std::filesystem::path& path,
+                             int width, int height,
+                             const uint8_t* rgbaPixels);
 
     /// Save single-channel (R8) pixels to a BC4_UNORM compressed DDS file.
     static bool saveDDS_BC4(const std::filesystem::path& path,
@@ -43,12 +54,14 @@ public:
     /// Save RGBA8 pixels to a BC1_UNORM compressed DDS file (no alpha).
     static bool saveDDS_BC1(const std::filesystem::path& path,
                             int width, int height,
-                            const uint8_t* rgbaPixels);
+                            const uint8_t* rgbaPixels,
+                            bool srgb = false);
 
     /// Save RGBA8 pixels as an uncompressed R8G8B8A8_UNORM DDS (for debugging/preview).
     static bool saveDDS_RGBA(const std::filesystem::path& path,
                              int width, int height,
-                             const uint8_t* rgbaPixels);
+                             const uint8_t* rgbaPixels,
+                             bool srgb = false);
 
     /// Copy a DDS file as-is (no re-encoding). Creates parent directories.
     static bool copyDDS(const std::filesystem::path& src,

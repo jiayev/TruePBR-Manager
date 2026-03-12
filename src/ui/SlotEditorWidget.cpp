@@ -5,6 +5,7 @@
 
 #include <QDragEnterEvent>
 #include <QDropEvent>
+#include <QFrame>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QImage>
@@ -17,6 +18,33 @@
 #include <algorithm>
 
 namespace tpbr {
+
+static void populateCompressionCombo(QComboBox* combo, PBRTextureSlot slot)
+{
+    combo->clear();
+
+    std::vector<DDSCompressionMode> modes = {
+        DDSCompressionMode::BC7_sRGB,
+        DDSCompressionMode::BC7_Linear,
+        DDSCompressionMode::BC5_Linear,
+        DDSCompressionMode::BC4_Linear,
+        DDSCompressionMode::BC1_sRGB,
+        DDSCompressionMode::BC1_Linear,
+        DDSCompressionMode::RGBA8_sRGB,
+        DDSCompressionMode::RGBA8_Linear,
+    };
+
+    if (slot == PBRTextureSlot::Emissive) {
+        modes.insert(modes.begin() + 1, DDSCompressionMode::BC6H_UF16);
+    }
+
+    for (DDSCompressionMode mode : modes) {
+        combo->addItem(QString::fromUtf8(compressionModeDisplayName(mode)), static_cast<int>(mode));
+    }
+
+    const int defaultIndex = combo->findData(static_cast<int>(defaultCompressionForSlot(slot)));
+    combo->setCurrentIndex(defaultIndex >= 0 ? defaultIndex : 0);
+}
 
 static QPixmap loadThumbnailPixmap(const std::filesystem::path& path)
 {
@@ -207,7 +235,7 @@ void SlotEditorWidget::setupUI()
     mainLayout->addWidget(separator);
 
     // ── Required Texture Slots ─────────────────────────────
-    addSlotRow(PBRTextureSlot::Diffuse,  tr("Diffuse"), true);
+    addSlotRow(PBRTextureSlot::Diffuse,  tr("Albedo"), true);
     addSlotRow(PBRTextureSlot::Normal,   tr("Normal"),  true);
     addSlotRow(PBRTextureSlot::RMAOS,    tr("RMAOS"),   true);
 
@@ -251,14 +279,20 @@ void SlotEditorWidget::addSlotRow(PBRTextureSlot slot, const QString& label, boo
     row.container    = new QWidget(this);
     auto* layout     = new QHBoxLayout(row.container);
     layout->setContentsMargins(0, 2, 0, 2);
+    layout->setSpacing(6);
 
     row.labelWidget  = new QLabel(label, row.container);
     row.labelWidget->setFixedWidth(100);
 
     row.dropZone = new DropZoneLabel(row.container);
+    row.compressionCombo = new QComboBox(row.container);
+    row.compressionCombo->setMinimumWidth(130);
+    row.compressionCombo->setToolTip(tr("Select the DDS compression used during export"));
+    populateCompressionCombo(row.compressionCombo, slot);
 
     layout->addWidget(row.labelWidget);
     layout->addWidget(row.dropZone, 1);
+    layout->addWidget(row.compressionCombo);
 
     row.container->setVisible(visible);
 
@@ -268,6 +302,15 @@ void SlotEditorWidget::addSlotRow(PBRTextureSlot slot, const QString& label, boo
 
     connect(row.dropZone, &DropZoneLabel::fileDropped, this, [this, slot](const QString& path) {
         emit fileDroppedOnSlot(slot, path);
+    });
+
+    connect(row.compressionCombo, &QComboBox::currentIndexChanged, this, [this, slot, combo = row.compressionCombo](int index) {
+        if (index < 0) {
+            return;
+        }
+
+        const auto mode = static_cast<DDSCompressionMode>(combo->itemData(index).toInt());
+        emit exportCompressionChanged(slot, mode);
     });
 
     m_slotRows[slot] = row;
@@ -320,6 +363,18 @@ void SlotEditorWidget::setTextureSet(const PBRTextureSet& ts)
 
     // Update slot rows
     for (auto& [slot, row] : m_slotRows) {
+        const auto modeIt = ts.exportCompression.find(slot);
+        const auto mode = modeIt != ts.exportCompression.end() ? modeIt->second : defaultCompressionForSlot(slot);
+        const int comboIndex = row.compressionCombo->findData(static_cast<int>(mode));
+        row.compressionCombo->blockSignals(true);
+        if (comboIndex >= 0) {
+            row.compressionCombo->setCurrentIndex(comboIndex);
+        } else {
+            const int defaultIndex = row.compressionCombo->findData(static_cast<int>(defaultCompressionForSlot(slot)));
+            row.compressionCombo->setCurrentIndex(defaultIndex >= 0 ? defaultIndex : 0);
+        }
+        row.compressionCombo->blockSignals(false);
+
         auto it = ts.textures.find(slot);
         if (it != ts.textures.end() && !it->second.sourcePath.empty()) {
             row.dropZone->setFile(it->second.sourcePath);

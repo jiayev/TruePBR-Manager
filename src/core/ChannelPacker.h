@@ -19,6 +19,7 @@ public:
     static bool packRMAOS(
         const std::map<ChannelMap, std::filesystem::path>& channels,
         const std::filesystem::path& outputPath,
+        DDSCompressionMode compressionMode,
         int width  = 0,
         int height = 0);
 };

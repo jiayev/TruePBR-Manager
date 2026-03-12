@@ -193,6 +193,12 @@ static json textureSetToJson(const PBRTextureSet& ts)
     }
     j["textures"] = texArr;
 
+    json compressionObj = json::object();
+    for (const auto& [slot, mode] : ts.exportCompression) {
+        compressionObj[slotToString(slot)] = compressionModeKey(mode);
+    }
+    j["export_compression"] = compressionObj;
+
     // Channel maps
     json chArr = json::object();
     for (const auto& [ch, path] : ts.channelMaps) {
@@ -224,6 +230,15 @@ static PBRTextureSet textureSetFromJson(const json& j)
             entry.channels    = t.value("channels", 0);
             entry.format      = t.value("format", "");
             ts.textures[slot] = entry;
+        }
+    }
+
+    if (j.contains("export_compression") && j["export_compression"].is_object()) {
+        for (auto& [key, val] : j["export_compression"].items()) {
+            DDSCompressionMode mode;
+            if (tryParseCompressionMode(val.get<std::string>(), mode)) {
+                ts.exportCompression[slotFromString(key)] = mode;
+            }
         }
     }
 

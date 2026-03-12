@@ -33,6 +33,7 @@ private slots:
     void onDroppedOnSlot(PBRTextureSlot slot, const QString& filePath);
     void onDroppedOnChannel(ChannelMap channel, const QString& filePath);
     void onMatchTextureChanged(const QString& newPath);
+    void onExportCompressionChanged(PBRTextureSlot slot, DDSCompressionMode mode);
     void onFeaturesChanged(const PBRFeatureFlags& flags);
     void onParametersChanged(const PBRParameters& params);
 
