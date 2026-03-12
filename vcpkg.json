@@ -1,0 +1,15 @@
+{
+    "name": "truepbr-manager",
+    "version-string": "0.1.0",
+    "dependencies": [
+        {
+            "name": "qtbase",
+            "default-features": false,
+            "features": ["widgets", "png", "jpeg"]
+        },
+        "nlohmann-json",
+        "spdlog",
+        "directxtex",
+        "stb"
+    ]
+}

@@ -1,0 +1,39 @@
+# Build
+build/
+out/
+cmake-build-*/
+
+# IDE
+.vs/
+.vscode/
+*.user
+*.suo
+*.sln
+*.vcxproj*
+.idea/
+CMakeSettings.json
+
+# Compiled
+*.obj
+*.o
+*.exe
+*.dll
+*.lib
+*.a
+*.pdb
+*.ilk
+*.exp
+
+# Qt
+moc_*
+ui_*
+qrc_*
+*.autosave
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# vcpkg (local installs)
+vcpkg_installed/

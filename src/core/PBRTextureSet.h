@@ -1,0 +1,119 @@
+#pragma once
+
+#include <array>
+#include <cstdint>
+#include <filesystem>
+#include <map>
+#include <string>
+#include <vector>
+
+namespace tpbr {
+
+/// PBR texture slot — corresponds to NIF TX00..TX07
+enum class PBRTextureSlot {
+    Diffuse,              // Slot 1 (TX00): Base Color RGB + Opacity A
+    Normal,               // Slot 2 (TX01): Normal Map RGB
+    Emissive,             // Slot 3 (TX02): Glow/Emissive RGB
+    Displacement,         // Slot 4 (TX03): Height R
+    RMAOS,                // Slot 6 (TX05): Roughness R, Metallic G, AO B, Specular A
+    CoatNormalRoughness,  // Slot 7 (TX06): Coat Normal RGB + Coat Roughness A
+    Fuzz,                 // Slot 7 (TX06): Fuzz Color RGB + Fuzz Mask A
+    Subsurface,           // Slot 8 (TX07): Subsurface Color RGB + Opacity A
+    CoatColor,            // Slot 8 (TX07): Coat Color RGB + Strength A
+};
+
+/// Individual channel maps for RMAOS packing
+enum class ChannelMap {
+    Roughness,
+    Metallic,
+    AO,
+    Specular,
+};
+
+/// Get the standard DDS suffix for a given slot
+const char* slotSuffix(PBRTextureSlot slot);
+
+/// Get display name for a slot
+const char* slotDisplayName(PBRTextureSlot slot);
+
+// ─── Texture Entry ──────────────────────────────────────────
+
+struct TextureEntry {
+    std::filesystem::path sourcePath;  // Original imported file
+    PBRTextureSlot        slot{};
+    int                   width    = 0;
+    int                   height   = 0;
+    int                   channels = 0;
+    std::string           format;      // "png", "dds", "tga", etc.
+};
+
+// ─── PBR Feature Flags ─────────────────────────────────────
+
+struct PBRFeatureFlags {
+    bool emissive          = false;
+    bool parallax          = false;
+    bool subsurface        = false;
+    bool subsurfaceFoliage = false;
+    bool multilayer        = false;
+    bool coatDiffuse       = false;
+    bool coatParallax      = false;
+    bool coatNormal        = false;
+    bool fuzz              = false;
+    bool glint             = false;
+    bool hair              = false;
+};
+
+// ─── PBR Parameters ────────────────────────────────────────
+
+struct PBRParameters {
+    float specularLevel     = 0.04f;
+    float roughnessScale    = 1.0f;
+    float displacementScale = 1.0f;
+    float subsurfaceOpacity = 1.0f;
+    std::array<float, 3> subsurfaceColor = {1.0f, 1.0f, 1.0f};
+
+    // Emissive
+    float emissiveScale = 0.0f;
+
+    // Multilayer / Coat
+    float coatStrength      = 0.0f;
+    float coatRoughness     = 0.0f;
+    float coatSpecularLevel = 0.04f;
+
+    // Fuzz
+    std::array<float, 3> fuzzColor = {1.0f, 1.0f, 1.0f};
+    float fuzzWeight = 1.0f;
+
+    // Glint
+    float glintScreenSpaceScale     = 0.0f;
+    float glintLogMicrofacetDensity = 0.0f;
+    float glintMicrofacetRoughness  = 0.0f;
+    float glintDensityRandomization = 0.0f;
+
+    // Mesh tweaks
+    bool  vertexColors       = true;
+    float vertexColorLumMult = 1.0f;
+    float vertexColorSatMult = 1.0f;
+};
+
+// ─── PBR Texture Set ───────────────────────────────────────
+
+/// One PBR texture set maps to one vanilla texture path.
+struct PBRTextureSet {
+    std::string name;           // Display name (e.g. "WhiterunWoodPlank01")
+    std::string matchTexture;   // Vanilla diffuse path to match (e.g. "architecture\\whiterun\\wrwoodplank01")
+
+    /// Assigned textures per slot
+    std::map<PBRTextureSlot, TextureEntry> textures;
+
+    /// Individual channel maps before RMAOS packing
+    std::map<ChannelMap, std::filesystem::path> channelMaps;
+
+    PBRFeatureFlags features;
+    PBRParameters   params;
+
+    std::string tags;
+    std::string notes;
+};
+
+} // namespace tpbr
