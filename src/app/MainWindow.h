@@ -30,6 +30,8 @@ private slots:
     void onRemoveTextureSet(int index);
     void onImportTexture(PBRTextureSlot slot);
     void onImportChannel(ChannelMap channel);
+    void onDroppedOnSlot(PBRTextureSlot slot, const QString& filePath);
+    void onDroppedOnChannel(ChannelMap channel, const QString& filePath);
     void onMatchTextureChanged(const QString& newPath);
     void onFeaturesChanged(const PBRFeatureFlags& flags);
     void onParametersChanged(const PBRParameters& params);

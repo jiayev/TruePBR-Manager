@@ -1,11 +1,149 @@
 #include "SlotEditorWidget.h"
 
+#include <QDragEnterEvent>
+#include <QDropEvent>
 #include <QGroupBox>
 #include <QHBoxLayout>
-#include <QLabel>
+#include <QMimeData>
+#include <QPainter>
+#include <QUrl>
 #include <QVBoxLayout>
 
+#include <algorithm>
+
 namespace tpbr {
+
+// ─── DropZoneLabel ─────────────────────────────────────────
+
+static bool isSupportedImageFile(const QString& path)
+{
+    auto lower = path.toLower();
+    return lower.endsWith(".png") || lower.endsWith(".dds")
+        || lower.endsWith(".tga") || lower.endsWith(".bmp")
+        || lower.endsWith(".jpg") || lower.endsWith(".jpeg");
+}
+
+DropZoneLabel::DropZoneLabel(QWidget* parent)
+    : QLabel(parent)
+{
+    setAcceptDrops(true);
+    setMinimumHeight(ThumbnailSize + 8);
+    setFixedHeight(ThumbnailSize + 8);
+    setFrameStyle(QFrame::StyledPanel | QFrame::Sunken);
+    setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    setStyleSheet("DropZoneLabel { background: #2a2a2a; color: #888; padding: 2px 4px; }");
+    setText(tr("(drop image here)"));
+}
+
+void DropZoneLabel::setFile(const std::filesystem::path& path)
+{
+    m_filename = QString::fromStdString(path.filename().string());
+
+    // Try to load thumbnail. For DDS we skip (QPixmap can't read DDS);
+    // for PNG/TGA/BMP/JPG Qt can load directly.
+    auto ext = path.extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+
+    QPixmap pix;
+    if (ext != ".dds") {
+        pix.load(QString::fromStdString(path.string()));
+    }
+
+    if (!pix.isNull()) {
+        m_thumbnail = pix.scaled(ThumbnailSize, ThumbnailSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    } else {
+        // For DDS or failed loads, show a colored placeholder
+        m_thumbnail = QPixmap(ThumbnailSize, ThumbnailSize);
+        m_thumbnail.fill(QColor(60, 60, 80));
+        QPainter p(&m_thumbnail);
+        p.setPen(Qt::white);
+        p.drawText(m_thumbnail.rect(), Qt::AlignCenter, ext == ".dds" ? "DDS" : "?");
+    }
+
+    update();
+}
+
+void DropZoneLabel::clear()
+{
+    m_thumbnail = QPixmap();
+    m_filename.clear();
+    setText(tr("(drop image here)"));
+    update();
+}
+
+void DropZoneLabel::dragEnterEvent(QDragEnterEvent* event)
+{
+    if (event->mimeData()->hasUrls()) {
+        auto urls = event->mimeData()->urls();
+        if (!urls.isEmpty() && isSupportedImageFile(urls.first().toLocalFile())) {
+            event->acceptProposedAction();
+            m_dragHover = true;
+            update();
+            return;
+        }
+    }
+    event->ignore();
+}
+
+void DropZoneLabel::dragLeaveEvent(QDragLeaveEvent* /*event*/)
+{
+    m_dragHover = false;
+    update();
+}
+
+void DropZoneLabel::dropEvent(QDropEvent* event)
+{
+    m_dragHover = false;
+    if (event->mimeData()->hasUrls()) {
+        auto urls = event->mimeData()->urls();
+        if (!urls.isEmpty()) {
+            QString filePath = urls.first().toLocalFile();
+            if (isSupportedImageFile(filePath)) {
+                emit fileDropped(filePath);
+                event->acceptProposedAction();
+                update();
+                return;
+            }
+        }
+    }
+    event->ignore();
+}
+
+void DropZoneLabel::paintEvent(QPaintEvent* /*event*/)
+{
+    QPainter p(this);
+
+    // Background
+    QColor bg = m_dragHover ? QColor(50, 60, 80) : QColor(42, 42, 42);
+    p.fillRect(rect(), bg);
+
+    // Border
+    if (m_dragHover) {
+        p.setPen(QPen(QColor(80, 140, 220), 2));
+        p.drawRect(rect().adjusted(1, 1, -1, -1));
+    } else {
+        p.setPen(QPen(QColor(70, 70, 70), 1));
+        p.drawRect(rect().adjusted(0, 0, -1, -1));
+    }
+
+    if (!m_thumbnail.isNull()) {
+        // Draw thumbnail on the left
+        int y = (height() - m_thumbnail.height()) / 2;
+        p.drawPixmap(4, y, m_thumbnail);
+
+        // Draw filename to the right of thumbnail
+        p.setPen(QColor(200, 200, 200));
+        QRect textRect(ThumbnailSize + 12, 0, width() - ThumbnailSize - 16, height());
+        p.drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter, m_filename);
+    } else {
+        // Empty state
+        p.setPen(QColor(120, 120, 120));
+        p.drawText(rect().adjusted(8, 0, -8, 0), Qt::AlignLeft | Qt::AlignVCenter,
+                   m_dragHover ? tr("Drop to import...") : tr("(drop image here)"));
+    }
+}
+
+// ─── SlotEditorWidget ──────────────────────────────────────
 
 SlotEditorWidget::SlotEditorWidget(QWidget* parent)
     : QWidget(parent)
@@ -20,7 +158,7 @@ void SlotEditorWidget::setupUI()
     // ── Match Texture Path ─────────────────────────────────
     auto* matchLayout = new QHBoxLayout();
     auto* matchLabel  = new QLabel(tr("Vanilla Texture:"), this);
-    matchLabel->setFixedWidth(140);
+    matchLabel->setFixedWidth(100);
     m_matchTextureEdit = new QLineEdit(this);
     m_matchTextureEdit->setPlaceholderText(tr("e.g. architecture\\whiterun\\wrwoodplank01"));
     matchLayout->addWidget(matchLabel);
@@ -48,10 +186,10 @@ void SlotEditorWidget::setupUI()
     channelLayout->setContentsMargins(8, 8, 8, 8);
     channelLayout->setSpacing(2);
 
-    addChannelRow(ChannelMap::Roughness, tr("  Roughness (R)"));
-    addChannelRow(ChannelMap::Metallic,  tr("  Metallic (G)"));
-    addChannelRow(ChannelMap::AO,        tr("  AO (B)"));
-    addChannelRow(ChannelMap::Specular,  tr("  Specular (A)"));
+    addChannelRow(ChannelMap::Roughness, tr("Roughness (R)"));
+    addChannelRow(ChannelMap::Metallic,  tr("Metallic (G)"));
+    addChannelRow(ChannelMap::AO,        tr("AO (B)"));
+    addChannelRow(ChannelMap::Specular,  tr("Specular (A)"));
 
     for (auto& [ch, row] : m_channelRows) {
         channelLayout->addWidget(row.container);
@@ -68,7 +206,6 @@ void SlotEditorWidget::setupUI()
     // Add all slot rows to layout
     for (auto& [slot, row] : m_slotRows) {
         mainLayout->addWidget(row.container);
-        // Insert channel section right after RMAOS row
         if (slot == PBRTextureSlot::RMAOS) {
             mainLayout->addWidget(m_channelSection);
         }
@@ -85,12 +222,16 @@ void SlotEditorWidget::addSlotRow(PBRTextureSlot slot, const QString& label, boo
     layout->setContentsMargins(0, 2, 0, 2);
 
     row.labelWidget  = new QLabel(label, row.container);
-    row.labelWidget->setFixedWidth(140);
-    row.pathLabel    = new QLabel(tr("(empty)"), row.container);
-    row.importButton = new QPushButton(tr("Import..."), row.container);
+    row.labelWidget->setFixedWidth(100);
+
+    row.dropZone = new DropZoneLabel(row.container);
+
+    row.importButton = new QPushButton(tr("..."), row.container);
+    row.importButton->setFixedWidth(32);
+    row.importButton->setToolTip(tr("Browse..."));
 
     layout->addWidget(row.labelWidget);
-    layout->addWidget(row.pathLabel, 1);
+    layout->addWidget(row.dropZone, 1);
     layout->addWidget(row.importButton);
 
     row.container->setVisible(visible);
@@ -99,27 +240,39 @@ void SlotEditorWidget::addSlotRow(PBRTextureSlot slot, const QString& label, boo
         emit importRequested(slot);
     });
 
+    connect(row.dropZone, &DropZoneLabel::fileDropped, this, [this, slot](const QString& path) {
+        emit fileDroppedOnSlot(slot, path);
+    });
+
     m_slotRows[slot] = row;
 }
 
 void SlotEditorWidget::addChannelRow(ChannelMap channel, const QString& label)
 {
-    ChannelRow row;
+    ChannelRowData row;
     row.container    = new QWidget(this);
     auto* layout     = new QHBoxLayout(row.container);
     layout->setContentsMargins(0, 1, 0, 1);
 
     row.labelWidget  = new QLabel(label, row.container);
-    row.labelWidget->setFixedWidth(140);
-    row.pathLabel    = new QLabel(tr("(empty)"), row.container);
-    row.importButton = new QPushButton(tr("Import..."), row.container);
+    row.labelWidget->setFixedWidth(100);
+
+    row.dropZone = new DropZoneLabel(row.container);
+
+    row.importButton = new QPushButton(tr("..."), row.container);
+    row.importButton->setFixedWidth(32);
+    row.importButton->setToolTip(tr("Browse..."));
 
     layout->addWidget(row.labelWidget);
-    layout->addWidget(row.pathLabel, 1);
+    layout->addWidget(row.dropZone, 1);
     layout->addWidget(row.importButton);
 
     connect(row.importButton, &QPushButton::clicked, this, [this, channel]() {
         emit importChannelRequested(channel);
+    });
+
+    connect(row.dropZone, &DropZoneLabel::fileDropped, this, [this, channel](const QString& path) {
+        emit fileDroppedOnChannel(channel, path);
     });
 
     m_channelRows[channel] = row;
@@ -133,7 +286,6 @@ void SlotEditorWidget::updateSlots(const PBRFeatureFlags& features)
     };
 
     show(PBRTextureSlot::Emissive,            features.emissive);
-    // Displacement is used by both parallax and coat parallax
     show(PBRTextureSlot::Displacement,        features.parallax || features.coatParallax);
     show(PBRTextureSlot::Subsurface,          features.subsurface || features.subsurfaceFoliage);
     show(PBRTextureSlot::CoatNormalRoughness, features.coatNormal);
@@ -143,26 +295,25 @@ void SlotEditorWidget::updateSlots(const PBRFeatureFlags& features)
 
 void SlotEditorWidget::setTextureSet(const PBRTextureSet& ts)
 {
-    // Update match texture path
     m_matchTextureEdit->setText(QString::fromStdString(ts.matchTexture));
 
     // Update slot rows
     for (auto& [slot, row] : m_slotRows) {
         auto it = ts.textures.find(slot);
-        if (it != ts.textures.end()) {
-            row.pathLabel->setText(QString::fromStdString(it->second.sourcePath.filename().string()));
+        if (it != ts.textures.end() && !it->second.sourcePath.empty()) {
+            row.dropZone->setFile(it->second.sourcePath);
         } else {
-            row.pathLabel->setText(tr("(empty)"));
+            row.dropZone->clear();
         }
     }
 
     // Update channel rows
     for (auto& [ch, row] : m_channelRows) {
         auto it = ts.channelMaps.find(ch);
-        if (it != ts.channelMaps.end()) {
-            row.pathLabel->setText(QString::fromStdString(it->second.filename().string()));
+        if (it != ts.channelMaps.end() && !it->second.empty()) {
+            row.dropZone->setFile(it->second);
         } else {
-            row.pathLabel->setText(tr("(empty)"));
+            row.dropZone->clear();
         }
     }
 

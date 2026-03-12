@@ -105,6 +105,10 @@ void MainWindow::setupCentralWidget()
             this, &MainWindow::onImportTexture);
     connect(m_slotEditor, &SlotEditorWidget::importChannelRequested,
             this, &MainWindow::onImportChannel);
+    connect(m_slotEditor, &SlotEditorWidget::fileDroppedOnSlot,
+            this, &MainWindow::onDroppedOnSlot);
+    connect(m_slotEditor, &SlotEditorWidget::fileDroppedOnChannel,
+            this, &MainWindow::onDroppedOnChannel);
     connect(m_slotEditor, &SlotEditorWidget::matchTextureChanged,
             this, &MainWindow::onMatchTextureChanged);
     connect(m_featurePanel, &FeatureTogglePanel::featuresChanged,
@@ -249,6 +253,34 @@ void MainWindow::onImportChannel(ChannelMap channel)
 
     m_slotEditor->setTextureSet(m_project.textureSets[m_currentSetIndex]);
     statusBar()->showMessage(tr("Imported %1 channel: %2").arg(name).arg(path));
+}
+
+void MainWindow::onDroppedOnSlot(PBRTextureSlot slot, const QString& filePath)
+{
+    if (m_currentSetIndex < 0) return;
+
+    auto entry = TextureImporter::importTexture(filePath.toStdString(), slot);
+    m_project.textureSets[m_currentSetIndex].textures[slot] = entry;
+
+    m_slotEditor->setTextureSet(m_project.textureSets[m_currentSetIndex]);
+    statusBar()->showMessage(tr("Dropped %1: %2 (%3x%4)")
+        .arg(slotDisplayName(slot))
+        .arg(QString::fromStdString(entry.sourcePath.filename().string()))
+        .arg(entry.width)
+        .arg(entry.height));
+}
+
+void MainWindow::onDroppedOnChannel(ChannelMap channel, const QString& filePath)
+{
+    if (m_currentSetIndex < 0) return;
+
+    const char* channelNames[] = {"Roughness", "Metallic", "AO", "Specular"};
+    const char* name = channelNames[static_cast<int>(channel)];
+
+    m_project.textureSets[m_currentSetIndex].channelMaps[channel] = filePath.toStdString();
+
+    m_slotEditor->setTextureSet(m_project.textureSets[m_currentSetIndex]);
+    statusBar()->showMessage(tr("Dropped %1 channel: %2").arg(name).arg(filePath));
 }
 
 void MainWindow::onMatchTextureChanged(const QString& newPath)

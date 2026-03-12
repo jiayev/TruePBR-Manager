@@ -7,21 +7,56 @@
 #include <QPushButton>
 #include <QWidget>
 
+#include <functional>
 #include <map>
+#include <variant>
 
 namespace tpbr {
 
-/// Per-slot editor: shows match path, slot rows, and RMAOS channel import.
+// ─── Drop Zone ─────────────────────────────────────────────
+
+/// A label that accepts drag-and-drop of image files, shows a thumbnail
+/// and filename, and emits a signal when a file is dropped.
+class DropZoneLabel : public QLabel {
+    Q_OBJECT
+
+public:
+    explicit DropZoneLabel(QWidget* parent = nullptr);
+
+    /// Set the displayed image from a file path. Shows thumbnail + filename.
+    void setFile(const std::filesystem::path& path);
+
+    /// Clear the display back to "(empty)" / "(drop here)"
+    void clear();
+
+signals:
+    void fileDropped(const QString& filePath);
+
+protected:
+    void dragEnterEvent(QDragEnterEvent* event) override;
+    void dragLeaveEvent(QDragLeaveEvent* event) override;
+    void dropEvent(QDropEvent* event) override;
+    void paintEvent(QPaintEvent* event) override;
+
+private:
+    QPixmap m_thumbnail;
+    QString m_filename;
+    bool    m_dragHover = false;
+
+    static constexpr int ThumbnailSize = 48;
+};
+
+// ─── Slot Editor Widget ────────────────────────────────────
+
+/// Per-slot editor: shows match path, slot rows with thumbnails
+/// and drag-and-drop, plus RMAOS channel import.
 class SlotEditorWidget : public QWidget {
     Q_OBJECT
 
 public:
     explicit SlotEditorWidget(QWidget* parent = nullptr);
 
-    /// Set the list of visible slots based on feature flags
     void updateSlots(const PBRFeatureFlags& features);
-
-    /// Set data for display
     void setTextureSet(const PBRTextureSet& ts);
 
 signals:
@@ -29,31 +64,35 @@ signals:
     void importChannelRequested(ChannelMap channel);
     void matchTextureChanged(const QString& newPath);
 
+    /// Emitted when a file is dropped onto a texture slot
+    void fileDroppedOnSlot(PBRTextureSlot slot, const QString& filePath);
+    /// Emitted when a file is dropped onto a channel row
+    void fileDroppedOnChannel(ChannelMap channel, const QString& filePath);
+
 private:
     void setupUI();
     void addSlotRow(PBRTextureSlot slot, const QString& label, bool visible);
     void addChannelRow(ChannelMap channel, const QString& label);
 
-    // Match texture path editor
     QLineEdit* m_matchTextureEdit = nullptr;
 
     struct SlotRow {
-        QLabel*      labelWidget   = nullptr;
-        QLabel*      pathLabel     = nullptr;
-        QPushButton* importButton  = nullptr;
-        QWidget*     container     = nullptr;
+        QLabel*        labelWidget  = nullptr;
+        DropZoneLabel* dropZone     = nullptr;
+        QPushButton*   importButton = nullptr;
+        QWidget*       container    = nullptr;
     };
 
-    struct ChannelRow {
-        QLabel*      labelWidget   = nullptr;
-        QLabel*      pathLabel     = nullptr;
-        QPushButton* importButton  = nullptr;
-        QWidget*     container     = nullptr;
+    struct ChannelRowData {
+        QLabel*        labelWidget  = nullptr;
+        DropZoneLabel* dropZone     = nullptr;
+        QPushButton*   importButton = nullptr;
+        QWidget*       container    = nullptr;
     };
 
-    std::map<PBRTextureSlot, SlotRow>  m_slotRows;
-    std::map<ChannelMap, ChannelRow>   m_channelRows;
-    QWidget* m_channelSection = nullptr;  // Container for all channel rows
+    std::map<PBRTextureSlot, SlotRow>      m_slotRows;
+    std::map<ChannelMap, ChannelRowData>    m_channelRows;
+    QWidget* m_channelSection = nullptr;
 };
 
 } // namespace tpbr
