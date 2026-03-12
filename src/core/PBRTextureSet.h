@@ -40,6 +40,7 @@ enum class RMAOSSourceMode {
 enum class DDSCompressionMode {
     BC7_sRGB,
     BC7_Linear,
+    BC3_sRGB,
     BC6H_UF16,
     BC5_Linear,
     BC4_Linear,
@@ -47,6 +48,13 @@ enum class DDSCompressionMode {
     BC1_Linear,
     RGBA8_sRGB,
     RGBA8_Linear,
+};
+
+enum class TextureAlphaMode {
+    Unknown,
+    None,
+    Opaque,
+    Transparent,
 };
 
 /// Get the standard DDS suffix for a given slot
@@ -81,6 +89,7 @@ struct TextureEntry {
     int                   width    = 0;
     int                   height   = 0;
     int                   channels = 0;
+    TextureAlphaMode      alphaMode = TextureAlphaMode::Unknown;
     std::string           format;      // "png", "dds", "tga", etc.
 };
 

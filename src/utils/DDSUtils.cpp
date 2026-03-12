@@ -88,13 +88,50 @@ static HRESULT createScratchFromRGBA(int width, int height, const uint8_t* rgbaP
     return S_OK;
 }
 
+static DirectX::TEX_ALPHA_MODE detectAlphaMode(const uint8_t* rgbaPixels, int width, int height)
+{
+    const size_t pixelCount = static_cast<size_t>(width) * height;
+    for (size_t i = 0; i < pixelCount; ++i) {
+        if (rgbaPixels[i * 4 + 3] != 255) {
+            return DirectX::TEX_ALPHA_MODE_STRAIGHT;
+        }
+    }
+
+    return DirectX::TEX_ALPHA_MODE_OPAQUE;
+}
+
+static bool generateMipChain(const DirectX::ScratchImage& source,
+                             DirectX::ScratchImage& mipChain)
+{
+    HRESULT hr = DirectX::GenerateMipMaps(
+        source.GetImages(), source.GetImageCount(), source.GetMetadata(),
+        DirectX::TEX_FILTER_DEFAULT,
+        0,
+        mipChain);
+
+    if (FAILED(hr)) {
+        spdlog::error("DDS mipmap generation failed: 0x{:08X}", static_cast<unsigned>(hr));
+        return false;
+    }
+
+    return true;
+}
+
 /// Compress a ScratchImage and save to DDS file.
 static bool compressAndSave(const DirectX::ScratchImage& source,
                             DXGI_FORMAT targetFormat,
-                            const std::filesystem::path& path)
+                            const std::filesystem::path& path,
+                            DirectX::TEX_ALPHA_MODE alphaMode = DirectX::TEX_ALPHA_MODE_UNKNOWN)
 {
     // Ensure parent directory exists
     std::filesystem::create_directories(path.parent_path());
+
+    DirectX::ScratchImage mipChain;
+    if (!generateMipChain(source, mipChain)) {
+        return false;
+    }
+
+    const DirectX::ScratchImage& sourceWithMips = mipChain;
 
     DirectX::TEX_COMPRESS_FLAGS compressFlags = DirectX::TEX_COMPRESS_PARALLEL;
     if (targetFormat == DXGI_FORMAT_BC7_UNORM || targetFormat == DXGI_FORMAT_BC7_UNORM_SRGB) {
@@ -103,7 +140,7 @@ static bool compressAndSave(const DirectX::ScratchImage& source,
 
     DirectX::ScratchImage compressed;
     HRESULT hr = DirectX::Compress(
-        source.GetImages(), source.GetImageCount(), source.GetMetadata(),
+        sourceWithMips.GetImages(), sourceWithMips.GetImageCount(), sourceWithMips.GetMetadata(),
         targetFormat,
         compressFlags,
         DirectX::TEX_THRESHOLD_DEFAULT,
@@ -114,8 +151,11 @@ static bool compressAndSave(const DirectX::ScratchImage& source,
         return false;
     }
 
+    auto metadata = compressed.GetMetadata();
+    metadata.SetAlphaMode(alphaMode);
+
     hr = DirectX::SaveToDDSFile(
-        compressed.GetImages(), compressed.GetImageCount(), compressed.GetMetadata(),
+        compressed.GetImages(), compressed.GetImageCount(), metadata,
         DirectX::DDS_FLAGS_NONE,
         toWide(path).c_str());
 
@@ -148,6 +188,7 @@ bool DDSUtils::getDDSInfo(const std::filesystem::path& path, DDSInfo& info)
     info.height     = static_cast<int>(metadata.height);
     info.mipLevels  = metadata.mipLevels;
     info.dxgiFormat = static_cast<uint32_t>(metadata.format);
+    info.hasAlpha   = DirectX::HasAlpha(metadata.format);
     info.isSRGB     = DirectX::IsSRGB(metadata.format);
     info.formatName = dxgiFormatName(metadata.format);
     info.channels   = dxgiFormatChannels(metadata.format);
@@ -252,7 +293,11 @@ bool DDSUtils::saveDDS_BC7(const std::filesystem::path& path,
         return false;
     }
 
-    bool ok = compressAndSave(scratch, srgb ? DXGI_FORMAT_BC7_UNORM_SRGB : DXGI_FORMAT_BC7_UNORM, path);
+    bool ok = compressAndSave(
+        scratch,
+        srgb ? DXGI_FORMAT_BC7_UNORM_SRGB : DXGI_FORMAT_BC7_UNORM,
+        path,
+        detectAlphaMode(rgbaPixels, width, height));
     if (ok) spdlog::debug("saveDDS_BC7: {} ({}x{})", path.string(), width, height);
     return ok;
 }
@@ -272,6 +317,29 @@ bool DDSUtils::saveDDS_BC5(const std::filesystem::path& path,
 
     bool ok = compressAndSave(scratch, DXGI_FORMAT_BC5_UNORM, path);
     if (ok) spdlog::debug("saveDDS_BC5: {} ({}x{})", path.string(), width, height);
+    return ok;
+}
+
+// ─── saveDDS_BC3 ───────────────────────────────────────────
+
+bool DDSUtils::saveDDS_BC3(const std::filesystem::path& path,
+                           int width, int height,
+                           const uint8_t* rgbaPixels,
+                           bool srgb)
+{
+    DirectX::ScratchImage scratch;
+    HRESULT hr = createScratchFromRGBA(width, height, rgbaPixels, scratch, srgb);
+    if (FAILED(hr)) {
+        spdlog::error("saveDDS_BC3: init failed (0x{:08X})", static_cast<unsigned>(hr));
+        return false;
+    }
+
+    bool ok = compressAndSave(
+        scratch,
+        srgb ? DXGI_FORMAT_BC3_UNORM_SRGB : DXGI_FORMAT_BC3_UNORM,
+        path,
+        detectAlphaMode(rgbaPixels, width, height));
+    if (ok) spdlog::debug("saveDDS_BC3: {} ({}x{})", path.string(), width, height);
     return ok;
 }
 
@@ -351,7 +419,11 @@ bool DDSUtils::saveDDS_BC1(const std::filesystem::path& path,
         return false;
     }
 
-    bool ok = compressAndSave(scratch, srgb ? DXGI_FORMAT_BC1_UNORM_SRGB : DXGI_FORMAT_BC1_UNORM, path);
+    bool ok = compressAndSave(
+        scratch,
+        srgb ? DXGI_FORMAT_BC1_UNORM_SRGB : DXGI_FORMAT_BC1_UNORM,
+        path,
+        detectAlphaMode(rgbaPixels, width, height));
     if (ok) spdlog::debug("saveDDS_BC1: {} ({}x{})", path.string(), width, height);
     return ok;
 }
@@ -370,10 +442,18 @@ bool DDSUtils::saveDDS_RGBA(const std::filesystem::path& path,
         return false;
     }
 
+    DirectX::ScratchImage mipChain;
+    if (!generateMipChain(scratch, mipChain)) {
+        return false;
+    }
+
+    auto metadata = mipChain.GetMetadata();
+    metadata.SetAlphaMode(detectAlphaMode(rgbaPixels, width, height));
+
     std::filesystem::create_directories(path.parent_path());
 
     hr = DirectX::SaveToDDSFile(
-        scratch.GetImages(), scratch.GetImageCount(), scratch.GetMetadata(),
+        mipChain.GetImages(), mipChain.GetImageCount(), metadata,
         DirectX::DDS_FLAGS_NONE,
         toWide(path).c_str());
 

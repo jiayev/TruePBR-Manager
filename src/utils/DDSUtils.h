@@ -19,6 +19,7 @@ public:
         int         channels = 0;   // Approximate: 4 for RGBA formats, 1 for BC4, etc.
         size_t      mipLevels = 0;
         uint32_t    dxgiFormat = 0; // DXGI_FORMAT value
+        bool        hasAlpha  = false;
         bool        isSRGB    = false;
         std::string formatName;     // Human-readable format name (e.g. "BC7_UNORM")
     };
@@ -42,6 +43,12 @@ public:
     static bool saveDDS_BC5(const std::filesystem::path& path,
                             int width, int height,
                             const uint8_t* rgbaPixels);
+
+    /// Save RGBA8 pixels to a BC3_UNORM compressed DDS file.
+    static bool saveDDS_BC3(const std::filesystem::path& path,
+                            int width, int height,
+                            const uint8_t* rgbaPixels,
+                            bool srgb = false);
 
     /// Save RGBA8 pixels to a BC6H_UF16 compressed DDS file.
     static bool saveDDS_BC6H(const std::filesystem::path& path,

@@ -1,6 +1,7 @@
 #include "TextureSetPanel.h"
 
 #include <QHBoxLayout>
+#include <QSignalBlocker>
 #include <QVBoxLayout>
 
 namespace tpbr {
@@ -40,6 +41,14 @@ void TextureSetPanel::setTextureSets(const std::vector<PBRTextureSet>& sets)
     for (const auto& ts : sets) {
         m_listWidget->addItem(QString::fromStdString(ts.name));
     }
+
+    m_removeButton->setEnabled(!sets.empty());
+}
+
+void TextureSetPanel::setCurrentIndex(int index)
+{
+    const QSignalBlocker blocker(m_listWidget);
+    m_listWidget->setCurrentRow(index);
 }
 
 int TextureSetPanel::currentIndex() const

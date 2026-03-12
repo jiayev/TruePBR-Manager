@@ -2,9 +2,11 @@
 
 #include "core/Project.h"
 
+#include <QLabel>
 #include <QMainWindow>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QStackedWidget>
 
 namespace tpbr {
 
@@ -50,6 +52,7 @@ private:
     void setupStatusBar();
     bool saveProjectToPath(const QString& path);
     QString promptProjectSavePath() const;
+    void updateEditorState();
     void refreshUI();
     void refreshPreview();
 
@@ -66,6 +69,10 @@ private:
     ::QLineEdit*          m_exportPathEdit   = nullptr;
     ::QPushButton*        m_exportBrowseBtn  = nullptr;
     ::QPushButton*        m_exportBtn        = nullptr;
+    QStackedWidget*       m_editorStack      = nullptr;
+    QStackedWidget*       m_previewStack     = nullptr;
+    QLabel*               m_editorPlaceholder = nullptr;
+    QLabel*               m_previewPlaceholder = nullptr;
 };
 
 } // namespace tpbr

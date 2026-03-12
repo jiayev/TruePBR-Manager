@@ -18,6 +18,7 @@ public:
     explicit TextureSetPanel(QWidget* parent = nullptr);
 
     void setTextureSets(const std::vector<PBRTextureSet>& sets);
+    void setCurrentIndex(int index);
     int  currentIndex() const;
 
 signals:

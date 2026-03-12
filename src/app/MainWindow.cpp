@@ -17,11 +17,13 @@
 #include <QImage>
 #include <QInputDialog>
 #include <QLineEdit>
+#include <QLabel>
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSplitter>
+#include <QStackedWidget>
 #include <QStatusBar>
 #include <QVBoxLayout>
 
@@ -73,6 +75,16 @@ static QString defaultProjectName(const Project& project)
 static bool isPlaceholderProjectName(const Project& project)
 {
     return defaultProjectName(project).compare(QStringLiteral("Untitled"), Qt::CaseInsensitive) == 0;
+}
+
+static QLabel* createPlaceholderLabel(const QString& text, QWidget* parent)
+{
+    auto* label = new QLabel(text, parent);
+    label->setAlignment(Qt::AlignCenter);
+    label->setWordWrap(true);
+    label->setMargin(24);
+    label->setStyleSheet("QLabel { color: #b0b0b0; font-size: 14px; }");
+    return label;
 }
 
 MainWindow::MainWindow(QWidget* parent)
@@ -149,11 +161,24 @@ void MainWindow::setupCentralWidget()
     middleLayout->addStretch();
 
     middleScroll->setWidget(middleWidget);
-    splitter->addWidget(middleScroll);
+
+    m_editorStack = new QStackedWidget(this);
+    m_editorStack->addWidget(middleScroll);
+    m_editorPlaceholder = createPlaceholderLabel(
+        tr("No Texture Set selected.\n\nUse Add to create one, or select an existing Texture Set from the list on the left."),
+        m_editorStack);
+    m_editorStack->addWidget(m_editorPlaceholder);
+    splitter->addWidget(m_editorStack);
 
     // Right: Texture Preview
     m_previewWidget = new TexturePreviewWidget(this);
-    splitter->addWidget(m_previewWidget);
+    m_previewStack = new QStackedWidget(this);
+    m_previewStack->addWidget(m_previewWidget);
+    m_previewPlaceholder = createPlaceholderLabel(
+        tr("Preview is unavailable until a Texture Set is selected and at least one texture is imported."),
+        m_previewStack);
+    m_previewStack->addWidget(m_previewPlaceholder);
+    splitter->addWidget(m_previewStack);
 
     splitter->setStretchFactor(0, 1);  // list
     splitter->setStretchFactor(1, 2);  // editor
@@ -317,6 +342,11 @@ void MainWindow::onExportMod()
 {
     onExportPathEdited();
 
+    if (m_project.textureSets.empty()) {
+        QMessageBox::information(this, tr("Export"), tr("Add at least one Texture Set before exporting."));
+        return;
+    }
+
     if (m_project.outputModFolder.empty()) {
         QMessageBox::warning(this, tr("Export"), tr("Please choose an export folder first."));
         return;
@@ -367,6 +397,7 @@ void MainWindow::onTextureSetSelected(int index)
         m_paramPanel->setParameters(ts.params, ts.features);
     }
 
+    updateEditorState();
     refreshPreview();
 }
 
@@ -382,12 +413,9 @@ void MainWindow::onAddTextureSet()
     if (!ok || match.isEmpty()) return;
 
     m_project.addTextureSet(name.toStdString(), match.toStdString());
+    m_currentSetIndex = static_cast<int>(m_project.textureSets.size()) - 1;
     refreshUI();
-
-    // Auto-select the new set
-    int newIndex = static_cast<int>(m_project.textureSets.size()) - 1;
-    m_textureSetPanel->setTextureSets(m_project.textureSets);
-    onTextureSetSelected(newIndex);
+    onTextureSetSelected(m_currentSetIndex);
 
     statusBar()->showMessage(tr("Added texture set: %1").arg(name));
 }
@@ -401,8 +429,20 @@ void MainWindow::onRemoveTextureSet(int index)
 
     if (reply == QMessageBox::Yes) {
         m_project.removeTextureSet(index);
-        m_currentSetIndex = -1;
+        if (m_project.textureSets.empty()) {
+            m_currentSetIndex = -1;
+        } else if (index >= static_cast<int>(m_project.textureSets.size())) {
+            m_currentSetIndex = static_cast<int>(m_project.textureSets.size()) - 1;
+        } else {
+            m_currentSetIndex = index;
+        }
         refreshUI();
+        if (m_currentSetIndex >= 0) {
+            onTextureSetSelected(m_currentSetIndex);
+        } else {
+            updateEditorState();
+            refreshPreview();
+        }
     }
 }
 
@@ -539,6 +579,11 @@ void MainWindow::onParametersChanged(const PBRParameters& params)
 void MainWindow::refreshUI()
 {
     m_textureSetPanel->setTextureSets(m_project.textureSets);
+    if (m_currentSetIndex >= 0 && m_currentSetIndex < static_cast<int>(m_project.textureSets.size())) {
+        m_textureSetPanel->setCurrentIndex(m_currentSetIndex);
+    } else {
+        m_textureSetPanel->setCurrentIndex(-1);
+    }
     setWindowTitle(tr("TruePBR Manager - %1").arg(defaultProjectName(m_project)));
 
     if (m_exportPathEdit) {
@@ -548,8 +593,43 @@ void MainWindow::refreshUI()
         }
     }
 
+    if (m_exportBtn) {
+        m_exportBtn->setEnabled(!m_project.textureSets.empty());
+    }
+
+    updateEditorState();
+
     if (m_currentSetIndex < 0 || m_currentSetIndex >= static_cast<int>(m_project.textureSets.size())) {
         m_previewWidget->clear();
+        if (m_previewStack != nullptr) {
+            m_previewStack->setCurrentWidget(m_previewPlaceholder);
+        }
+    }
+}
+
+void MainWindow::updateEditorState()
+{
+    const bool hasSelection = m_currentSetIndex >= 0
+        && m_currentSetIndex < static_cast<int>(m_project.textureSets.size());
+
+    if (m_editorStack != nullptr) {
+        if (hasSelection) {
+            m_editorStack->setCurrentIndex(0);
+        } else {
+            const bool hasAnyTextureSet = !m_project.textureSets.empty();
+            m_editorPlaceholder->setText(hasAnyTextureSet
+                ? tr("Select a Texture Set from the list on the left to edit its textures, features, and parameters.")
+                : tr("No Texture Sets yet.\n\nUse Add on the left to create your first Texture Set."));
+            m_editorStack->setCurrentWidget(m_editorPlaceholder);
+        }
+    }
+
+    if (!hasSelection && m_previewStack != nullptr) {
+        const bool hasAnyTextureSet = !m_project.textureSets.empty();
+        m_previewPlaceholder->setText(hasAnyTextureSet
+            ? tr("Select a Texture Set to see its texture preview.")
+            : tr("Preview will appear here after you create and select a Texture Set."));
+        m_previewStack->setCurrentWidget(m_previewPlaceholder);
     }
 }
 
@@ -557,6 +637,9 @@ void MainWindow::refreshPreview()
 {
     if (m_currentSetIndex < 0 || m_currentSetIndex >= static_cast<int>(m_project.textureSets.size())) {
         m_previewWidget->clear();
+        if (m_previewStack != nullptr) {
+            m_previewStack->setCurrentWidget(m_previewPlaceholder);
+        }
         return;
     }
 
@@ -574,6 +657,9 @@ void MainWindow::refreshPreview()
         }
 
         m_previewWidget->setImage(image);
+        if (m_previewStack != nullptr) {
+            m_previewStack->setCurrentWidget(m_previewWidget);
+        }
         return true;
     };
 
@@ -583,6 +669,12 @@ void MainWindow::refreshPreview()
 
     if (tryShowTexture(PBRTextureSlot::Normal, textureSet)) {
         return;
+    }
+
+    m_previewWidget->clear();
+    if (m_previewStack != nullptr) {
+        m_previewPlaceholder->setText(tr("No previewable texture has been imported for the selected Texture Set yet."));
+        m_previewStack->setCurrentWidget(m_previewPlaceholder);
     }
 
     m_previewWidget->clear();

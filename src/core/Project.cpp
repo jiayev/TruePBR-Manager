@@ -169,6 +169,32 @@ static ChannelMap channelFromString(const std::string& s)
     return ChannelMap::Roughness;
 }
 
+static const char* textureAlphaModeKey(TextureAlphaMode mode)
+{
+    switch (mode) {
+    case TextureAlphaMode::None:        return "none";
+    case TextureAlphaMode::Opaque:      return "opaque";
+    case TextureAlphaMode::Transparent: return "transparent";
+    case TextureAlphaMode::Unknown:
+    default:                            return "unknown";
+    }
+}
+
+static TextureAlphaMode textureAlphaModeFromKey(const std::string& value)
+{
+    if (value == "none") {
+        return TextureAlphaMode::None;
+    }
+    if (value == "opaque") {
+        return TextureAlphaMode::Opaque;
+    }
+    if (value == "transparent") {
+        return TextureAlphaMode::Transparent;
+    }
+
+    return TextureAlphaMode::Unknown;
+}
+
 static json channelMapEntryToJson(const ChannelMapEntry& entry)
 {
     return json{
@@ -216,6 +242,7 @@ static json textureSetToJson(const PBRTextureSet& ts)
         t["width"]    = entry.width;
         t["height"]   = entry.height;
         t["channels"] = entry.channels;
+        t["alpha_mode"] = textureAlphaModeKey(entry.alphaMode);
         t["format"]   = entry.format;
         texArr.push_back(t);
     }
@@ -262,6 +289,7 @@ static PBRTextureSet textureSetFromJson(const json& j)
             entry.width       = t.value("width", 0);
             entry.height      = t.value("height", 0);
             entry.channels    = t.value("channels", 0);
+            entry.alphaMode   = textureAlphaModeFromKey(t.value("alpha_mode", "unknown"));
             entry.format      = t.value("format", "");
             ts.textures[slot] = entry;
         }

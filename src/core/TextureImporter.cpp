@@ -9,6 +9,51 @@
 
 namespace tpbr {
 
+static TextureAlphaMode alphaModeFromPixels(const std::vector<uint8_t>& rgbaPixels)
+{
+    if (rgbaPixels.empty()) {
+        return TextureAlphaMode::Unknown;
+    }
+
+    for (size_t i = 3; i < rgbaPixels.size(); i += 4) {
+        if (rgbaPixels[i] != 255) {
+            return TextureAlphaMode::Transparent;
+        }
+    }
+
+    return TextureAlphaMode::Opaque;
+}
+
+static TextureAlphaMode detectDDSAlphaMode(const std::filesystem::path& filePath, const DDSUtils::DDSInfo& info)
+{
+    if (!info.hasAlpha) {
+        return TextureAlphaMode::None;
+    }
+
+    int width = 0;
+    int height = 0;
+    std::vector<uint8_t> rgbaPixels;
+    if (!DDSUtils::loadDDS(filePath, width, height, rgbaPixels) || rgbaPixels.empty()) {
+        return TextureAlphaMode::Unknown;
+    }
+
+    return alphaModeFromPixels(rgbaPixels);
+}
+
+static TextureAlphaMode detectImageAlphaMode(const std::filesystem::path& filePath, int channels)
+{
+    if (channels != 2 && channels != 4) {
+        return TextureAlphaMode::None;
+    }
+
+    const auto image = ImageUtils::loadImage(filePath);
+    if (image.pixels.empty()) {
+        return TextureAlphaMode::Unknown;
+    }
+
+    return alphaModeFromPixels(image.pixels);
+}
+
 static const char* channelDisplayName(ChannelMap channel)
 {
     switch (channel) {
@@ -41,6 +86,7 @@ TextureEntry TextureImporter::importTexture(const std::filesystem::path& filePat
             entry.width    = info.width;
             entry.height   = info.height;
             entry.channels = info.channels;
+            entry.alphaMode = detectDDSAlphaMode(filePath, info);
             spdlog::info("Imported DDS: {} ({}x{}, {}) -> {}",
                          filePath.filename().string(), info.width, info.height,
                          info.formatName, slotDisplayName(slot));
@@ -54,6 +100,7 @@ TextureEntry TextureImporter::importTexture(const std::filesystem::path& filePat
             entry.width    = w;
             entry.height   = h;
             entry.channels = c;
+            entry.alphaMode = detectImageAlphaMode(filePath, c);
             spdlog::info("Imported image: {} ({}x{}, {}ch) -> {}",
                          filePath.filename().string(), w, h, c, slotDisplayName(slot));
         } else {

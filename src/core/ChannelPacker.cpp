@@ -10,6 +10,17 @@
 
 namespace tpbr {
 
+static bool hasNonOpaqueAlpha(const std::vector<uint8_t>& rgba)
+{
+    for (size_t i = 3; i < rgba.size(); i += 4) {
+        if (rgba[i] != 255) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 /// Load a single-channel greyscale image from any supported format.
 /// For multi-channel images, extracts the R channel.
 /// For DDS, decompresses first.
@@ -143,6 +154,11 @@ bool ChannelPacker::packRMAOS(
         rgba[i * 4 + 1] = metallic[i];
         rgba[i * 4 + 2] = ao[i];
         rgba[i * 4 + 3] = specular[i];
+    }
+
+    if (compressionMode == DDSCompressionMode::BC1_Linear && hasNonOpaqueAlpha(rgba)) {
+        spdlog::warn("ChannelPacker: BC1 Linear requested but packed RMAOS contains non-opaque alpha, falling back to BC7 Linear");
+        compressionMode = DDSCompressionMode::BC7_Linear;
     }
 
     bool ok = false;

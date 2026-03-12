@@ -20,24 +20,99 @@
 
 namespace tpbr {
 
+static std::vector<DDSCompressionMode> allowedCompressionModesForSlot(PBRTextureSlot slot)
+{
+    switch (slot) {
+    case PBRTextureSlot::Diffuse:
+    case PBRTextureSlot::CoatColor:
+        return {
+            DDSCompressionMode::BC7_sRGB,
+        };
+
+    case PBRTextureSlot::Subsurface:
+    case PBRTextureSlot::Fuzz:
+        return {
+            DDSCompressionMode::BC7_sRGB,
+            DDSCompressionMode::BC3_sRGB,
+        };
+
+    case PBRTextureSlot::Emissive:
+        return {
+            DDSCompressionMode::BC6H_UF16,
+            DDSCompressionMode::BC7_sRGB,
+        };
+
+    case PBRTextureSlot::Normal:
+        return {
+            DDSCompressionMode::BC7_Linear,
+            DDSCompressionMode::BC5_Linear,
+        };
+
+    case PBRTextureSlot::Displacement:
+        return {
+            DDSCompressionMode::BC4_Linear,
+        };
+
+    case PBRTextureSlot::RMAOS:
+    case PBRTextureSlot::CoatNormalRoughness:
+        return {
+            DDSCompressionMode::BC7_Linear,
+        };
+    }
+
+    return {defaultCompressionForSlot(slot)};
+}
+
+static bool isBC1EligibleColorSlot(PBRTextureSlot slot)
+{
+    switch (slot) {
+    case PBRTextureSlot::Diffuse:
+    case PBRTextureSlot::Subsurface:
+    case PBRTextureSlot::Fuzz:
+    case PBRTextureSlot::CoatColor:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static bool canUseBC1(PBRTextureSlot slot, const TextureEntry* entry, const PBRTextureSet* textureSet)
+{
+    if (slot == PBRTextureSlot::RMAOS && textureSet != nullptr) {
+        if (textureSet->rmaosSourceMode == RMAOSSourceMode::SeparateChannels) {
+            const auto specularIt = textureSet->channelMaps.find(ChannelMap::Specular);
+            return specularIt == textureSet->channelMaps.end() || specularIt->second.sourcePath.empty();
+        }
+    }
+
+    if (entry == nullptr) {
+        return false;
+    }
+
+    return entry->alphaMode == TextureAlphaMode::None
+        || entry->alphaMode == TextureAlphaMode::Opaque;
+}
+
+static std::vector<DDSCompressionMode> allowedCompressionModesForTexture(PBRTextureSlot slot,
+                                                                         const TextureEntry* entry,
+                                                                         const PBRTextureSet* textureSet)
+{
+    auto modes = allowedCompressionModesForSlot(slot);
+
+    if (isBC1EligibleColorSlot(slot) && canUseBC1(slot, entry, textureSet)) {
+        modes.insert(modes.begin() + 1, DDSCompressionMode::BC1_sRGB);
+    } else if (slot == PBRTextureSlot::RMAOS && canUseBC1(slot, entry, textureSet)) {
+        modes.insert(modes.begin() + 1, DDSCompressionMode::BC1_Linear);
+    }
+
+    return modes;
+}
+
 static void populateCompressionCombo(QComboBox* combo, PBRTextureSlot slot)
 {
     combo->clear();
 
-    std::vector<DDSCompressionMode> modes = {
-        DDSCompressionMode::BC7_sRGB,
-        DDSCompressionMode::BC7_Linear,
-        DDSCompressionMode::BC5_Linear,
-        DDSCompressionMode::BC4_Linear,
-        DDSCompressionMode::BC1_sRGB,
-        DDSCompressionMode::BC1_Linear,
-        DDSCompressionMode::RGBA8_sRGB,
-        DDSCompressionMode::RGBA8_Linear,
-    };
-
-    if (slot == PBRTextureSlot::Emissive) {
-        modes.insert(modes.begin() + 1, DDSCompressionMode::BC6H_UF16);
-    }
+    const auto modes = allowedCompressionModesForTexture(slot, nullptr, nullptr);
 
     for (DDSCompressionMode mode : modes) {
         combo->addItem(QString::fromUtf8(compressionModeDisplayName(mode)), static_cast<int>(mode));
@@ -428,10 +503,19 @@ void SlotEditorWidget::setTextureSet(const PBRTextureSet& ts)
 
     // Update slot rows
     for (auto& [slot, row] : m_slotRows) {
+        auto textureIt = ts.textures.find(slot);
+        const TextureEntry* entry = textureIt != ts.textures.end() ? &textureIt->second : nullptr;
+        const auto allowedModes = allowedCompressionModesForTexture(slot, entry, &ts);
+
+        row.compressionCombo->blockSignals(true);
+        row.compressionCombo->clear();
+        for (DDSCompressionMode allowedMode : allowedModes) {
+            row.compressionCombo->addItem(QString::fromUtf8(compressionModeDisplayName(allowedMode)), static_cast<int>(allowedMode));
+        }
+
         const auto modeIt = ts.exportCompression.find(slot);
         const auto mode = modeIt != ts.exportCompression.end() ? modeIt->second : defaultCompressionForSlot(slot);
         const int comboIndex = row.compressionCombo->findData(static_cast<int>(mode));
-        row.compressionCombo->blockSignals(true);
         if (comboIndex >= 0) {
             row.compressionCombo->setCurrentIndex(comboIndex);
         } else {
@@ -440,13 +524,17 @@ void SlotEditorWidget::setTextureSet(const PBRTextureSet& ts)
         }
         row.compressionCombo->blockSignals(false);
 
-        auto it = ts.textures.find(slot);
-        if (it != ts.textures.end() && !it->second.sourcePath.empty()) {
+        if (comboIndex < 0 && row.compressionCombo->currentIndex() >= 0) {
+            const auto fallbackMode = static_cast<DDSCompressionMode>(row.compressionCombo->currentData().toInt());
+            emit exportCompressionChanged(slot, fallbackMode);
+        }
+
+        if (textureIt != ts.textures.end() && !textureIt->second.sourcePath.empty()) {
             QString detailText;
-            if (it->second.width > 0 && it->second.height > 0) {
-                detailText = tr("%1 x %2").arg(it->second.width).arg(it->second.height);
+            if (textureIt->second.width > 0 && textureIt->second.height > 0) {
+                detailText = tr("%1 x %2").arg(textureIt->second.width).arg(textureIt->second.height);
             }
-            row.dropZone->setFile(it->second.sourcePath, detailText);
+            row.dropZone->setFile(textureIt->second.sourcePath, detailText);
         } else {
             row.dropZone->clear();
         }

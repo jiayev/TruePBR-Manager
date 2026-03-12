@@ -62,6 +62,7 @@ const char* compressionModeDisplayName(DDSCompressionMode mode)
     switch (mode) {
     case DDSCompressionMode::BC7_sRGB:    return "BC7 sRGB";
     case DDSCompressionMode::BC7_Linear:  return "BC7 Linear";
+    case DDSCompressionMode::BC3_sRGB:    return "BC3 sRGB";
     case DDSCompressionMode::BC6H_UF16:   return "BC6H UF16";
     case DDSCompressionMode::BC5_Linear:  return "BC5 Linear";
     case DDSCompressionMode::BC4_Linear:  return "BC4 Linear";
@@ -78,6 +79,7 @@ const char* compressionModeKey(DDSCompressionMode mode)
     switch (mode) {
     case DDSCompressionMode::BC7_sRGB:    return "bc7_srgb";
     case DDSCompressionMode::BC7_Linear:  return "bc7_linear";
+    case DDSCompressionMode::BC3_sRGB:    return "bc3_srgb";
     case DDSCompressionMode::BC6H_UF16:   return "bc6h_uf16";
     case DDSCompressionMode::BC5_Linear:  return "bc5_linear";
     case DDSCompressionMode::BC4_Linear:  return "bc4_linear";
@@ -97,6 +99,10 @@ bool tryParseCompressionMode(const std::string& value, DDSCompressionMode& mode)
     }
     if (value == "bc7_linear") {
         mode = DDSCompressionMode::BC7_Linear;
+        return true;
+    }
+    if (value == "bc3_srgb") {
+        mode = DDSCompressionMode::BC3_sRGB;
         return true;
     }
     if (value == "bc6h_uf16") {

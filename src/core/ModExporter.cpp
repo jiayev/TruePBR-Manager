@@ -13,6 +13,11 @@ namespace tpbr {
 
 namespace fs = std::filesystem;
 
+enum class ExportAlphaMode {
+    Opaque,
+    Transparent,
+};
+
 static DDSCompressionMode exportCompressionForSlot(const PBRTextureSet& textureSet, PBRTextureSlot slot)
 {
     auto it = textureSet.exportCompression.find(slot);
@@ -44,6 +49,78 @@ static bool loadTextureRGBA(const fs::path& sourcePath,
     return true;
 }
 
+static ExportAlphaMode analyzeAlphaMode(const std::vector<uint8_t>& rgbaPixels)
+{
+    for (size_t i = 3; i < rgbaPixels.size(); i += 4) {
+        if (rgbaPixels[i] != 255) {
+            return ExportAlphaMode::Transparent;
+        }
+    }
+
+    return ExportAlphaMode::Opaque;
+}
+
+static bool isBC1CompatibleSlot(PBRTextureSlot slot)
+{
+    switch (slot) {
+    case PBRTextureSlot::Diffuse:
+    case PBRTextureSlot::Subsurface:
+    case PBRTextureSlot::Fuzz:
+    case PBRTextureSlot::CoatColor:
+    case PBRTextureSlot::RMAOS:
+        return true;
+    default:
+        return false;
+    }
+}
+
+static DDSCompressionMode fallbackCompressedMode(PBRTextureSlot slot, DDSCompressionMode compressionMode)
+{
+    switch (compressionMode) {
+    case DDSCompressionMode::RGBA8_sRGB:
+        return (slot == PBRTextureSlot::Subsurface || slot == PBRTextureSlot::Fuzz)
+            ? DDSCompressionMode::BC3_sRGB
+            : DDSCompressionMode::BC7_sRGB;
+    case DDSCompressionMode::RGBA8_Linear:
+        return slot == PBRTextureSlot::Displacement
+            ? DDSCompressionMode::BC4_Linear
+            : DDSCompressionMode::BC7_Linear;
+    default:
+        return compressionMode;
+    }
+}
+
+static DDSCompressionMode validateCompressionModeForAlpha(PBRTextureSlot slot,
+                                                          DDSCompressionMode compressionMode,
+                                                          ExportAlphaMode alphaMode)
+{
+    compressionMode = fallbackCompressedMode(slot, compressionMode);
+
+    if (alphaMode == ExportAlphaMode::Transparent) {
+        if (compressionMode == DDSCompressionMode::BC1_sRGB) {
+            spdlog::warn("Export: BC1 sRGB is not valid for textures with real alpha, falling back to BC7 sRGB");
+            return (slot == PBRTextureSlot::Subsurface || slot == PBRTextureSlot::Fuzz)
+                ? DDSCompressionMode::BC3_sRGB
+                : DDSCompressionMode::BC7_sRGB;
+        }
+        if (compressionMode == DDSCompressionMode::BC1_Linear) {
+            spdlog::warn("Export: BC1 Linear is not valid for textures with real alpha, falling back to BC7 Linear");
+            return DDSCompressionMode::BC7_Linear;
+        }
+    }
+
+    if (!isBC1CompatibleSlot(slot)) {
+        if (compressionMode == DDSCompressionMode::BC1_sRGB) {
+            return DDSCompressionMode::BC7_sRGB;
+        }
+        if (compressionMode == DDSCompressionMode::BC1_Linear) {
+            return DDSCompressionMode::BC7_Linear;
+        }
+    }
+
+    return compressionMode;
+}
+
 static bool ddsFormatMatchesCompressionMode(uint32_t dxgiFormatValue,
                                             DDSCompressionMode compressionMode)
 {
@@ -54,6 +131,8 @@ static bool ddsFormatMatchesCompressionMode(uint32_t dxgiFormatValue,
         return dxgiFormat == DXGI_FORMAT_BC7_UNORM_SRGB;
     case DDSCompressionMode::BC7_Linear:
         return dxgiFormat == DXGI_FORMAT_BC7_UNORM;
+    case DDSCompressionMode::BC3_sRGB:
+        return dxgiFormat == DXGI_FORMAT_BC3_UNORM_SRGB;
     case DDSCompressionMode::BC6H_UF16:
         return dxgiFormat == DXGI_FORMAT_BC6H_UF16;
     case DDSCompressionMode::BC5_Linear:
@@ -74,16 +153,24 @@ static bool ddsFormatMatchesCompressionMode(uint32_t dxgiFormatValue,
 }
 
 static bool saveTextureWithCompression(const fs::path& outputPath,
+                                       PBRTextureSlot slot,
                                        int width,
                                        int height,
                                        const std::vector<uint8_t>& rgbaPixels,
                                        DDSCompressionMode compressionMode)
 {
-    switch (compressionMode) {
+    const DDSCompressionMode effectiveMode = validateCompressionModeForAlpha(
+        slot,
+        compressionMode,
+        analyzeAlphaMode(rgbaPixels));
+
+    switch (effectiveMode) {
     case DDSCompressionMode::BC7_sRGB:
         return DDSUtils::saveDDS_BC7(outputPath, width, height, rgbaPixels.data(), true);
     case DDSCompressionMode::BC7_Linear:
         return DDSUtils::saveDDS_BC7(outputPath, width, height, rgbaPixels.data(), false);
+    case DDSCompressionMode::BC3_sRGB:
+        return DDSUtils::saveDDS_BC3(outputPath, width, height, rgbaPixels.data(), true);
     case DDSCompressionMode::BC6H_UF16:
         return DDSUtils::saveDDS_BC6H(outputPath, width, height, rgbaPixels.data());
     case DDSCompressionMode::BC5_Linear:
@@ -102,9 +189,8 @@ static bool saveTextureWithCompression(const fs::path& outputPath,
     case DDSCompressionMode::BC1_Linear:
         return DDSUtils::saveDDS_BC1(outputPath, width, height, rgbaPixels.data(), false);
     case DDSCompressionMode::RGBA8_sRGB:
-        return DDSUtils::saveDDS_RGBA(outputPath, width, height, rgbaPixels.data(), true);
     case DDSCompressionMode::RGBA8_Linear:
-        return DDSUtils::saveDDS_RGBA(outputPath, width, height, rgbaPixels.data(), false);
+        break;
     }
 
     return false;
@@ -134,6 +220,7 @@ static bool exportSingleTexture(
     if (FileUtils::getExtensionLower(entry.sourcePath) == ".dds") {
         DDSUtils::DDSInfo info;
         if (DDSUtils::getDDSInfo(entry.sourcePath, info)
+            && info.mipLevels > 1
             && ddsFormatMatchesCompressionMode(info.dxgiFormat, compressionMode)) {
             spdlog::info("ModExporter: copying DDS without re-encoding {} -> {}",
                          entry.sourcePath.string(), outputPath.string());
@@ -149,7 +236,7 @@ static bool exportSingleTexture(
         return false;
     }
 
-    return saveTextureWithCompression(outputPath, width, height, rgbaPixels, compressionMode);
+    return saveTextureWithCompression(outputPath, entry.slot, width, height, rgbaPixels, compressionMode);
 }
 
 bool ModExporter::exportTextures(
