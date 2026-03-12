@@ -1,437 +1,450 @@
-# TruePBR Manager - Project Specification
+# TruePBR Manager - Current Specification
+
+This document describes the repository as it exists now. It is implementation-oriented, not a forward-looking design draft.
 
 ## 1. Overview
 
-| Item              | Value                        |
-|-------------------|------------------------------|
-| Project Name      | TruePBR Manager              |
-| Type              | Desktop GUI Application      |
-| Language          | C++20                        |
-| Build System      | CMake 3.21+                  |
-| GUI Framework     | Qt 6                         |
-| Package Manager   | vcpkg                        |
-| Target Platform   | Windows (x64)                |
-| License           | CC BY-NC 4.0                 |
+| Item | Value |
+|------|-------|
+| Project Name | TruePBR Manager |
+| Type | Desktop GUI application |
+| Language | C++20 |
+| Build System | CMake 3.21+ |
+| GUI Framework | Qt 6 Widgets |
+| Package Manager | vcpkg |
+| Target Platform | Windows x64 |
+| License | CC BY-NC 4.0 |
 
 ## 2. Purpose
 
-TruePBR Manager is a desktop tool for **Skyrim modding artists** to:
+TruePBR Manager is a desktop authoring tool for Skyrim modding workflows built around Community Shaders True PBR and PGPatcher.
 
-1. **Manage PBR texture sets** — each set maps a group of PBR textures to one vanilla Skyrim texture path
-2. **Import textures** — accept individual channel maps (Roughness, Metallic, AO, Specular) OR pre-packed RMAOS DDS
-3. **Pack channels** — merge individual R/M/AO/S maps into a single RMAOS DDS for in-game use
-4. **Configure PBR features** — toggle emissive, subsurface, parallax, multilayer, fuzz, glint, hair etc. and import corresponding textures
-5. **Export to mod folder** — output DDS files with correct directory structure under `textures/pbr/...` and generate PGPatcher-compatible JSON
+The current implementation is designed to:
 
-References:
+1. Manage multiple PBR texture sets in a single project.
+2. Map each set to one vanilla diffuse path.
+3. Import required and optional textures into True PBR slots.
+4. Support RMAOS authoring either as a pre-packed texture or as split Roughness, Metallic, AO, and Specular sources.
+5. Edit feature flags and material parameters.
+6. Export textures as DDS into a mod folder and generate a PGPatcher JSON file.
+
+Primary references:
+
 - True PBR spec: https://github.com/doodlum/skyrim-community-shaders/wiki/True-PBR
-- PGPatcher JSON spec: https://github.com/hakasapl/PGPatcher/wiki/Mod-Authors
+- PGPatcher Mod Authors Guide: https://github.com/hakasapl/PGPatcher/wiki/Mod-Authors
 
-## 3. True PBR Texture Slot Reference
+## 3. Implemented Feature Surface
 
-Based on the Community Shaders True PBR specification:
+### 3.1 Project lifecycle
 
-| Slot | NIF Slot | Suffix       | Content                                     | Format   | Required |
-|------|----------|--------------|---------------------------------------------|----------|----------|
-| 1    | TX00     | `.dds`       | Base Color (RGB) + Opacity (A)              | BC7/BC1  | YES      |
-| 2    | TX01     | `_n.dds`     | Normal Map (RGB), A unused                  | BC7      | YES      |
-| 3    | TX02     | `_g.dds`     | Emissive/Glow Color (RGB)                   | BC1/BC7  | if emissive |
-| 4    | TX03     | `_p.dds`     | Displacement/Height (R only)                | BC4      | if parallax |
-| 5    | TX04     | —            | Unused                                      | —        | NO       |
-| 6    | TX05     | `_rmaos.dds` | Roughness(R) Metallic(G) AO(B) Specular(A) | BC1/BC7  | YES      |
-| 7    | TX06     | `_cnr.dds`   | Coat Normal(RGB) + Coat Roughness(A)        | BC7      | if multilayer |
-|      |          | `_f.dds`     | Fuzz Color(RGB) + Fuzz Mask(A)              | BC7      | if fuzz  |
-| 8    | TX07     | `_s.dds`     | Subsurface Color(RGB) + Opacity(A)          | BC7      | if subsurface |
-|      |          | `_s.dds`     | Coat Color(RGB) + Coat Strength(A)          | BC7      | if multilayer coat_diffuse |
+- New project in memory
+- Save project to `.tpbr`
+- Load project from `.tpbr`
+- Add and remove texture sets
 
-### PGPatcher Naming Convention
+### 3.2 Texture authoring
 
-| Texture Type           | Suffix         |
-|------------------------|----------------|
-| Diffuse                | `_d.dds` / `.dds` |
-| Normal                 | `_n.dds`       |
-| Glow / Emissive        | `_g.dds`       |
-| Height / Displacement  | `_p.dds`       |
-| RMAOS                  | `_rmaos.dds`   |
-| Subsurface Tint        | `_s.dds`       |
-| Coat Normal Roughness  | `_cnr.dds`     |
-| Fuzz                   | `_f.dds`       |
+- Import slot textures from DDS and raster formats supported by the app
+- Import split RMAOS channels independently
+- Drag-and-drop import onto slot and channel controls
+- Persist imported file metadata: source path, dimensions, channel count, format
 
-## 4. Core Data Model
+### 3.3 Material authoring
 
-### 4.1 PBRTextureSlot (enum)
+- Edit feature flags in the UI
+- Edit base, emissive, parallax, subsurface, coat, fuzz, and glint parameters in the UI
+- Store per-slot export compression overrides
+- Store RMAOS source mode per texture set
 
-```cpp
-enum class PBRTextureSlot {
-    Diffuse,        // Slot 1: Base Color + Opacity
-    Normal,         // Slot 2: Normal Map
-    Emissive,       // Slot 3: Glow/Emissive (optional)
-    Displacement,   // Slot 4: Height/Parallax (optional)
-    RMAOS,          // Slot 6: Roughness+Metallic+AO+Specular (packed)
-    CoatNormalRoughness, // Slot 7: Multilayer coat normal+roughness (optional)
-    Fuzz,           // Slot 7: Fuzz color+mask (optional, conflicts with CoatNormalRoughness)
-    Subsurface,     // Slot 8: Subsurface color+opacity (optional)
-    CoatColor,      // Slot 8: Coat color+strength (optional, conflicts with Subsurface)
-};
-```
+### 3.4 Preview and export
 
-### 4.2 Individual channel maps (for RMAOS packing)
+- Basic image preview with zoom and pan
+- DDS export for each assigned slot
+- Split-channel packing into `_rmaos.dds` during export
+- PGPatcher JSON export to `PBRNIFPatcher/<project>.json`
+- Automatic export directory creation under `textures/pbr/...`
 
-```cpp
-enum class ChannelMap {
-    Roughness,
-    Metallic,
-    AO,
-    Specular,
-};
-```
+### 3.5 Known current limitations
 
-### 4.3 TextureEntry
+- No batch import or suffix auto-detection
+- No undo/redo
+- No validation UI for resolution or format mismatches
+- No isolated channel preview for RMAOS
+- No 3D shaded material preview
+- No localization support
+- Vertex-color tuning fields exist in the data/export layer but are not exposed in the current UI
 
-```cpp
-struct TextureEntry {
-    std::filesystem::path sourcePath;  // Original imported file (png/dds)
-    PBRTextureSlot        slot;
-    int                   width = 0;
-    int                   height = 0;
-    int                   channels = 0;
-    std::string           format;      // "png", "dds", etc.
-};
-```
+## 4. Texture Slot Model
 
-### 4.4 PBRFeatureFlags
+### 4.1 Slot reference
 
-```cpp
-struct PBRFeatureFlags {
-    bool emissive       = false;
-    bool parallax       = false;
-    bool subsurface     = false;
-    bool subsurfaceFoliage = false;
-    bool multilayer     = false;   // Multilayer Parallax (coat)
-    bool coatDiffuse    = false;   // Coat color layer
-    bool coatParallax   = false;   // Coat parallax
-    bool coatNormal     = false;   // Coat own normal
-    bool fuzz           = false;
-    bool glint          = false;
-    bool hair           = false;
-};
-```
+| Enum | NIF Slot | Suffix | Content | Status |
+|------|----------|--------|---------|--------|
+| Diffuse | TX00 | `.dds` | Base Color RGB + Opacity A | Implemented |
+| Normal | TX01 | `_n.dds` | Normal Map RGB | Implemented |
+| Emissive | TX02 | `_g.dds` | Emissive / Glow RGB | Implemented |
+| Displacement | TX03 | `_p.dds` | Height / Parallax | Implemented |
+| RMAOS | TX05 | `_rmaos.dds` | Roughness R, Metallic G, AO B, Specular A | Implemented |
+| CoatNormalRoughness | TX06 | `_cnr.dds` | Coat Normal RGB + Coat Roughness A | Implemented |
+| Fuzz | TX06 | `_f.dds` | Fuzz RGB + Fuzz Mask A | Implemented |
+| Subsurface | TX07 | `_s.dds` | Subsurface RGB + Opacity A | Implemented |
+| CoatColor | TX07 | `_s.dds` | Coat Color RGB + Strength A | Implemented |
 
-### 4.5 PBRParameters
+Notes:
 
-```cpp
-struct PBRParameters {
-    float specularLevel     = 0.04f;
-    float roughnessScale    = 1.0f;
-    float displacementScale = 1.0f;
-    float subsurfaceOpacity = 1.0f;
-    std::array<float,3> subsurfaceColor = {1.0f, 1.0f, 1.0f};
+- TX06 is shared by coat normal roughness and fuzz.
+- TX07 is shared by subsurface and coat color.
+- The code allows both enums to exist in the data model; conflict handling remains a workflow responsibility.
 
-    // Emissive
-    float emissiveScale = 0.0f;
+### 4.2 RMAOS channels
 
-    // Multilayer / Coat
-    float coatStrength       = 0.0f;
-    float coatRoughness      = 0.0f;
-    float coatSpecularLevel  = 0.04f;
+The current channel packing model supports:
 
-    // Fuzz (only if fuzz enabled)
-    std::array<float,3> fuzzColor = {1.0f, 1.0f, 1.0f};
-    float fuzzWeight = 1.0f;
+| Channel | Output Channel |
+|---------|----------------|
+| Roughness | R |
+| Metallic | G |
+| AO | B |
+| Specular | A |
 
-    // Glint (only if glint enabled)
-    float glintScreenSpaceScale    = 0.0f;
-    float glintLogMicrofacetDensity = 0.0f;
-    float glintMicrofacetRoughness  = 0.0f;
-    float glintDensityRandomization = 0.0f;
+When a split channel is missing, exporter defaults are used:
 
-    // Mesh tweak
-    bool  vertexColors = true;
-    float vertexColorLumMult = 1.0f;
-    float vertexColorSatMult = 1.0f;
-};
-```
+- Roughness: 255
+- Metallic: 0
+- AO: 255
+- Specular: 255
 
-### 4.6 PBRTextureSet
+## 5. Core Data Model
 
-One PBR texture set corresponds to **one vanilla texture path** (the matching target).
+### 5.1 Enumerations
 
-```cpp
-struct PBRTextureSet {
-    std::string name;                       // Display name (e.g. "WhiterunWoodPlank01")
-    std::string matchTexture;               // Vanilla diffuse to match (e.g. "architecture\\whiterun\\wrwoodplank01")
+Implemented enums in the model layer:
 
-    // Imported textures per slot
-    std::map<PBRTextureSlot, TextureEntry> textures;
+- `PBRTextureSlot`
+- `ChannelMap`
+- `RMAOSSourceMode` with `PackedTexture` and `SeparateChannels`
+- `DDSCompressionMode` with BC7, BC6H, BC5, BC4, BC1, and RGBA8 variants
 
-    // Individual channel maps (before packing into RMAOS)
-    std::map<ChannelMap, std::filesystem::path> channelMaps;
+### 5.2 Texture entry types
 
-    // Feature toggles & parameters
-    PBRFeatureFlags  features;
-    PBRParameters    params;
+`TextureEntry` stores:
 
-    // Metadata
-    std::string tags;
-    std::string notes;
-};
-```
+- `sourcePath`
+- `slot`
+- `width`
+- `height`
+- `channels`
+- `format`
 
-### 4.7 Project
+`ChannelMapEntry` stores the same metadata except for slot.
 
-```cpp
-struct Project {
-    std::string                   name;
-    std::filesystem::path         outputModFolder;   // Target mod directory for export
-    std::vector<PBRTextureSet>    textureSets;
-};
-```
+### 5.3 Feature flags
 
-## 5. PGPatcher JSON Output Format
+The current project model stores these flags:
 
-The tool exports a JSON file to `<mod_folder>/PBRNIFPatcher/<project_name>.json`.
+- `emissive`
+- `parallax`
+- `subsurface`
+- `subsurfaceFoliage`
+- `multilayer`
+- `coatDiffuse`
+- `coatParallax`
+- `coatNormal`
+- `fuzz`
+- `glint`
+- `hair`
 
-ALL PBR textures are output under `textures/pbr/` prefix.
+### 5.4 Parameters
 
-### Simple format (array of entries):
+The current parameter model stores:
 
-```json
-[
-    {
-        "texture": "architecture\\whiterun\\wrwoodplank01",
-        "emissive": false,
-        "parallax": true,
-        "subsurface_foliage": false,
-        "subsurface": false,
-        "specular_level": 0.04,
-        "subsurface_color": [1, 1, 1],
-        "roughness_scale": 1.0,
-        "subsurface_opacity": 1.0,
-        "displacement_scale": 0.2
-    }
-]
-```
+- `specularLevel`
+- `roughnessScale`
+- `displacementScale`
+- `subsurfaceOpacity`
+- `subsurfaceColor`
+- `emissiveScale`
+- `coatStrength`
+- `coatRoughness`
+- `coatSpecularLevel`
+- `fuzzColor`
+- `fuzzWeight`
+- `glintScreenSpaceScale`
+- `glintLogMicrofacetDensity`
+- `glintMicrofacetRoughness`
+- `glintDensityRandomization`
+- `vertexColors`
+- `vertexColorLumMult`
+- `vertexColorSatMult`
 
-### With defaults format:
+### 5.5 Texture set
+
+Each `PBRTextureSet` currently contains:
+
+- Display name
+- Vanilla match texture path
+- Imported textures map
+- Per-slot export compression map
+- Active RMAOS source mode
+- Split channel map entries
+- Feature flags
+- Parameters
+- Tags and notes
+
+### 5.6 Project
+
+`Project` currently contains:
+
+- `name`
+- `outputModFolder`
+- `textureSets`
+
+It also implements:
+
+- `addTextureSet`
+- `removeTextureSet`
+- `save`
+- `load`
+
+## 6. Project File Format
+
+Projects are saved as JSON using the `.tpbr` extension.
+
+Top-level fields currently written by the app:
 
 ```json
 {
-    "default": {
-        "specular_level": 0.04,
-        "roughness_scale": 1.0,
-        "subsurface_opacity": 1.0,
-        "displacement_scale": 1.0
-    },
-    "entries": [
-        {
-            "texture": "architecture\\whiterun\\wrwoodplank01",
-            "emissive": false,
-            "parallax": true,
-            "subsurface_foliage": false,
-            "subsurface": false
-        }
-    ]
+  "version": "1.0",
+  "name": "ExampleProject",
+  "output_mod_folder": "D:/Mods/Example",
+  "texture_sets": []
 }
 ```
 
-### Additional JSON fields per feature:
+Each texture set currently serializes:
 
-**Emissive:**
+- Name and match texture
+- Tags and notes
+- `features`
+- `params`
+- `rmaos_source_mode`
+- `textures`
+- `export_compression`
+- `channel_maps`
+
+Compression overrides are stored using stable keys such as:
+
+- `bc7_srgb`
+- `bc7_linear`
+- `bc6h_uf16`
+- `bc5_linear`
+- `bc4_linear`
+- `bc1_srgb`
+- `bc1_linear`
+- `rgba8_srgb`
+- `rgba8_linear`
+
+RMAOS source mode uses:
+
+- `packed`
+- `split`
+
+## 7. PGPatcher JSON Output
+
+The exporter currently writes a JSON array, not a `default` plus `entries` object.
+
+Output path:
+
+```text
+<mod_folder>/PBRNIFPatcher/<project_name>.json
+```
+
+Representative entry shape:
+
 ```json
-"emissive": true, "emissive_scale": 1.0
+[
+  {
+    "texture": "architecture\\whiterun\\wrwoodplank01",
+    "emissive": false,
+    "parallax": true,
+    "subsurface_foliage": false,
+    "subsurface": false,
+    "specular_level": 0.04,
+    "roughness_scale": 1.0,
+    "subsurface_opacity": 1.0,
+    "displacement_scale": 1.0,
+    "subsurface_color": [1.0, 1.0, 1.0]
+  }
+]
 ```
 
-**Parallax:**
-```json
-"parallax": true, "displacement_scale": 0.2
-```
+Conditional fields currently emitted by implementation:
 
-**Subsurface:**
-```json
-"subsurface": true, "subsurface_color": [1,1,1], "subsurface_opacity": 1.0
-```
+- `emissive_scale` when emissive is enabled
+- Coat fields when multilayer or coat normal is enabled
+- `fuzz` object when fuzz is enabled
+- `glint` object when glint is enabled
+- `hair` when hair is enabled
+- Vertex-color override fields when they differ from defaults
 
-**Multilayer:**
-```json
-"coat_normal": true, "coat_strength": 1.0, "coat_roughness": 1.0,
-"coat_specular_level": 0.04, "coat_diffuse": true, "coat_parallax": true
-```
+## 8. Export Behavior
 
-**Fuzz:**
-```json
-"fuzz": { "texture": true, "color": [1,1,1], "weight": 1.0 }
-```
+### 8.1 Output layout
 
-**Glint:**
-```json
-"glint": { "screen_space_scale": 2.0, "log_microfacet_density": 18.0,
-           "microfacet_roughness": 0.7, "density_randomization": 200.0 }
-```
-
-**Hair:**
-```json
-"hair": true
-```
-
-## 6. Export Directory Structure
-
-When exporting to a mod folder, the tool creates:
-
-```
+```text
 <mod_folder>/
 ├── PBRNIFPatcher/
-│   └── <project_name>.json          # PGPatcher config
-│
+│   └── <project_name>.json
 └── textures/
     └── pbr/
-        └── <original_path>/          # Mirrors vanilla texture path
-            ├── wrwoodplank01.dds        # Diffuse (slot 1)
-            ├── wrwoodplank01_n.dds      # Normal (slot 2)
-            ├── wrwoodplank01_rmaos.dds  # RMAOS (slot 6)
-            ├── wrwoodplank01_p.dds      # Displacement (slot 4, if parallax)
-            ├── wrwoodplank01_g.dds      # Emissive (slot 3, if emissive)
-            ├── wrwoodplank01_s.dds      # Subsurface (slot 8, if subsurface)
-            ├── wrwoodplank01_cnr.dds    # Coat normal (slot 7, if multilayer)
-            └── wrwoodplank01_f.dds      # Fuzz (slot 7, if fuzz)
+        └── <match_texture_parent>/
+            ├── <stem>.dds
+            ├── <stem>_n.dds
+            ├── <stem>_rmaos.dds
+            └── ...
 ```
 
-## 7. Architecture
+Example:
 
+If `matchTexture` is `architecture\whiterun\wrwoodplank01`, the diffuse export path is:
+
+```text
+textures/pbr/architecture/whiterun/wrwoodplank01.dds
 ```
+
+### 8.2 Export rules
+
+- Each assigned texture slot is exported to DDS.
+- Source DDS files are decoded and re-encoded using the selected export compression.
+- Raster sources are loaded and encoded to DDS.
+- If `rmaosSourceMode` is `SeparateChannels`, the assigned RMAOS slot texture is ignored and a new `_rmaos.dds` is generated from channels.
+- If required source files are missing, export continues and reports failures through logging and return status.
+
+### 8.3 Default compression policy
+
+Current defaults from the code:
+
+| Slot | Default Compression |
+|------|---------------------|
+| Diffuse | BC7 sRGB |
+| Subsurface | BC7 sRGB |
+| Fuzz | BC7 sRGB |
+| CoatColor | BC7 sRGB |
+| Emissive | BC6H UF16 |
+| Displacement | BC4 Linear |
+| Normal | BC7 Linear |
+| RMAOS | BC7 Linear |
+| CoatNormalRoughness | BC7 Linear |
+
+## 9. UI Architecture
+
+### 9.1 Main window
+
+`MainWindow` coordinates:
+
+- File menu actions: new, open, save, export
+- Current project state
+- Current texture set selection
+- Refresh of editor and preview panels
+
+### 9.2 Panels
+
+Current UI composition:
+
+- `TextureSetPanel`: list of texture sets with add/remove actions
+- `SlotEditorWidget`: match path, slot imports, RMAOS mode, split-channel rows, compression selectors
+- `FeatureTogglePanel`: feature checkboxes
+- `ParameterPanel`: parameter editors grouped by feature
+- `TexturePreviewWidget`: basic image display with wheel zoom and drag pan
+- `ExportDialog`: mod folder picker
+
+### 9.3 Current preview behavior
+
+Preview selection logic is simple:
+
+1. Show the current set's diffuse texture if present.
+2. Otherwise show the normal map if present.
+3. Otherwise clear the preview.
+
+## 10. Source Tree
+
+```text
 TruePBR-Manager/
 ├── CMakeLists.txt
 ├── CMakePresets.json
-├── vcpkg.json
+├── build.bat
+├── README.md
 ├── SPEC.md
-├── .gitignore
-│
-├── src/
-│   ├── CMakeLists.txt
-│   ├── main.cpp
-│   │
-│   ├── app/                         # Application shell
-│   │   ├── MainWindow.h / .cpp
-│   │   └── Application.h / .cpp
-│   │
-│   ├── core/                        # Core logic (no GUI dependency)
-│   │   ├── Project.h / .cpp         # Project data model
-│   │   ├── PBRTextureSet.h / .cpp   # Texture set model + feature flags
-│   │   ├── TextureImporter.h / .cpp # Import png/dds, detect channels
-│   │   ├── ChannelPacker.h / .cpp   # Merge R/M/AO/S into RMAOS DDS
-│   │   ├── JsonExporter.h / .cpp    # Generate PGPatcher JSON
-│   │   └── ModExporter.h / .cpp     # Export DDS + JSON to mod folder
-│   │
-│   ├── ui/                          # Qt widgets
-│   │   ├── TexturePreviewWidget.h / .cpp   # Texture viewer (zoom, pan)
-│   │   ├── TextureSetPanel.h / .cpp        # Texture set list & editor
-│   │   ├── SlotEditorWidget.h / .cpp       # Per-slot import UI
-│   │   ├── FeatureTogglePanel.h / .cpp     # PBR feature checkboxes
-│   │   ├── ParameterPanel.h / .cpp         # PBR parameter sliders/spinboxes
-│   │   ├── ExportDialog.h / .cpp           # Export target folder picker
-│   │   └── ImportDialog.h / .cpp           # Import file dialog
-│   │
-│   └── utils/
-│       ├── FileUtils.h / .cpp
-│       ├── ImageUtils.h / .cpp     # Image loading/conversion helpers
-│       └── DDSUtils.h / .cpp       # DDS read/write utilities
-│
-└── resources/
-    ├── resources.qrc
-    └── icons/
+├── resources/
+└── src/
+    ├── app/
+    ├── core/
+    ├── ui/
+    └── utils/
 ```
 
-## 8. Dependencies
+Important implementation modules:
 
-| Library         | Purpose                              | vcpkg Port      |
-|-----------------|--------------------------------------|-----------------|
-| Qt 6 Widgets    | GUI framework                        | qtbase          |
-| nlohmann/json   | JSON serialization                   | nlohmann-json   |
-| spdlog          | Logging                              | spdlog          |
-| DirectXTex      | DDS read/write/compress/convert      | directxtex      |
-| stb_image       | PNG/TGA/BMP loading                  | stb             |
+- `core/Project.*`: project serialization and CRUD
+- `core/PBRTextureSet.*`: enums, slot metadata, compression metadata
+- `core/TextureImporter.*`: import metadata inspection
+- `core/ChannelPacker.*`: split-channel RMAOS generation
+- `core/JsonExporter.*`: PGPatcher JSON generation
+- `core/ModExporter.*`: DDS and JSON export orchestration
+- `ui/SlotEditorWidget.*`: slot/channel authoring UI
+- `ui/ParameterPanel.*`: numeric material parameter UI
 
-**DirectXTex** is critical for:
-- Reading DDS files (including BC1/BC4/BC7 compressed)
-- Writing DDS with correct compression format
-- Channel packing (merging individual maps into RMAOS)
+## 11. Build and Packaging
 
-## 9. Key Features (Phased)
+### 11.1 Prerequisites
 
-### Phase 1 — MVP
-- [ ] Project create / save / load
-- [ ] Add PBR texture set (name + vanilla match path)
-- [ ] Import textures into slots (Diffuse, Normal, RMAOS required)
-- [ ] Import individual channels (R, M, AO, S) and pack into RMAOS
-- [ ] Toggle PBR features: emissive, parallax, subsurface
-- [ ] Import corresponding optional textures (_g, _p, _s)
-- [ ] Configure PBR parameters (specular_level, roughness_scale, displacement_scale, etc.)
-- [ ] Texture thumbnail list
-- [ ] Texture preview panel (zoom, pan)
-- [ ] Select output mod folder
-- [ ] Export DDS to `textures/pbr/...` directory structure
-- [ ] Generate PGPatcher JSON to `PBRNIFPatcher/`
+- Visual Studio 2022 or newer with Desktop C++ workload
+- CMake 3.21 or newer
+- vcpkg with `VCPKG_ROOT` configured
 
-### Phase 2 — Enhancement
-- [ ] Multilayer Parallax support (coat_normal, coat_diffuse, etc.)
-- [ ] Fuzz support (fuzz texture + params)
-- [ ] Glint support
-- [ ] Hair model support
-- [ ] Channel isolation preview (R/G/B/A individual view)
-- [ ] Batch import (scan folder, auto-detect suffixes)
-- [ ] DDS compression format selection per slot
-- [ ] Drag-and-drop import
-- [ ] Undo/Redo
+### 11.2 Supported build entry points
 
-### Phase 3 — Advanced
-- [ ] RMAOS visual preview (show individual channels color-coded)
-- [ ] Texture validation (resolution mismatch, format warnings)
-- [ ] PBR material preview (3D sphere with basic lighting)
-- [ ] Defaults/Templates (save common parameter presets)
-- [ ] Localization (CN/EN)
-- [ ] Landscape texture set support (with PBRTextureSets JSON)
+`build.bat`:
 
-## 10. Build Instructions
+- Validates `VCPKG_ROOT`
+- Locates Visual Studio via `vswhere` when needed
+- Uses Ninja when available, otherwise falls back to NMake Makefiles
+- Configures the build in `build/`
 
-### Prerequisites
-- Visual Studio 2022+ with C++ Desktop workload
-- vcpkg installed, with `VCPKG_ROOT` environment variable set
-- CMake 3.21+ (or use the one bundled with VS)
+CMake presets:
 
-### Option A: Using build.bat (recommended)
+- `default` configure preset for Release
+- `debug` configure preset for Debug
+- `release` and `debug` build presets
 
-Open a **VS Developer Command Prompt** (or any terminal where `cl.exe` is in PATH):
+### 11.3 Packaged output
 
-```bat
-set VCPKG_ROOT=<your_vcpkg_path>
-build.bat
+The CMake target currently places the runtime package in:
+
+```text
+dist/TruePBR-Manager/
 ```
 
-Output: `build/src/TruePBR-Manager.exe`
+Post-build steps currently do the following:
 
-### Option B: Using CMake presets
+- Copy runtime DLLs next to the executable
+- Run `windeployqt` when available, otherwise copy `qwindows.dll`
+- Copy `LICENSE`
 
-Requires `VCPKG_ROOT` environment variable to be set:
+## 12. Dependencies
 
-```bash
-cmake --preset default
-cmake --build build --config Release
-```
+| Library | Purpose | vcpkg Port |
+|---------|---------|------------|
+| Qt 6 Widgets | UI framework | qtbase |
+| nlohmann/json | JSON serialization | nlohmann-json |
+| spdlog | Logging | spdlog |
+| DirectXTex | DDS metadata, decode, encode, compression | directxtex |
+| stb_image | Raster image loading | stb |
 
-### Option C: Manual CMake
+## 13. Conventions
 
-```bash
-cmake -S . -B build -G Ninja \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DCMAKE_TOOLCHAIN_FILE=$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake \
-    -DVCPKG_TARGET_TRIPLET=x64-windows
-cmake --build build
-```
-
-## 11. Coding Conventions
-
-- **Naming**: PascalCase for types, camelCase for functions/variables, UPPER_SNAKE for constants
-- **Headers**: Use `#pragma once`
-- **Formatting**: clang-format (based on Microsoft style)
-- **Comments**: Doxygen-style (`///`) for public API
-- **Error Handling**: Exceptions for unrecoverable, return codes / std::expected for recoverable
-- **Includes**: Group order: std > Qt > third-party > project headers
+- Types use PascalCase.
+- Functions and variables use camelCase.
+- Public headers use `#pragma once`.
+- Public APIs are documented with Doxygen-style comments in headers.
+- Core logic is kept separate from Qt UI widgets.

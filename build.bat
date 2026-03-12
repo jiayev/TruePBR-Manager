@@ -106,6 +106,6 @@ if !errorlevel! neq 0 (
 echo.
 echo ============================================================
 echo  Build succeeded!
-echo  Output: %BUILD_DIR%\src\TruePBR-Manager.exe
+echo  Output: %SRC_DIR%dist\TruePBR-Manager\TruePBR-Manager.exe
 echo ============================================================
 endlocal
