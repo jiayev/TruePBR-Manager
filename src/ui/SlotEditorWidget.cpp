@@ -9,6 +9,7 @@
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QImage>
+#include <QFontMetrics>
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
@@ -268,15 +269,20 @@ void DropZoneLabel::paintEvent(QPaintEvent* /*event*/)
         int y = (height() - m_thumbnail.height()) / 2;
         p.drawPixmap(4, y, m_thumbnail);
 
-        // Draw filename to the right of thumbnail
+        // Draw filename and detail text in two separate rows.
+        const int textLeft = ThumbnailSize + 12;
+        const int textWidth = width() - textLeft - 8;
+        const QRect titleRect(textLeft, 8, textWidth, 18);
+        const QRect detailRect(textLeft, 28, textWidth, 16);
+        const QFontMetrics titleMetrics(p.font());
+        const QString elidedFilename = titleMetrics.elidedText(m_filename, Qt::ElideRight, titleRect.width());
+
         p.setPen(QColor(200, 200, 200));
-        QRect titleRect(ThumbnailSize + 12, 6, width() - ThumbnailSize - 16, (height() / 2));
-        p.drawText(titleRect, Qt::AlignLeft | Qt::AlignBottom, m_filename);
+        p.drawText(titleRect, Qt::AlignLeft | Qt::AlignVCenter, elidedFilename);
 
         if (!m_detailText.isEmpty()) {
             p.setPen(QColor(150, 150, 150));
-            QRect detailRect(ThumbnailSize + 12, (height() / 2) - 2, width() - ThumbnailSize - 16, (height() / 2));
-            p.drawText(detailRect, Qt::AlignLeft | Qt::AlignTop, m_detailText);
+            p.drawText(detailRect, Qt::AlignLeft | Qt::AlignVCenter, m_detailText);
         }
     } else {
         // Empty state
