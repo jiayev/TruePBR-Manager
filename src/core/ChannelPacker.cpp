@@ -8,12 +8,15 @@
 #include <algorithm>
 #include <cstring>
 
-namespace tpbr {
+namespace tpbr
+{
 
 static bool hasNonOpaqueAlpha(const std::vector<uint8_t>& rgba)
 {
-    for (size_t i = 3; i < rgba.size(); i += 4) {
-        if (rgba[i] != 255) {
+    for (size_t i = 3; i < rgba.size(); i += 4)
+    {
+        if (rgba[i] != 255)
+        {
             return true;
         }
     }
@@ -25,23 +28,26 @@ static bool hasNonOpaqueAlpha(const std::vector<uint8_t>& rgba)
 /// For multi-channel images, extracts the R channel.
 /// For DDS, decompresses first.
 /// Returns pixel data resized to (targetW x targetH) if needed.
-static bool loadGreyscale(const std::filesystem::path& path,
-                          int targetW, int targetH,
-                          std::vector<uint8_t>& outChannel)
+static bool loadGreyscale(const std::filesystem::path& path, int targetW, int targetH, std::vector<uint8_t>& outChannel)
 {
     auto ext = FileUtils::getExtensionLower(path);
 
     std::vector<uint8_t> rgba;
     int w = 0, h = 0;
 
-    if (ext == ".dds") {
-        if (!DDSUtils::loadDDS(path, w, h, rgba)) {
+    if (ext == ".dds")
+    {
+        if (!DDSUtils::loadDDS(path, w, h, rgba))
+        {
             spdlog::error("ChannelPacker: failed to load DDS {}", path.string());
             return false;
         }
-    } else {
+    }
+    else
+    {
         auto imgData = ImageUtils::loadImage(path);
-        if (imgData.pixels.empty()) {
+        if (imgData.pixels.empty())
+        {
             spdlog::error("ChannelPacker: failed to load image {}", path.string());
             return false;
         }
@@ -53,21 +59,25 @@ static bool loadGreyscale(const std::filesystem::path& path,
     // Extract R channel from RGBA
     const size_t pixelCount = static_cast<size_t>(w) * h;
     std::vector<uint8_t> rChannel(pixelCount);
-    for (size_t i = 0; i < pixelCount; ++i) {
+    for (size_t i = 0; i < pixelCount; ++i)
+    {
         rChannel[i] = rgba[i * 4]; // R component
     }
 
     // If target size matches or no resizing needed, use as-is
-    if ((targetW == 0 && targetH == 0) || (w == targetW && h == targetH)) {
+    if ((targetW == 0 && targetH == 0) || (w == targetW && h == targetH))
+    {
         outChannel = std::move(rChannel);
         return true;
     }
 
     // Simple nearest-neighbor resize for channel data
     outChannel.resize(static_cast<size_t>(targetW) * targetH);
-    for (int y = 0; y < targetH; ++y) {
+    for (int y = 0; y < targetH; ++y)
+    {
         int srcY = y * h / targetH;
-        for (int x = 0; x < targetW; ++x) {
+        for (int x = 0; x < targetW; ++x)
+        {
             int srcX = x * w / targetW;
             outChannel[y * targetW + x] = rChannel[srcY * w + srcX];
         }
@@ -76,33 +86,38 @@ static bool loadGreyscale(const std::filesystem::path& path,
     return true;
 }
 
-bool ChannelPacker::packRMAOS(
-    const std::map<ChannelMap, std::filesystem::path>& channels,
-    const std::filesystem::path& outputPath,
-    DDSCompressionMode compressionMode,
-    int width,
-    int height)
+bool ChannelPacker::packRMAOS(const std::map<ChannelMap, std::filesystem::path>& channels,
+                              const std::filesystem::path& outputPath, DDSCompressionMode compressionMode, int width,
+                              int height)
 {
-    if (channels.empty()) {
+    if (channels.empty())
+    {
         spdlog::error("ChannelPacker: no channels provided");
         return false;
     }
 
     // Determine target resolution from the first available channel
-    if (width == 0 || height == 0) {
-        for (const auto& [ch, path] : channels) {
+    if (width == 0 || height == 0)
+    {
+        for (const auto& [ch, path] : channels)
+        {
             auto ext = FileUtils::getExtensionLower(path);
-            if (ext == ".dds") {
+            if (ext == ".dds")
+            {
                 DDSUtils::DDSInfo info;
-                if (DDSUtils::getDDSInfo(path, info)) {
-                    width  = info.width;
+                if (DDSUtils::getDDSInfo(path, info))
+                {
+                    width = info.width;
                     height = info.height;
                     break;
                 }
-            } else {
+            }
+            else
+            {
                 int w, h, c;
-                if (ImageUtils::getImageInfo(path, w, h, c)) {
-                    width  = w;
+                if (ImageUtils::getImageInfo(path, w, h, c))
+                {
+                    width = w;
                     height = h;
                     break;
                 }
@@ -110,7 +125,8 @@ bool ChannelPacker::packRMAOS(
         }
     }
 
-    if (width <= 0 || height <= 0) {
+    if (width <= 0 || height <= 0)
+    {
         spdlog::error("ChannelPacker: could not determine target resolution");
         return false;
     }
@@ -131,38 +147,47 @@ bool ChannelPacker::packRMAOS(
     std::vector<uint8_t> specular(pixelCount, 255);  // full specular (0.04 is set via JSON param)
 
     // Load each provided channel
-    auto loadChannel = [&](ChannelMap ch, std::vector<uint8_t>& target, const char* name) {
+    auto loadChannel = [&](ChannelMap ch, std::vector<uint8_t>& target, const char* name)
+    {
         auto it = channels.find(ch);
-        if (it != channels.end()) {
-            if (!loadGreyscale(it->second, width, height, target)) {
+        if (it != channels.end())
+        {
+            if (!loadGreyscale(it->second, width, height, target))
+            {
                 spdlog::warn("ChannelPacker: failed to load {} channel, using default", name);
-            } else {
+            }
+            else
+            {
                 spdlog::debug("ChannelPacker: loaded {} from {}", name, it->second.filename().string());
             }
         }
     };
 
     loadChannel(ChannelMap::Roughness, roughness, "Roughness");
-    loadChannel(ChannelMap::Metallic,  metallic,  "Metallic");
-    loadChannel(ChannelMap::AO,        ao,        "AO");
-    loadChannel(ChannelMap::Specular,  specular,  "Specular");
+    loadChannel(ChannelMap::Metallic, metallic, "Metallic");
+    loadChannel(ChannelMap::AO, ao, "AO");
+    loadChannel(ChannelMap::Specular, specular, "Specular");
 
     // Compose RGBA: R=Roughness, G=Metallic, B=AO, A=Specular
     std::vector<uint8_t> rgba(pixelCount * 4);
-    for (size_t i = 0; i < pixelCount; ++i) {
+    for (size_t i = 0; i < pixelCount; ++i)
+    {
         rgba[i * 4 + 0] = roughness[i];
         rgba[i * 4 + 1] = metallic[i];
         rgba[i * 4 + 2] = ao[i];
         rgba[i * 4 + 3] = specular[i];
     }
 
-    if (compressionMode == DDSCompressionMode::BC1_Linear && hasNonOpaqueAlpha(rgba)) {
-        spdlog::warn("ChannelPacker: BC1 Linear requested but packed RMAOS contains non-opaque alpha, falling back to BC7 Linear");
+    if (compressionMode == DDSCompressionMode::BC1_Linear && hasNonOpaqueAlpha(rgba))
+    {
+        spdlog::warn("ChannelPacker: BC1 Linear requested but packed RMAOS contains non-opaque alpha, falling back to "
+                     "BC7 Linear");
         compressionMode = DDSCompressionMode::BC7_Linear;
     }
 
     bool ok = false;
-    switch (compressionMode) {
+    switch (compressionMode)
+    {
     case DDSCompressionMode::BC7_sRGB:
         ok = DDSUtils::saveDDS_BC7(outputPath, width, height, rgba.data(), true);
         break;
@@ -192,7 +217,8 @@ bool ChannelPacker::packRMAOS(
         break;
     }
 
-    if (!ok) {
+    if (!ok)
+    {
         spdlog::error("ChannelPacker: failed to save RMAOS DDS");
         return false;
     }

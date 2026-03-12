@@ -5,18 +5,20 @@
 #include <QDialog>
 #include <filesystem>
 
-namespace tpbr {
+namespace tpbr
+{
 
 /// Dialog for importing texture files into a slot.
-class ImportDialog : public QDialog {
+class ImportDialog : public QDialog
+{
     Q_OBJECT
 
-public:
+  public:
     explicit ImportDialog(PBRTextureSlot slot, QWidget* parent = nullptr);
 
     std::filesystem::path selectedFile() const;
 
-private:
+  private:
     PBRTextureSlot m_slot;
     std::filesystem::path m_selectedPath;
 };

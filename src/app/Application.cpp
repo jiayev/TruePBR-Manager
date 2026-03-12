@@ -2,10 +2,10 @@
 #include "MainWindow.h"
 #include "utils/Log.h"
 
-namespace tpbr {
+namespace tpbr
+{
 
-Application::Application(int& argc, char** argv)
-    : m_app(argc, argv)
+Application::Application(int& argc, char** argv) : m_app(argc, argv)
 {
     m_app.setApplicationName("TruePBR Manager");
     m_app.setApplicationVersion("0.1.0");

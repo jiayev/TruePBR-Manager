@@ -4,14 +4,17 @@
 #include <filesystem>
 #include <vector>
 
-namespace tpbr {
+namespace tpbr
+{
 
 /// Image loading helpers wrapping stb_image
-class ImageUtils {
-public:
-    struct ImageData {
-        int width    = 0;
-        int height   = 0;
+class ImageUtils
+{
+  public:
+    struct ImageData
+    {
+        int width = 0;
+        int height = 0;
         int channels = 0;
         std::vector<uint8_t> pixels;
     };

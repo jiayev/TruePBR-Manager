@@ -4,11 +4,13 @@
 
 #include <filesystem>
 
-namespace tpbr {
+namespace tpbr
+{
 
 /// Imports image files (PNG, DDS, TGA, etc.) and populates TextureEntry metadata.
-class TextureImporter {
-public:
+class TextureImporter
+{
+  public:
     /// Import a texture file into a given slot. Fills width/height/channels/format.
     static TextureEntry importTexture(const std::filesystem::path& filePath, PBRTextureSlot slot);
 

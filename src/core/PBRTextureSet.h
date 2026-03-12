@@ -7,23 +7,26 @@
 #include <string>
 #include <vector>
 
-namespace tpbr {
+namespace tpbr
+{
 
 /// PBR texture slot — corresponds to NIF TX00..TX07
-enum class PBRTextureSlot {
-    Diffuse,              // Slot 1 (TX00): Base Color RGB + Opacity A
-    Normal,               // Slot 2 (TX01): Normal Map RGB
-    Emissive,             // Slot 3 (TX02): Glow/Emissive RGB
-    Displacement,         // Slot 4 (TX03): Height R
-    RMAOS,                // Slot 6 (TX05): Roughness R, Metallic G, AO B, Specular A
-    CoatNormalRoughness,  // Slot 7 (TX06): Coat Normal RGB + Coat Roughness A
-    Fuzz,                 // Slot 7 (TX06): Fuzz Color RGB + Fuzz Mask A
-    Subsurface,           // Slot 8 (TX07): Subsurface Color RGB + Opacity A
-    CoatColor,            // Slot 8 (TX07): Coat Color RGB + Strength A
+enum class PBRTextureSlot
+{
+    Diffuse,             // Slot 1 (TX00): Base Color RGB + Opacity A
+    Normal,              // Slot 2 (TX01): Normal Map RGB
+    Emissive,            // Slot 3 (TX02): Glow/Emissive RGB
+    Displacement,        // Slot 4 (TX03): Height R
+    RMAOS,               // Slot 6 (TX05): Roughness R, Metallic G, AO B, Specular A
+    CoatNormalRoughness, // Slot 7 (TX06): Coat Normal RGB + Coat Roughness A
+    Fuzz,                // Slot 7 (TX06): Fuzz Color RGB + Fuzz Mask A
+    Subsurface,          // Slot 8 (TX07): Subsurface Color RGB + Opacity A
+    CoatColor,           // Slot 8 (TX07): Coat Color RGB + Strength A
 };
 
 /// Individual channel maps for RMAOS packing
-enum class ChannelMap {
+enum class ChannelMap
+{
     Roughness,
     Metallic,
     AO,
@@ -31,19 +34,22 @@ enum class ChannelMap {
 };
 
 /// Defines whether RMAOS comes from a packed texture or from split channels.
-enum class RMAOSSourceMode {
+enum class RMAOSSourceMode
+{
     PackedTexture,
     SeparateChannels,
 };
 
-enum class TextureMatchMode {
+enum class TextureMatchMode
+{
     Auto,
     Diffuse,
     Normal,
 };
 
 /// Output DDS compression mode for exported textures.
-enum class DDSCompressionMode {
+enum class DDSCompressionMode
+{
     BC7_sRGB,
     BC7_Linear,
     BC3_sRGB,
@@ -56,7 +62,8 @@ enum class DDSCompressionMode {
     RGBA8_Linear,
 };
 
-enum class TextureAlphaMode {
+enum class TextureAlphaMode
+{
     Unknown,
     None,
     Opaque,
@@ -98,45 +105,49 @@ bool tryParseTextureMatchMode(const std::string& value, TextureMatchMode& mode);
 
 // ─── Texture Entry ──────────────────────────────────────────
 
-struct TextureEntry {
-    std::filesystem::path sourcePath;  // Original imported file
-    PBRTextureSlot        slot{};
-    int                   width    = 0;
-    int                   height   = 0;
-    int                   channels = 0;
-    TextureAlphaMode      alphaMode = TextureAlphaMode::Unknown;
-    std::string           format;      // "png", "dds", "tga", etc.
+struct TextureEntry
+{
+    std::filesystem::path sourcePath; // Original imported file
+    PBRTextureSlot slot{};
+    int width = 0;
+    int height = 0;
+    int channels = 0;
+    TextureAlphaMode alphaMode = TextureAlphaMode::Unknown;
+    std::string format; // "png", "dds", "tga", etc.
 };
 
-struct ChannelMapEntry {
+struct ChannelMapEntry
+{
     std::filesystem::path sourcePath;
-    int                   width    = 0;
-    int                   height   = 0;
-    int                   channels = 0;
-    std::string           format;
+    int width = 0;
+    int height = 0;
+    int channels = 0;
+    std::string format;
 };
 
 // ─── PBR Feature Flags ─────────────────────────────────────
 
-struct PBRFeatureFlags {
-    bool emissive          = false;
-    bool parallax          = false;
-    bool subsurface        = false;
+struct PBRFeatureFlags
+{
+    bool emissive = false;
+    bool parallax = false;
+    bool subsurface = false;
     bool subsurfaceFoliage = false;
-    bool multilayer        = false;
-    bool coatDiffuse       = false;
-    bool coatParallax      = false;
-    bool coatNormal        = false;
-    bool fuzz              = false;
-    bool glint             = false;
-    bool hair              = false;
+    bool multilayer = false;
+    bool coatDiffuse = false;
+    bool coatParallax = false;
+    bool coatNormal = false;
+    bool fuzz = false;
+    bool glint = false;
+    bool hair = false;
 };
 
 // ─── PBR Parameters ────────────────────────────────────────
 
-struct PBRParameters {
-    float specularLevel     = 0.04f;
-    float roughnessScale    = 1.0f;
+struct PBRParameters
+{
+    float specularLevel = 0.04f;
+    float roughnessScale = 1.0f;
     float displacementScale = 1.0f;
     float subsurfaceOpacity = 1.0f;
     std::array<float, 3> subsurfaceColor = {1.0f, 1.0f, 1.0f};
@@ -145,8 +156,8 @@ struct PBRParameters {
     float emissiveScale = 0.0f;
 
     // Multilayer / Coat
-    float coatStrength      = 0.0f;
-    float coatRoughness     = 0.0f;
+    float coatStrength = 0.0f;
+    float coatRoughness = 0.0f;
     float coatSpecularLevel = 0.04f;
 
     // Fuzz
@@ -154,13 +165,13 @@ struct PBRParameters {
     float fuzzWeight = 1.0f;
 
     // Glint
-    float glintScreenSpaceScale     = 0.0f;
+    float glintScreenSpaceScale = 0.0f;
     float glintLogMicrofacetDensity = 0.0f;
-    float glintMicrofacetRoughness  = 0.0f;
+    float glintMicrofacetRoughness = 0.0f;
     float glintDensityRandomization = 0.0f;
 
     // Mesh tweaks
-    bool  vertexColors       = true;
+    bool vertexColors = true;
     float vertexColorLumMult = 1.0f;
     float vertexColorSatMult = 1.0f;
 };
@@ -168,9 +179,10 @@ struct PBRParameters {
 // ─── PBR Texture Set ───────────────────────────────────────
 
 /// One PBR texture set maps to one vanilla texture path.
-struct PBRTextureSet {
-    std::string name;           // Display name (e.g. "WhiterunWoodPlank01")
-    std::string matchTexture;   // Vanilla diffuse path to match (e.g. "architecture\\whiterun\\wrwoodplank01")
+struct PBRTextureSet
+{
+    std::string name;         // Display name (e.g. "WhiterunWoodPlank01")
+    std::string matchTexture; // Vanilla diffuse path to match (e.g. "architecture\\whiterun\\wrwoodplank01")
     TextureMatchMode matchMode = TextureMatchMode::Auto;
 
     /// Assigned textures per slot
@@ -186,7 +198,7 @@ struct PBRTextureSet {
     std::map<ChannelMap, ChannelMapEntry> channelMaps;
 
     PBRFeatureFlags features;
-    PBRParameters   params;
+    PBRParameters params;
 
     std::string tags;
     std::string notes;

@@ -29,11 +29,13 @@
 
 #include "utils/Log.h"
 
-namespace tpbr {
+namespace tpbr
+{
 
 static const char* channelDisplayName(ChannelMap channel)
 {
-    switch (channel) {
+    switch (channel)
+    {
     case ChannelMap::Roughness:
         return "Roughness";
     case ChannelMap::Metallic:
@@ -51,11 +53,13 @@ static QImage loadPreviewImage(const std::filesystem::path& path)
 {
     const auto ext = FileUtils::getExtensionLower(path);
 
-    if (ext == ".dds") {
+    if (ext == ".dds")
+    {
         int width = 0;
         int height = 0;
         std::vector<uint8_t> rgbaPixels;
-        if (!DDSUtils::loadDDS(path, width, height, rgbaPixels) || rgbaPixels.empty()) {
+        if (!DDSUtils::loadDDS(path, width, height, rgbaPixels) || rgbaPixels.empty())
+        {
             return {};
         }
 
@@ -87,8 +91,7 @@ static QLabel* createPlaceholderLabel(const QString& text, QWidget* parent)
     return label;
 }
 
-MainWindow::MainWindow(QWidget* parent)
-    : QMainWindow(parent)
+MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
 {
     setWindowTitle(tr("TruePBR Manager"));
     resize(1280, 800);
@@ -108,7 +111,7 @@ MainWindow::~MainWindow() = default;
 void MainWindow::setupMenuBar()
 {
     auto* fileMenu = menuBar()->addMenu(tr("&File"));
-    fileMenu->addAction(tr("&New Project"),  this, &MainWindow::onNewProject,  QKeySequence::New);
+    fileMenu->addAction(tr("&New Project"), this, &MainWindow::onNewProject, QKeySequence::New);
     fileMenu->addAction(tr("&Open Project"), this, &MainWindow::onOpenProject, QKeySequence::Open);
     fileMenu->addAction(tr("&Save Project"), this, &MainWindow::onSaveProject, QKeySequence::Save);
     fileMenu->addAction(tr("Save Project &As..."), this, &MainWindow::onSaveProjectAs, QKeySequence::SaveAs);
@@ -151,9 +154,9 @@ void MainWindow::setupCentralWidget()
     auto* middleWidget = new QWidget(this);
     auto* middleLayout = new QVBoxLayout(middleWidget);
 
-    m_slotEditor   = new SlotEditorWidget(this);
+    m_slotEditor = new SlotEditorWidget(this);
     m_featurePanel = new FeatureTogglePanel(this);
-    m_paramPanel   = new ParameterPanel(this);
+    m_paramPanel = new ParameterPanel(this);
 
     middleLayout->addWidget(m_slotEditor);
     middleLayout->addWidget(m_featurePanel);
@@ -164,9 +167,9 @@ void MainWindow::setupCentralWidget()
 
     m_editorStack = new QStackedWidget(this);
     m_editorStack->addWidget(middleScroll);
-    m_editorPlaceholder = createPlaceholderLabel(
-        tr("No Texture Set selected.\n\nUse Add to create one, or select an existing Texture Set from the list on the left."),
-        m_editorStack);
+    m_editorPlaceholder = createPlaceholderLabel(tr("No Texture Set selected.\n\nUse Add to create one, or select an "
+                                                    "existing Texture Set from the list on the left."),
+                                                 m_editorStack);
     m_editorStack->addWidget(m_editorPlaceholder);
     splitter->addWidget(m_editorStack);
 
@@ -180,48 +183,31 @@ void MainWindow::setupCentralWidget()
     m_previewStack->addWidget(m_previewPlaceholder);
     splitter->addWidget(m_previewStack);
 
-    splitter->setStretchFactor(0, 1);  // list
-    splitter->setStretchFactor(1, 2);  // editor
-    splitter->setStretchFactor(2, 3);  // preview
+    splitter->setStretchFactor(0, 1); // list
+    splitter->setStretchFactor(1, 2); // editor
+    splitter->setStretchFactor(2, 3); // preview
 
-        rootLayout->addWidget(splitter, 1);
-        setCentralWidget(rootWidget);
+    rootLayout->addWidget(splitter, 1);
+    setCentralWidget(rootWidget);
 
     // Connections
-        connect(m_exportPathEdit, &QLineEdit::editingFinished,
-            this, &MainWindow::onExportPathEdited);
-        connect(m_exportBrowseBtn, &QPushButton::clicked,
-            this, &MainWindow::onBrowseExportFolder);
-        connect(m_exportBtn, &QPushButton::clicked,
-            this, &MainWindow::onExportMod);
-    connect(m_textureSetPanel, &TextureSetPanel::textureSetSelected,
-            this, &MainWindow::onTextureSetSelected);
-    connect(m_textureSetPanel, &TextureSetPanel::addRequested,
-            this, &MainWindow::onAddTextureSet);
-        connect(m_textureSetPanel, &TextureSetPanel::renameRequested,
-            this, &MainWindow::onRenameTextureSet);
-    connect(m_textureSetPanel, &TextureSetPanel::removeRequested,
-            this, &MainWindow::onRemoveTextureSet);
-    connect(m_slotEditor, &SlotEditorWidget::importRequested,
-            this, &MainWindow::onImportTexture);
-    connect(m_slotEditor, &SlotEditorWidget::importChannelRequested,
-            this, &MainWindow::onImportChannel);
-    connect(m_slotEditor, &SlotEditorWidget::fileDroppedOnSlot,
-            this, &MainWindow::onDroppedOnSlot);
-    connect(m_slotEditor, &SlotEditorWidget::fileDroppedOnChannel,
-            this, &MainWindow::onDroppedOnChannel);
-        connect(m_slotEditor, &SlotEditorWidget::rmaosSourceModeChanged,
-            this, &MainWindow::onRmaosSourceModeChanged);
-    connect(m_slotEditor, &SlotEditorWidget::matchTextureChanged,
-            this, &MainWindow::onMatchTextureChanged);
-        connect(m_slotEditor, &SlotEditorWidget::matchTextureModeChanged,
-            this, &MainWindow::onMatchTextureModeChanged);
-    connect(m_slotEditor, &SlotEditorWidget::exportCompressionChanged,
-            this, &MainWindow::onExportCompressionChanged);
-    connect(m_featurePanel, &FeatureTogglePanel::featuresChanged,
-            this, &MainWindow::onFeaturesChanged);
-    connect(m_paramPanel, &ParameterPanel::parametersChanged,
-            this, &MainWindow::onParametersChanged);
+    connect(m_exportPathEdit, &QLineEdit::editingFinished, this, &MainWindow::onExportPathEdited);
+    connect(m_exportBrowseBtn, &QPushButton::clicked, this, &MainWindow::onBrowseExportFolder);
+    connect(m_exportBtn, &QPushButton::clicked, this, &MainWindow::onExportMod);
+    connect(m_textureSetPanel, &TextureSetPanel::textureSetSelected, this, &MainWindow::onTextureSetSelected);
+    connect(m_textureSetPanel, &TextureSetPanel::addRequested, this, &MainWindow::onAddTextureSet);
+    connect(m_textureSetPanel, &TextureSetPanel::renameRequested, this, &MainWindow::onRenameTextureSet);
+    connect(m_textureSetPanel, &TextureSetPanel::removeRequested, this, &MainWindow::onRemoveTextureSet);
+    connect(m_slotEditor, &SlotEditorWidget::importRequested, this, &MainWindow::onImportTexture);
+    connect(m_slotEditor, &SlotEditorWidget::importChannelRequested, this, &MainWindow::onImportChannel);
+    connect(m_slotEditor, &SlotEditorWidget::fileDroppedOnSlot, this, &MainWindow::onDroppedOnSlot);
+    connect(m_slotEditor, &SlotEditorWidget::fileDroppedOnChannel, this, &MainWindow::onDroppedOnChannel);
+    connect(m_slotEditor, &SlotEditorWidget::rmaosSourceModeChanged, this, &MainWindow::onRmaosSourceModeChanged);
+    connect(m_slotEditor, &SlotEditorWidget::matchTextureChanged, this, &MainWindow::onMatchTextureChanged);
+    connect(m_slotEditor, &SlotEditorWidget::matchTextureModeChanged, this, &MainWindow::onMatchTextureModeChanged);
+    connect(m_slotEditor, &SlotEditorWidget::exportCompressionChanged, this, &MainWindow::onExportCompressionChanged);
+    connect(m_featurePanel, &FeatureTogglePanel::featuresChanged, this, &MainWindow::onFeaturesChanged);
+    connect(m_paramPanel, &ParameterPanel::parametersChanged, this, &MainWindow::onParametersChanged);
 }
 
 void MainWindow::setupStatusBar()
@@ -243,8 +229,10 @@ void MainWindow::onNewProject()
 
 void MainWindow::onOpenProject()
 {
-    auto path = QFileDialog::getOpenFileName(this, tr("Open Project"), QString(), tr("TruePBR Project (*.tpbr);;All Files (*)"));
-    if (path.isEmpty()) return;
+    auto path = QFileDialog::getOpenFileName(this, tr("Open Project"), QString(),
+                                             tr("TruePBR Project (*.tpbr);;All Files (*)"));
+    if (path.isEmpty())
+        return;
 
     m_project = Project::load(path.toStdString());
     m_projectFilePath = path.toStdString();
@@ -255,13 +243,15 @@ void MainWindow::onOpenProject()
 
 void MainWindow::onSaveProject()
 {
-    if (!m_projectFilePath.empty()) {
+    if (!m_projectFilePath.empty())
+    {
         saveProjectToPath(QString::fromStdString(m_projectFilePath.string()));
         return;
     }
 
     const QString path = promptProjectSavePath();
-    if (path.isEmpty()) {
+    if (path.isEmpty())
+    {
         return;
     }
 
@@ -271,7 +261,8 @@ void MainWindow::onSaveProject()
 void MainWindow::onSaveProjectAs()
 {
     const QString path = promptProjectSavePath();
-    if (path.isEmpty()) {
+    if (path.isEmpty())
+    {
         return;
     }
 
@@ -282,15 +273,12 @@ void MainWindow::onRenameProject()
 {
     bool ok = false;
     const QString currentName = defaultProjectName(m_project);
-    const QString newName = QInputDialog::getText(
-        this,
-        tr("Project Name"),
-        tr("Project name:"),
-        QLineEdit::Normal,
-        currentName,
-        &ok).trimmed();
+    const QString newName =
+        QInputDialog::getText(this, tr("Project Name"), tr("Project name:"), QLineEdit::Normal, currentName, &ok)
+            .trimmed();
 
-    if (!ok || newName.isEmpty()) {
+    if (!ok || newName.isEmpty())
+    {
         return;
     }
 
@@ -302,23 +290,25 @@ void MainWindow::onRenameProject()
 QString MainWindow::promptProjectSavePath() const
 {
     QString suggestedPath;
-    if (!m_projectFilePath.empty()) {
+    if (!m_projectFilePath.empty())
+    {
         suggestedPath = QString::fromStdString(m_projectFilePath.string());
-    } else {
+    }
+    else
+    {
         suggestedPath = defaultProjectName(m_project) + QStringLiteral(".tpbr");
     }
 
-    QString path = QFileDialog::getSaveFileName(
-        const_cast<MainWindow*>(this),
-        tr("Save Project"),
-        suggestedPath,
-        tr("TruePBR Project (*.tpbr)"));
+    QString path = QFileDialog::getSaveFileName(const_cast<MainWindow*>(this), tr("Save Project"), suggestedPath,
+                                                tr("TruePBR Project (*.tpbr)"));
 
-    if (path.isEmpty()) {
+    if (path.isEmpty())
+    {
         return {};
     }
 
-    if (!path.endsWith(QStringLiteral(".tpbr"), Qt::CaseInsensitive)) {
+    if (!path.endsWith(QStringLiteral(".tpbr"), Qt::CaseInsensitive))
+    {
         path += QStringLiteral(".tpbr");
     }
 
@@ -327,11 +317,13 @@ QString MainWindow::promptProjectSavePath() const
 
 bool MainWindow::saveProjectToPath(const QString& path)
 {
-    if (isPlaceholderProjectName(m_project)) {
+    if (isPlaceholderProjectName(m_project))
+    {
         m_project.name = QFileInfo(path).completeBaseName().toStdString();
     }
 
-    if (!m_project.save(path.toStdString())) {
+    if (!m_project.save(path.toStdString()))
+    {
         QMessageBox::warning(this, tr("Save Project"), tr("Failed to save project."));
         return false;
     }
@@ -346,19 +338,24 @@ void MainWindow::onExportMod()
 {
     onExportPathEdited();
 
-    if (m_project.textureSets.empty()) {
+    if (m_project.textureSets.empty())
+    {
         QMessageBox::information(this, tr("Export"), tr("Add at least one Texture Set before exporting."));
         return;
     }
 
-    if (m_project.outputModFolder.empty()) {
+    if (m_project.outputModFolder.empty())
+    {
         QMessageBox::warning(this, tr("Export"), tr("Please choose an export folder first."));
         return;
     }
 
-    if (ModExporter::exportMod(m_project)) {
+    if (ModExporter::exportMod(m_project))
+    {
         QMessageBox::information(this, tr("Export"), tr("Export successful!"));
-    } else {
+    }
+    else
+    {
         QMessageBox::warning(this, tr("Export"), tr("Export failed. Check log for details."));
     }
 }
@@ -366,17 +363,16 @@ void MainWindow::onExportMod()
 void MainWindow::onBrowseExportFolder()
 {
     const QString currentPath = m_exportPathEdit ? m_exportPathEdit->text() : QString();
-    const QString dir = QFileDialog::getExistingDirectory(
-        this,
-        tr("Select Mod Folder"),
-        currentPath);
+    const QString dir = QFileDialog::getExistingDirectory(this, tr("Select Mod Folder"), currentPath);
 
-    if (dir.isEmpty()) {
+    if (dir.isEmpty())
+    {
         return;
     }
 
     m_project.outputModFolder = dir.toStdString();
-    if (m_exportPathEdit) {
+    if (m_exportPathEdit)
+    {
         m_exportPathEdit->setText(dir);
     }
     statusBar()->showMessage(tr("Export folder set: %1").arg(dir));
@@ -384,7 +380,8 @@ void MainWindow::onBrowseExportFolder()
 
 void MainWindow::onExportPathEdited()
 {
-    if (!m_exportPathEdit) {
+    if (!m_exportPathEdit)
+    {
         return;
     }
 
@@ -394,7 +391,8 @@ void MainWindow::onExportPathEdited()
 void MainWindow::onTextureSetSelected(int index)
 {
     m_currentSetIndex = index;
-    if (index >= 0 && index < static_cast<int>(m_project.textureSets.size())) {
+    if (index >= 0 && index < static_cast<int>(m_project.textureSets.size()))
+    {
         const auto& ts = m_project.textureSets[index];
         m_slotEditor->setTextureSet(ts);
         m_featurePanel->setFeatures(ts.features);
@@ -409,12 +407,14 @@ void MainWindow::onAddTextureSet()
 {
     bool ok = false;
     auto name = QInputDialog::getText(this, tr("New Texture Set"), tr("Name:"), QLineEdit::Normal, "", &ok);
-    if (!ok || name.isEmpty()) return;
+    if (!ok || name.isEmpty())
+        return;
 
     auto match = QInputDialog::getText(this, tr("Vanilla Texture Match"),
-        tr("Vanilla albedo path (e.g. architecture\\whiterun\\wrwoodplank01):"),
-        QLineEdit::Normal, "", &ok);
-    if (!ok || match.isEmpty()) return;
+                                       tr("Vanilla albedo path (e.g. architecture\\whiterun\\wrwoodplank01):"),
+                                       QLineEdit::Normal, "", &ok);
+    if (!ok || match.isEmpty())
+        return;
 
     m_project.addTextureSet(name.toStdString(), match.toStdString());
     m_currentSetIndex = static_cast<int>(m_project.textureSets.size()) - 1;
@@ -426,27 +426,26 @@ void MainWindow::onAddTextureSet()
 
 void MainWindow::onRenameTextureSet(int index)
 {
-    if (index < 0 || index >= static_cast<int>(m_project.textureSets.size())) {
+    if (index < 0 || index >= static_cast<int>(m_project.textureSets.size()))
+    {
         return;
     }
 
     bool ok = false;
     const QString currentName = QString::fromStdString(m_project.textureSets[index].name);
-    const QString newName = QInputDialog::getText(
-        this,
-        tr("Rename Texture Set"),
-        tr("Texture Set name:"),
-        QLineEdit::Normal,
-        currentName,
-        &ok).trimmed();
+    const QString newName = QInputDialog::getText(this, tr("Rename Texture Set"), tr("Texture Set name:"),
+                                                  QLineEdit::Normal, currentName, &ok)
+                                .trimmed();
 
-    if (!ok || newName.isEmpty() || newName == currentName) {
+    if (!ok || newName.isEmpty() || newName == currentName)
+    {
         return;
     }
 
     m_project.textureSets[index].name = newName.toStdString();
     refreshUI();
-    if (index == m_currentSetIndex) {
+    if (index == m_currentSetIndex)
+    {
         onTextureSetSelected(index);
     }
     statusBar()->showMessage(tr("Renamed texture set to: %1").arg(newName));
@@ -454,24 +453,35 @@ void MainWindow::onRenameTextureSet(int index)
 
 void MainWindow::onRemoveTextureSet(int index)
 {
-    if (index < 0 || index >= static_cast<int>(m_project.textureSets.size())) return;
+    if (index < 0 || index >= static_cast<int>(m_project.textureSets.size()))
+        return;
 
-    auto reply = QMessageBox::question(this, tr("Remove"),
+    auto reply = QMessageBox::question(
+        this, tr("Remove"),
         tr("Remove texture set '%1'?").arg(QString::fromStdString(m_project.textureSets[index].name)));
 
-    if (reply == QMessageBox::Yes) {
+    if (reply == QMessageBox::Yes)
+    {
         m_project.removeTextureSet(index);
-        if (m_project.textureSets.empty()) {
+        if (m_project.textureSets.empty())
+        {
             m_currentSetIndex = -1;
-        } else if (index >= static_cast<int>(m_project.textureSets.size())) {
+        }
+        else if (index >= static_cast<int>(m_project.textureSets.size()))
+        {
             m_currentSetIndex = static_cast<int>(m_project.textureSets.size()) - 1;
-        } else {
+        }
+        else
+        {
             m_currentSetIndex = index;
         }
         refreshUI();
-        if (m_currentSetIndex >= 0) {
+        if (m_currentSetIndex >= 0)
+        {
             onTextureSetSelected(m_currentSetIndex);
-        } else {
+        }
+        else
+        {
             updateEditorState();
             refreshPreview();
         }
@@ -480,17 +490,18 @@ void MainWindow::onRemoveTextureSet(int index)
 
 void MainWindow::onImportTexture(PBRTextureSlot slot)
 {
-    if (m_currentSetIndex < 0) return;
+    if (m_currentSetIndex < 0)
+        return;
 
-    auto path = QFileDialog::getOpenFileName(this,
-        tr("Import %1").arg(slotDisplayName(slot)),
-        QString(),
-        TextureImporter::fileFilter());
+    auto path = QFileDialog::getOpenFileName(this, tr("Import %1").arg(slotDisplayName(slot)), QString(),
+                                             TextureImporter::fileFilter());
 
-    if (path.isEmpty()) return;
+    if (path.isEmpty())
+        return;
 
     auto entry = TextureImporter::importTexture(path.toStdString(), slot);
-    if (slot == PBRTextureSlot::RMAOS) {
+    if (slot == PBRTextureSlot::RMAOS)
+    {
         m_project.textureSets[m_currentSetIndex].rmaosSourceMode = RMAOSSourceMode::PackedTexture;
     }
     m_project.textureSets[m_currentSetIndex].textures[slot] = entry;
@@ -498,24 +509,24 @@ void MainWindow::onImportTexture(PBRTextureSlot slot)
     m_slotEditor->setTextureSet(m_project.textureSets[m_currentSetIndex]);
     refreshPreview();
     statusBar()->showMessage(tr("Imported %1: %2 (%3x%4)")
-        .arg(slotDisplayName(slot))
-        .arg(QString::fromStdString(entry.sourcePath.filename().string()))
-        .arg(entry.width)
-        .arg(entry.height));
+                                 .arg(slotDisplayName(slot))
+                                 .arg(QString::fromStdString(entry.sourcePath.filename().string()))
+                                 .arg(entry.width)
+                                 .arg(entry.height));
 }
 
 void MainWindow::onImportChannel(ChannelMap channel)
 {
-    if (m_currentSetIndex < 0) return;
+    if (m_currentSetIndex < 0)
+        return;
 
     const char* name = channelDisplayName(channel);
 
-    auto path = QFileDialog::getOpenFileName(this,
-        tr("Import %1 Channel").arg(name),
-        QString(),
-        TextureImporter::fileFilter());
+    auto path =
+        QFileDialog::getOpenFileName(this, tr("Import %1 Channel").arg(name), QString(), TextureImporter::fileFilter());
 
-    if (path.isEmpty()) return;
+    if (path.isEmpty())
+        return;
 
     auto entry = TextureImporter::importChannelMap(path.toStdString(), channel);
     m_project.textureSets[m_currentSetIndex].rmaosSourceMode = RMAOSSourceMode::SeparateChannels;
@@ -524,18 +535,20 @@ void MainWindow::onImportChannel(ChannelMap channel)
     m_slotEditor->setTextureSet(m_project.textureSets[m_currentSetIndex]);
     refreshPreview();
     statusBar()->showMessage(tr("Imported %1 channel: %2 (%3x%4)")
-        .arg(name)
-        .arg(QString::fromStdString(entry.sourcePath.filename().string()))
-        .arg(entry.width)
-        .arg(entry.height));
+                                 .arg(name)
+                                 .arg(QString::fromStdString(entry.sourcePath.filename().string()))
+                                 .arg(entry.width)
+                                 .arg(entry.height));
 }
 
 void MainWindow::onDroppedOnSlot(PBRTextureSlot slot, const QString& filePath)
 {
-    if (m_currentSetIndex < 0) return;
+    if (m_currentSetIndex < 0)
+        return;
 
     auto entry = TextureImporter::importTexture(filePath.toStdString(), slot);
-    if (slot == PBRTextureSlot::RMAOS) {
+    if (slot == PBRTextureSlot::RMAOS)
+    {
         m_project.textureSets[m_currentSetIndex].rmaosSourceMode = RMAOSSourceMode::PackedTexture;
     }
     m_project.textureSets[m_currentSetIndex].textures[slot] = entry;
@@ -543,15 +556,16 @@ void MainWindow::onDroppedOnSlot(PBRTextureSlot slot, const QString& filePath)
     m_slotEditor->setTextureSet(m_project.textureSets[m_currentSetIndex]);
     refreshPreview();
     statusBar()->showMessage(tr("Dropped %1: %2 (%3x%4)")
-        .arg(slotDisplayName(slot))
-        .arg(QString::fromStdString(entry.sourcePath.filename().string()))
-        .arg(entry.width)
-        .arg(entry.height));
+                                 .arg(slotDisplayName(slot))
+                                 .arg(QString::fromStdString(entry.sourcePath.filename().string()))
+                                 .arg(entry.width)
+                                 .arg(entry.height));
 }
 
 void MainWindow::onDroppedOnChannel(ChannelMap channel, const QString& filePath)
 {
-    if (m_currentSetIndex < 0) return;
+    if (m_currentSetIndex < 0)
+        return;
 
     const char* name = channelDisplayName(channel);
 
@@ -562,15 +576,16 @@ void MainWindow::onDroppedOnChannel(ChannelMap channel, const QString& filePath)
     m_slotEditor->setTextureSet(m_project.textureSets[m_currentSetIndex]);
     refreshPreview();
     statusBar()->showMessage(tr("Dropped %1 channel: %2 (%3x%4)")
-        .arg(name)
-        .arg(QString::fromStdString(entry.sourcePath.filename().string()))
-        .arg(entry.width)
-        .arg(entry.height));
+                                 .arg(name)
+                                 .arg(QString::fromStdString(entry.sourcePath.filename().string()))
+                                 .arg(entry.width)
+                                 .arg(entry.height));
 }
 
 void MainWindow::onRmaosSourceModeChanged(RMAOSSourceMode mode)
 {
-    if (m_currentSetIndex < 0) return;
+    if (m_currentSetIndex < 0)
+        return;
 
     m_project.textureSets[m_currentSetIndex].rmaosSourceMode = mode;
     m_slotEditor->setTextureSet(m_project.textureSets[m_currentSetIndex]);
@@ -578,30 +593,33 @@ void MainWindow::onRmaosSourceModeChanged(RMAOSSourceMode mode)
 
 void MainWindow::onMatchTextureChanged(const QString& newPath)
 {
-    if (m_currentSetIndex < 0) return;
+    if (m_currentSetIndex < 0)
+        return;
     m_project.textureSets[m_currentSetIndex].matchTexture = newPath.toStdString();
     spdlog::debug("Match texture updated: {}", newPath.toStdString());
 }
 
 void MainWindow::onMatchTextureModeChanged(TextureMatchMode mode)
 {
-    if (m_currentSetIndex < 0) return;
+    if (m_currentSetIndex < 0)
+        return;
     m_project.textureSets[m_currentSetIndex].matchMode = mode;
     spdlog::debug("Match texture mode updated: {}", textureMatchModeKey(mode));
 }
 
 void MainWindow::onExportCompressionChanged(PBRTextureSlot slot, DDSCompressionMode mode)
 {
-    if (m_currentSetIndex < 0) return;
+    if (m_currentSetIndex < 0)
+        return;
 
     m_project.textureSets[m_currentSetIndex].exportCompression[slot] = mode;
-    spdlog::debug("Export compression updated: {} -> {}",
-                  slotDisplayName(slot), compressionModeKey(mode));
+    spdlog::debug("Export compression updated: {} -> {}", slotDisplayName(slot), compressionModeKey(mode));
 }
 
 void MainWindow::onFeaturesChanged(const PBRFeatureFlags& flags)
 {
-    if (m_currentSetIndex < 0) return;
+    if (m_currentSetIndex < 0)
+        return;
     m_project.textureSets[m_currentSetIndex].features = flags;
     m_slotEditor->updateSlots(flags);
     m_paramPanel->setParameters(m_project.textureSets[m_currentSetIndex].params, flags);
@@ -609,7 +627,8 @@ void MainWindow::onFeaturesChanged(const PBRFeatureFlags& flags)
 
 void MainWindow::onParametersChanged(const PBRParameters& params)
 {
-    if (m_currentSetIndex < 0) return;
+    if (m_currentSetIndex < 0)
+        return;
     m_project.textureSets[m_currentSetIndex].params = params;
 }
 
@@ -618,29 +637,37 @@ void MainWindow::onParametersChanged(const PBRParameters& params)
 void MainWindow::refreshUI()
 {
     m_textureSetPanel->setTextureSets(m_project.textureSets);
-    if (m_currentSetIndex >= 0 && m_currentSetIndex < static_cast<int>(m_project.textureSets.size())) {
+    if (m_currentSetIndex >= 0 && m_currentSetIndex < static_cast<int>(m_project.textureSets.size()))
+    {
         m_textureSetPanel->setCurrentIndex(m_currentSetIndex);
-    } else {
+    }
+    else
+    {
         m_textureSetPanel->setCurrentIndex(-1);
     }
     setWindowTitle(tr("TruePBR Manager - %1").arg(defaultProjectName(m_project)));
 
-    if (m_exportPathEdit) {
+    if (m_exportPathEdit)
+    {
         const QString exportPath = QString::fromStdString(m_project.outputModFolder.string());
-        if (m_exportPathEdit->text() != exportPath) {
+        if (m_exportPathEdit->text() != exportPath)
+        {
             m_exportPathEdit->setText(exportPath);
         }
     }
 
-    if (m_exportBtn) {
+    if (m_exportBtn)
+    {
         m_exportBtn->setEnabled(!m_project.textureSets.empty());
     }
 
     updateEditorState();
 
-    if (m_currentSetIndex < 0 || m_currentSetIndex >= static_cast<int>(m_project.textureSets.size())) {
+    if (m_currentSetIndex < 0 || m_currentSetIndex >= static_cast<int>(m_project.textureSets.size()))
+    {
         m_previewWidget->clear();
-        if (m_previewStack != nullptr) {
+        if (m_previewStack != nullptr)
+        {
             m_previewStack->setCurrentWidget(m_previewPlaceholder);
         }
     }
@@ -648,35 +675,43 @@ void MainWindow::refreshUI()
 
 void MainWindow::updateEditorState()
 {
-    const bool hasSelection = m_currentSetIndex >= 0
-        && m_currentSetIndex < static_cast<int>(m_project.textureSets.size());
+    const bool hasSelection =
+        m_currentSetIndex >= 0 && m_currentSetIndex < static_cast<int>(m_project.textureSets.size());
 
-    if (m_editorStack != nullptr) {
-        if (hasSelection) {
+    if (m_editorStack != nullptr)
+    {
+        if (hasSelection)
+        {
             m_editorStack->setCurrentIndex(0);
-        } else {
+        }
+        else
+        {
             const bool hasAnyTextureSet = !m_project.textureSets.empty();
-            m_editorPlaceholder->setText(hasAnyTextureSet
-                ? tr("Select a Texture Set from the list on the left to edit its textures, features, and parameters.")
-                : tr("No Texture Sets yet.\n\nUse Add on the left to create your first Texture Set."));
+            m_editorPlaceholder->setText(
+                hasAnyTextureSet ? tr("Select a Texture Set from the list on the left to edit its textures, features, "
+                                      "and parameters.")
+                                 : tr("No Texture Sets yet.\n\nUse Add on the left to create your first Texture Set."));
             m_editorStack->setCurrentWidget(m_editorPlaceholder);
         }
     }
 
-    if (!hasSelection && m_previewStack != nullptr) {
+    if (!hasSelection && m_previewStack != nullptr)
+    {
         const bool hasAnyTextureSet = !m_project.textureSets.empty();
         m_previewPlaceholder->setText(hasAnyTextureSet
-            ? tr("Select a Texture Set to see its texture preview.")
-            : tr("Preview will appear here after you create and select a Texture Set."));
+                                          ? tr("Select a Texture Set to see its texture preview.")
+                                          : tr("Preview will appear here after you create and select a Texture Set."));
         m_previewStack->setCurrentWidget(m_previewPlaceholder);
     }
 }
 
 void MainWindow::refreshPreview()
 {
-    if (m_currentSetIndex < 0 || m_currentSetIndex >= static_cast<int>(m_project.textureSets.size())) {
+    if (m_currentSetIndex < 0 || m_currentSetIndex >= static_cast<int>(m_project.textureSets.size()))
+    {
         m_previewWidget->clear();
-        if (m_previewStack != nullptr) {
+        if (m_previewStack != nullptr)
+        {
             m_previewStack->setCurrentWidget(m_previewPlaceholder);
         }
         return;
@@ -684,34 +719,41 @@ void MainWindow::refreshPreview()
 
     const auto& textureSet = m_project.textureSets[m_currentSetIndex];
 
-    const auto tryShowTexture = [this](PBRTextureSlot slot, const PBRTextureSet& set) {
+    const auto tryShowTexture = [this](PBRTextureSlot slot, const PBRTextureSet& set)
+    {
         auto it = set.textures.find(slot);
-        if (it == set.textures.end() || it->second.sourcePath.empty()) {
+        if (it == set.textures.end() || it->second.sourcePath.empty())
+        {
             return false;
         }
 
         const QImage image = loadPreviewImage(it->second.sourcePath);
-        if (image.isNull()) {
+        if (image.isNull())
+        {
             return false;
         }
 
         m_previewWidget->setImage(image);
-        if (m_previewStack != nullptr) {
+        if (m_previewStack != nullptr)
+        {
             m_previewStack->setCurrentWidget(m_previewWidget);
         }
         return true;
     };
 
-    if (tryShowTexture(PBRTextureSlot::Diffuse, textureSet)) {
+    if (tryShowTexture(PBRTextureSlot::Diffuse, textureSet))
+    {
         return;
     }
 
-    if (tryShowTexture(PBRTextureSlot::Normal, textureSet)) {
+    if (tryShowTexture(PBRTextureSlot::Normal, textureSet))
+    {
         return;
     }
 
     m_previewWidget->clear();
-    if (m_previewStack != nullptr) {
+    if (m_previewStack != nullptr)
+    {
         m_previewPlaceholder->setText(tr("No previewable texture has been imported for the selected Texture Set yet."));
         m_previewStack->setCurrentWidget(m_previewPlaceholder);
     }

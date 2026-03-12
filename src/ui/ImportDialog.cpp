@@ -4,24 +4,23 @@
 
 #include <QFileDialog>
 
-namespace tpbr {
+namespace tpbr
+{
 
-ImportDialog::ImportDialog(PBRTextureSlot slot, QWidget* parent)
-    : QDialog(parent)
-    , m_slot(slot)
+ImportDialog::ImportDialog(PBRTextureSlot slot, QWidget* parent) : QDialog(parent), m_slot(slot)
 {
     setWindowTitle(tr("Import %1").arg(slotDisplayName(slot)));
 
-    auto path = QFileDialog::getOpenFileName(
-        this,
-        tr("Import %1").arg(slotDisplayName(slot)),
-        QString(),
-        TextureImporter::fileFilter());
+    auto path = QFileDialog::getOpenFileName(this, tr("Import %1").arg(slotDisplayName(slot)), QString(),
+                                             TextureImporter::fileFilter());
 
-    if (!path.isEmpty()) {
+    if (!path.isEmpty())
+    {
         m_selectedPath = path.toStdString();
         accept();
-    } else {
+    }
+    else
+    {
         reject();
     }
 }

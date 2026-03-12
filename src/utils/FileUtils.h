@@ -4,10 +4,12 @@
 #include <string>
 #include <vector>
 
-namespace tpbr {
+namespace tpbr
+{
 
-class FileUtils {
-public:
+class FileUtils
+{
+  public:
     /// Get file extension in lowercase (e.g. ".dds", ".png")
     static std::string getExtensionLower(const std::filesystem::path& path);
 

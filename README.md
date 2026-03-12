@@ -77,6 +77,34 @@ textures/pbr/architecture/whiterun/
 
 ## Building
 
+## Pre-commit
+
+The repository includes a pre-commit configuration focused on automatic formatting and basic text hygiene:
+
+- `clang-format` for C and C++ source files under `src/`
+- `end-of-file-fixer` to normalize the final newline
+- `trailing-whitespace` to trim trailing spaces while preserving Markdown hard line breaks
+- `check-yaml`, `check-merge-conflict`, `check-case-conflict`, and `check-illegal-windows-names`
+
+If you are using `prek`, install the hook scripts with:
+
+```powershell
+prek install
+```
+
+To format and normalize the whole repository once:
+
+```powershell
+prek run --all-files
+```
+
+If you are using the reference `pre-commit` CLI instead, the equivalent commands are:
+
+```powershell
+pre-commit install
+pre-commit run --all-files
+```
+
 ### Requirements
 
 - Windows x64

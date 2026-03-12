@@ -6,12 +6,14 @@
 #include <string>
 #include <vector>
 
-namespace tpbr {
+namespace tpbr
+{
 
 /// Top-level project — contains multiple PBR texture sets and export settings.
-struct Project {
-    std::string               name;
-    std::filesystem::path     outputModFolder;
+struct Project
+{
+    std::string name;
+    std::filesystem::path outputModFolder;
     std::vector<PBRTextureSet> textureSets;
 
     /// Add a new empty texture set, returns its index.

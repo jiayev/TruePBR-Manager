@@ -3,10 +3,10 @@
 #include <QGroupBox>
 #include <QVBoxLayout>
 
-namespace tpbr {
+namespace tpbr
+{
 
-FeatureTogglePanel::FeatureTogglePanel(QWidget* parent)
-    : QWidget(parent)
+FeatureTogglePanel::FeatureTogglePanel(QWidget* parent) : QWidget(parent)
 {
     setupUI();
 }
@@ -15,23 +15,24 @@ void FeatureTogglePanel::setupUI()
 {
     auto* layout = new QVBoxLayout(this);
 
-    auto addCheck = [&](QCheckBox*& cb, const QString& text) {
+    auto addCheck = [&](QCheckBox*& cb, const QString& text)
+    {
         cb = new QCheckBox(text, this);
         layout->addWidget(cb);
         connect(cb, &QCheckBox::toggled, this, &FeatureTogglePanel::onAnyToggled);
     };
 
-    addCheck(m_emissive,          tr("Emissive / Glow"));
-    addCheck(m_parallax,          tr("Parallax (Displacement)"));
-    addCheck(m_subsurface,        tr("Subsurface Scattering"));
+    addCheck(m_emissive, tr("Emissive / Glow"));
+    addCheck(m_parallax, tr("Parallax (Displacement)"));
+    addCheck(m_subsurface, tr("Subsurface Scattering"));
     addCheck(m_subsurfaceFoliage, tr("Two-Sided Foliage"));
-    addCheck(m_multilayer,        tr("Multilayer Parallax"));
-    addCheck(m_coatNormal,        tr("Coat Normal"));
-    addCheck(m_coatDiffuse,       tr("Coat Diffuse Color"));
-    addCheck(m_coatParallax,      tr("Coat Parallax"));
-    addCheck(m_fuzz,              tr("Fuzz (Cloth/Velvet)"));
-    addCheck(m_glint,             tr("Glint (Sparkle)"));
-    addCheck(m_hair,              tr("Hair Model"));
+    addCheck(m_multilayer, tr("Multilayer Parallax"));
+    addCheck(m_coatNormal, tr("Coat Normal"));
+    addCheck(m_coatDiffuse, tr("Coat Diffuse Color"));
+    addCheck(m_coatParallax, tr("Coat Parallax"));
+    addCheck(m_fuzz, tr("Fuzz (Cloth/Velvet)"));
+    addCheck(m_glint, tr("Glint (Sparkle)"));
+    addCheck(m_hair, tr("Hair Model"));
 
     layout->addStretch();
 }
@@ -59,17 +60,17 @@ void FeatureTogglePanel::setFeatures(const PBRFeatureFlags& f)
 PBRFeatureFlags FeatureTogglePanel::getFeatures() const
 {
     PBRFeatureFlags f;
-    f.emissive          = m_emissive->isChecked();
-    f.parallax          = m_parallax->isChecked();
-    f.subsurface        = m_subsurface->isChecked();
+    f.emissive = m_emissive->isChecked();
+    f.parallax = m_parallax->isChecked();
+    f.subsurface = m_subsurface->isChecked();
     f.subsurfaceFoliage = m_subsurfaceFoliage->isChecked();
-    f.multilayer        = m_multilayer->isChecked();
-    f.coatNormal        = m_coatNormal->isChecked();
-    f.coatDiffuse       = m_coatDiffuse->isChecked();
-    f.coatParallax      = m_coatParallax->isChecked();
-    f.fuzz              = m_fuzz->isChecked();
-    f.glint             = m_glint->isChecked();
-    f.hair              = m_hair->isChecked();
+    f.multilayer = m_multilayer->isChecked();
+    f.coatNormal = m_coatNormal->isChecked();
+    f.coatDiffuse = m_coatDiffuse->isChecked();
+    f.coatParallax = m_coatParallax->isChecked();
+    f.fuzz = m_fuzz->isChecked();
+    f.glint = m_glint->isChecked();
+    f.hair = m_hair->isChecked();
     return f;
 }
 

@@ -22,18 +22,19 @@
 #include <filesystem>
 #include <string>
 
-namespace tpbr {
+namespace tpbr
+{
 
-class Log {
-public:
+class Log
+{
+  public:
     /// Initialize the logging system.
     /// Creates a dual-sink logger: console (colored) + rotating file.
     /// File logs go to: %APPDATA%/TruePBR-Manager/logs/truepbr.log
     /// @param consoleLevel  Minimum level for console output (default: info)
     /// @param fileLevel     Minimum level for file output (default: debug)
-    static void init(
-        spdlog::level::level_enum consoleLevel = spdlog::level::info,
-        spdlog::level::level_enum fileLevel    = spdlog::level::debug);
+    static void init(spdlog::level::level_enum consoleLevel = spdlog::level::info,
+                     spdlog::level::level_enum fileLevel = spdlog::level::debug);
 
     /// Flush all loggers and shut down spdlog. Call before exit.
     static void shutdown();

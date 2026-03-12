@@ -6,64 +6,66 @@
 #include <QDoubleSpinBox>
 #include <QWidget>
 
-namespace tpbr {
+namespace tpbr
+{
 
 /// Panel for editing all PBR numeric parameters, with sections shown/hidden
 /// based on feature flags.
-class ParameterPanel : public QWidget {
+class ParameterPanel : public QWidget
+{
     Q_OBJECT
 
-public:
+  public:
     explicit ParameterPanel(QWidget* parent = nullptr);
 
     void setParameters(const PBRParameters& params, const PBRFeatureFlags& features);
     PBRParameters getParameters() const;
 
-signals:
+  signals:
     void parametersChanged(const PBRParameters& params);
 
-private:
+  private:
     void setupUI();
     void onAnyChanged();
 
     // Base
-    QDoubleSpinBox* m_specularLevel     = nullptr;
-    QDoubleSpinBox* m_roughnessScale    = nullptr;
+    QDoubleSpinBox* m_specularLevel = nullptr;
+    QDoubleSpinBox* m_roughnessScale = nullptr;
 
     // Parallax
-    QWidget*        m_parallaxSection   = nullptr;
+    QWidget* m_parallaxSection = nullptr;
     QDoubleSpinBox* m_displacementScale = nullptr;
 
     // Emissive
-    QWidget*        m_emissiveSection   = nullptr;
-    QDoubleSpinBox* m_emissiveScale     = nullptr;
+    QWidget* m_emissiveSection = nullptr;
+    QDoubleSpinBox* m_emissiveScale = nullptr;
 
     // Subsurface
-    QWidget*        m_subsurfaceSection    = nullptr;
-    QDoubleSpinBox* m_subsurfaceOpacity    = nullptr;
-    QDoubleSpinBox* m_subsurfaceColorR     = nullptr;
-    QDoubleSpinBox* m_subsurfaceColorG     = nullptr;
-    QDoubleSpinBox* m_subsurfaceColorB     = nullptr;
+    QWidget* m_subsurfaceSection = nullptr;
+    QDoubleSpinBox* m_subsurfaceOpacity = nullptr;
+    QDoubleSpinBox* m_subsurfaceColorR = nullptr;
+    QDoubleSpinBox* m_subsurfaceColorG = nullptr;
+    QDoubleSpinBox* m_subsurfaceColorB = nullptr;
 
     // Coat / Multilayer
-    QWidget*        m_coatSection          = nullptr;
-    QDoubleSpinBox* m_coatStrength         = nullptr;
-    QDoubleSpinBox* m_coatRoughness        = nullptr;
-    QDoubleSpinBox* m_coatSpecularLevel    = nullptr;
+    QWidget* m_coatSection = nullptr;
+    QDoubleSpinBox* m_coatStrength = nullptr;
+    QDoubleSpinBox* m_coatRoughness = nullptr;
+    QDoubleSpinBox* m_coatSpecularLevel = nullptr;
 
     // Fuzz
-    QWidget*        m_fuzzSection          = nullptr;
-    QDoubleSpinBox* m_fuzzColorR           = nullptr;
-    QDoubleSpinBox* m_fuzzColorG           = nullptr;
-    QDoubleSpinBox* m_fuzzColorB           = nullptr;
-    QDoubleSpinBox* m_fuzzWeight           = nullptr;
+    QWidget* m_fuzzSection = nullptr;
+    QDoubleSpinBox* m_fuzzColorR = nullptr;
+    QDoubleSpinBox* m_fuzzColorG = nullptr;
+    QDoubleSpinBox* m_fuzzColorB = nullptr;
+    QDoubleSpinBox* m_fuzzWeight = nullptr;
 
     // Glint
-    QWidget*        m_glintSection                = nullptr;
-    QDoubleSpinBox* m_glintScreenSpaceScale       = nullptr;
-    QDoubleSpinBox* m_glintLogMicrofacetDensity   = nullptr;
-    QDoubleSpinBox* m_glintMicrofacetRoughness    = nullptr;
-    QDoubleSpinBox* m_glintDensityRandomization   = nullptr;
+    QWidget* m_glintSection = nullptr;
+    QDoubleSpinBox* m_glintScreenSpaceScale = nullptr;
+    QDoubleSpinBox* m_glintLogMicrofacetDensity = nullptr;
+    QDoubleSpinBox* m_glintMicrofacetRoughness = nullptr;
+    QDoubleSpinBox* m_glintDensityRandomization = nullptr;
 };
 
 } // namespace tpbr

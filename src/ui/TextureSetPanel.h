@@ -8,28 +8,30 @@
 
 #include <vector>
 
-namespace tpbr {
+namespace tpbr
+{
 
 /// Panel showing the list of PBR texture sets with add/remove controls.
-class TextureSetPanel : public QWidget {
+class TextureSetPanel : public QWidget
+{
     Q_OBJECT
 
-public:
+  public:
     explicit TextureSetPanel(QWidget* parent = nullptr);
 
     void setTextureSets(const std::vector<PBRTextureSet>& sets);
     void setCurrentIndex(int index);
-    int  currentIndex() const;
+    int currentIndex() const;
 
-signals:
+  signals:
     void textureSetSelected(int index);
     void addRequested();
     void renameRequested(int index);
     void removeRequested(int index);
 
-private:
-    QListWidget* m_listWidget  = nullptr;
-    QPushButton* m_addButton   = nullptr;
+  private:
+    QListWidget* m_listWidget = nullptr;
+    QPushButton* m_addButton = nullptr;
     QPushButton* m_renameButton = nullptr;
     QPushButton* m_removeButton = nullptr;
 

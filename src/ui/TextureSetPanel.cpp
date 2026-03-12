@@ -4,10 +4,10 @@
 #include <QSignalBlocker>
 #include <QVBoxLayout>
 
-namespace tpbr {
+namespace tpbr
+{
 
-TextureSetPanel::TextureSetPanel(QWidget* parent)
-    : QWidget(parent)
+TextureSetPanel::TextureSetPanel(QWidget* parent) : QWidget(parent)
 {
     setupUI();
 }
@@ -20,7 +20,7 @@ void TextureSetPanel::setupUI()
     layout->addWidget(m_listWidget);
 
     auto* buttonLayout = new QHBoxLayout();
-    m_addButton    = new QPushButton(tr("Add"), this);
+    m_addButton = new QPushButton(tr("Add"), this);
     m_renameButton = new QPushButton(tr("Rename"), this);
     m_removeButton = new QPushButton(tr("Remove"), this);
     buttonLayout->addWidget(m_addButton);
@@ -29,25 +29,31 @@ void TextureSetPanel::setupUI()
     layout->addLayout(buttonLayout);
 
     connect(m_listWidget, &QListWidget::currentRowChanged, this, &TextureSetPanel::textureSetSelected);
-    connect(m_addButton,  &QPushButton::clicked, this, &TextureSetPanel::addRequested);
-    connect(m_renameButton, &QPushButton::clicked, this, [this]() {
-        int idx = m_listWidget->currentRow();
-        if (idx >= 0) {
-            emit renameRequested(idx);
-        }
-    });
-    connect(m_removeButton, &QPushButton::clicked, this, [this]() {
-        int idx = m_listWidget->currentRow();
-        if (idx >= 0)
-            emit removeRequested(idx);
-    });
+    connect(m_addButton, &QPushButton::clicked, this, &TextureSetPanel::addRequested);
+    connect(m_renameButton, &QPushButton::clicked, this,
+            [this]()
+            {
+                int idx = m_listWidget->currentRow();
+                if (idx >= 0)
+                {
+                    emit renameRequested(idx);
+                }
+            });
+    connect(m_removeButton, &QPushButton::clicked, this,
+            [this]()
+            {
+                int idx = m_listWidget->currentRow();
+                if (idx >= 0)
+                    emit removeRequested(idx);
+            });
 }
 
 void TextureSetPanel::setTextureSets(const std::vector<PBRTextureSet>& sets)
 {
     const QSignalBlocker blocker(m_listWidget);
     m_listWidget->clear();
-    for (const auto& ts : sets) {
+    for (const auto& ts : sets)
+    {
         m_listWidget->addItem(QString::fromStdString(ts.name));
     }
 

@@ -5,16 +5,16 @@
 #include <filesystem>
 #include <string>
 
-namespace tpbr {
+namespace tpbr
+{
 
 /// Generates PGPatcher-compatible JSON files from a project.
-class JsonExporter {
-public:
+class JsonExporter
+{
+  public:
     /// Export PGPatcher JSON for all texture sets in the project.
     /// Output: <outputDir>/PBRNIFPatcher/<projectName>.json
-    static bool exportPGPatcherJson(
-        const Project& project,
-        const std::filesystem::path& outputDir);
+    static bool exportPGPatcherJson(const Project& project, const std::filesystem::path& outputDir);
 
     /// Generate JSON string for a single texture set entry.
     static std::string serializeEntry(const PBRTextureSet& textureSet);

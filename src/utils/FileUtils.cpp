@@ -2,7 +2,8 @@
 
 #include <algorithm>
 
-namespace tpbr {
+namespace tpbr
+{
 
 std::string FileUtils::getExtensionLower(const std::filesystem::path& path)
 {
@@ -23,8 +24,10 @@ std::vector<std::filesystem::path> FileUtils::listImages(const std::filesystem::
     if (!std::filesystem::is_directory(dir))
         return result;
 
-    for (const auto& entry : std::filesystem::directory_iterator(dir)) {
-        if (entry.is_regular_file() && isSupportedImage(entry.path())) {
+    for (const auto& entry : std::filesystem::directory_iterator(dir))
+    {
+        if (entry.is_regular_file() && isSupportedImage(entry.path()))
+        {
             result.push_back(entry.path());
         }
     }

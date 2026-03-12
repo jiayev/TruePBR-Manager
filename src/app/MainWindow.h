@@ -8,7 +8,8 @@
 #include <QPushButton>
 #include <QStackedWidget>
 
-namespace tpbr {
+namespace tpbr
+{
 
 class TexturePreviewWidget;
 class TextureSetPanel;
@@ -16,14 +17,15 @@ class SlotEditorWidget;
 class FeatureTogglePanel;
 class ParameterPanel;
 
-class MainWindow : public QMainWindow {
+class MainWindow : public QMainWindow
+{
     Q_OBJECT
 
-public:
+  public:
     explicit MainWindow(QWidget* parent = nullptr);
     ~MainWindow() override;
 
-private slots:
+  private slots:
     void onNewProject();
     void onOpenProject();
     void onSaveProject();
@@ -48,7 +50,7 @@ private slots:
     void onFeaturesChanged(const PBRFeatureFlags& flags);
     void onParametersChanged(const PBRParameters& params);
 
-private:
+  private:
     void setupMenuBar();
     void setupCentralWidget();
     void setupStatusBar();
@@ -60,21 +62,21 @@ private:
 
     Project m_project;
     std::filesystem::path m_projectFilePath;
-    int     m_currentSetIndex = -1;
+    int m_currentSetIndex = -1;
 
     // UI components
-    TextureSetPanel*      m_textureSetPanel  = nullptr;
-    SlotEditorWidget*     m_slotEditor       = nullptr;
-    FeatureTogglePanel*   m_featurePanel     = nullptr;
-    ParameterPanel*       m_paramPanel       = nullptr;
-    TexturePreviewWidget* m_previewWidget    = nullptr;
-    ::QLineEdit*          m_exportPathEdit   = nullptr;
-    ::QPushButton*        m_exportBrowseBtn  = nullptr;
-    ::QPushButton*        m_exportBtn        = nullptr;
-    QStackedWidget*       m_editorStack      = nullptr;
-    QStackedWidget*       m_previewStack     = nullptr;
-    QLabel*               m_editorPlaceholder = nullptr;
-    QLabel*               m_previewPlaceholder = nullptr;
+    TextureSetPanel* m_textureSetPanel = nullptr;
+    SlotEditorWidget* m_slotEditor = nullptr;
+    FeatureTogglePanel* m_featurePanel = nullptr;
+    ParameterPanel* m_paramPanel = nullptr;
+    TexturePreviewWidget* m_previewWidget = nullptr;
+    ::QLineEdit* m_exportPathEdit = nullptr;
+    ::QPushButton* m_exportBrowseBtn = nullptr;
+    ::QPushButton* m_exportBtn = nullptr;
+    QStackedWidget* m_editorStack = nullptr;
+    QStackedWidget* m_previewStack = nullptr;
+    QLabel* m_editorPlaceholder = nullptr;
+    QLabel* m_previewPlaceholder = nullptr;
 };
 
 } // namespace tpbr

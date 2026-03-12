@@ -4,10 +4,10 @@
 #include <QGraphicsScene>
 #include <QWheelEvent>
 
-namespace tpbr {
+namespace tpbr
+{
 
-TexturePreviewWidget::TexturePreviewWidget(QWidget* parent)
-    : QGraphicsView(parent)
+TexturePreviewWidget::TexturePreviewWidget(QWidget* parent) : QGraphicsView(parent)
 {
     m_scene = new QGraphicsScene(this);
     setScene(m_scene);

@@ -1,42 +1,66 @@
 #include "PBRTextureSet.h"
 
-namespace tpbr {
+namespace tpbr
+{
 
 const char* slotSuffix(PBRTextureSlot slot)
 {
-    switch (slot) {
-    case PBRTextureSlot::Diffuse:             return ".dds";
-    case PBRTextureSlot::Normal:              return "_n.dds";
-    case PBRTextureSlot::Emissive:            return "_g.dds";
-    case PBRTextureSlot::Displacement:        return "_p.dds";
-    case PBRTextureSlot::RMAOS:              return "_rmaos.dds";
-    case PBRTextureSlot::CoatNormalRoughness: return "_cnr.dds";
-    case PBRTextureSlot::Fuzz:               return "_f.dds";
-    case PBRTextureSlot::Subsurface:         return "_s.dds";
-    case PBRTextureSlot::CoatColor:          return "_s.dds";
-    default:                                  return ".dds";
+    switch (slot)
+    {
+    case PBRTextureSlot::Diffuse:
+        return ".dds";
+    case PBRTextureSlot::Normal:
+        return "_n.dds";
+    case PBRTextureSlot::Emissive:
+        return "_g.dds";
+    case PBRTextureSlot::Displacement:
+        return "_p.dds";
+    case PBRTextureSlot::RMAOS:
+        return "_rmaos.dds";
+    case PBRTextureSlot::CoatNormalRoughness:
+        return "_cnr.dds";
+    case PBRTextureSlot::Fuzz:
+        return "_f.dds";
+    case PBRTextureSlot::Subsurface:
+        return "_s.dds";
+    case PBRTextureSlot::CoatColor:
+        return "_s.dds";
+    default:
+        return ".dds";
     }
 }
 
 const char* slotDisplayName(PBRTextureSlot slot)
 {
-    switch (slot) {
-    case PBRTextureSlot::Diffuse:             return "Albedo (Base Color)";
-    case PBRTextureSlot::Normal:              return "Normal Map";
-    case PBRTextureSlot::Emissive:            return "Emissive / Glow";
-    case PBRTextureSlot::Displacement:        return "Displacement / Height";
-    case PBRTextureSlot::RMAOS:              return "RMAOS (Packed)";
-    case PBRTextureSlot::CoatNormalRoughness: return "Coat Normal + Roughness";
-    case PBRTextureSlot::Fuzz:               return "Fuzz";
-    case PBRTextureSlot::Subsurface:         return "Subsurface";
-    case PBRTextureSlot::CoatColor:          return "Coat Color + Strength";
-    default:                                  return "Unknown";
+    switch (slot)
+    {
+    case PBRTextureSlot::Diffuse:
+        return "Albedo (Base Color)";
+    case PBRTextureSlot::Normal:
+        return "Normal Map";
+    case PBRTextureSlot::Emissive:
+        return "Emissive / Glow";
+    case PBRTextureSlot::Displacement:
+        return "Displacement / Height";
+    case PBRTextureSlot::RMAOS:
+        return "RMAOS (Packed)";
+    case PBRTextureSlot::CoatNormalRoughness:
+        return "Coat Normal + Roughness";
+    case PBRTextureSlot::Fuzz:
+        return "Fuzz";
+    case PBRTextureSlot::Subsurface:
+        return "Subsurface";
+    case PBRTextureSlot::CoatColor:
+        return "Coat Color + Strength";
+    default:
+        return "Unknown";
     }
 }
 
 DDSCompressionMode defaultCompressionForSlot(PBRTextureSlot slot)
 {
-    switch (slot) {
+    switch (slot)
+    {
     case PBRTextureSlot::Diffuse:
     case PBRTextureSlot::Subsurface:
     case PBRTextureSlot::Fuzz:
@@ -59,77 +83,111 @@ DDSCompressionMode defaultCompressionForSlot(PBRTextureSlot slot)
 
 const char* compressionModeDisplayName(DDSCompressionMode mode)
 {
-    switch (mode) {
-    case DDSCompressionMode::BC7_sRGB:    return "BC7 sRGB";
-    case DDSCompressionMode::BC7_Linear:  return "BC7 Linear";
-    case DDSCompressionMode::BC3_sRGB:    return "BC3 sRGB";
-    case DDSCompressionMode::BC6H_UF16:   return "BC6H UF16";
-    case DDSCompressionMode::BC5_Linear:  return "BC5 Linear";
-    case DDSCompressionMode::BC4_Linear:  return "BC4 Linear";
-    case DDSCompressionMode::BC1_sRGB:    return "BC1 sRGB";
-    case DDSCompressionMode::BC1_Linear:  return "BC1 Linear";
-    case DDSCompressionMode::RGBA8_sRGB:  return "RGBA8 sRGB";
-    case DDSCompressionMode::RGBA8_Linear: return "RGBA8 Linear";
-    default:                               return "BC7 Linear";
+    switch (mode)
+    {
+    case DDSCompressionMode::BC7_sRGB:
+        return "BC7 sRGB";
+    case DDSCompressionMode::BC7_Linear:
+        return "BC7 Linear";
+    case DDSCompressionMode::BC3_sRGB:
+        return "BC3 sRGB";
+    case DDSCompressionMode::BC6H_UF16:
+        return "BC6H UF16";
+    case DDSCompressionMode::BC5_Linear:
+        return "BC5 Linear";
+    case DDSCompressionMode::BC4_Linear:
+        return "BC4 Linear";
+    case DDSCompressionMode::BC1_sRGB:
+        return "BC1 sRGB";
+    case DDSCompressionMode::BC1_Linear:
+        return "BC1 Linear";
+    case DDSCompressionMode::RGBA8_sRGB:
+        return "RGBA8 sRGB";
+    case DDSCompressionMode::RGBA8_Linear:
+        return "RGBA8 Linear";
+    default:
+        return "BC7 Linear";
     }
 }
 
 const char* compressionModeKey(DDSCompressionMode mode)
 {
-    switch (mode) {
-    case DDSCompressionMode::BC7_sRGB:    return "bc7_srgb";
-    case DDSCompressionMode::BC7_Linear:  return "bc7_linear";
-    case DDSCompressionMode::BC3_sRGB:    return "bc3_srgb";
-    case DDSCompressionMode::BC6H_UF16:   return "bc6h_uf16";
-    case DDSCompressionMode::BC5_Linear:  return "bc5_linear";
-    case DDSCompressionMode::BC4_Linear:  return "bc4_linear";
-    case DDSCompressionMode::BC1_sRGB:    return "bc1_srgb";
-    case DDSCompressionMode::BC1_Linear:  return "bc1_linear";
-    case DDSCompressionMode::RGBA8_sRGB:  return "rgba8_srgb";
-    case DDSCompressionMode::RGBA8_Linear: return "rgba8_linear";
-    default:                               return "bc7_linear";
+    switch (mode)
+    {
+    case DDSCompressionMode::BC7_sRGB:
+        return "bc7_srgb";
+    case DDSCompressionMode::BC7_Linear:
+        return "bc7_linear";
+    case DDSCompressionMode::BC3_sRGB:
+        return "bc3_srgb";
+    case DDSCompressionMode::BC6H_UF16:
+        return "bc6h_uf16";
+    case DDSCompressionMode::BC5_Linear:
+        return "bc5_linear";
+    case DDSCompressionMode::BC4_Linear:
+        return "bc4_linear";
+    case DDSCompressionMode::BC1_sRGB:
+        return "bc1_srgb";
+    case DDSCompressionMode::BC1_Linear:
+        return "bc1_linear";
+    case DDSCompressionMode::RGBA8_sRGB:
+        return "rgba8_srgb";
+    case DDSCompressionMode::RGBA8_Linear:
+        return "rgba8_linear";
+    default:
+        return "bc7_linear";
     }
 }
 
 bool tryParseCompressionMode(const std::string& value, DDSCompressionMode& mode)
 {
-    if (value == "bc7_srgb") {
+    if (value == "bc7_srgb")
+    {
         mode = DDSCompressionMode::BC7_sRGB;
         return true;
     }
-    if (value == "bc7_linear") {
+    if (value == "bc7_linear")
+    {
         mode = DDSCompressionMode::BC7_Linear;
         return true;
     }
-    if (value == "bc3_srgb") {
+    if (value == "bc3_srgb")
+    {
         mode = DDSCompressionMode::BC3_sRGB;
         return true;
     }
-    if (value == "bc6h_uf16") {
+    if (value == "bc6h_uf16")
+    {
         mode = DDSCompressionMode::BC6H_UF16;
         return true;
     }
-    if (value == "bc5_linear") {
+    if (value == "bc5_linear")
+    {
         mode = DDSCompressionMode::BC5_Linear;
         return true;
     }
-    if (value == "bc4_linear") {
+    if (value == "bc4_linear")
+    {
         mode = DDSCompressionMode::BC4_Linear;
         return true;
     }
-    if (value == "bc1_srgb") {
+    if (value == "bc1_srgb")
+    {
         mode = DDSCompressionMode::BC1_sRGB;
         return true;
     }
-    if (value == "bc1_linear") {
+    if (value == "bc1_linear")
+    {
         mode = DDSCompressionMode::BC1_Linear;
         return true;
     }
-    if (value == "rgba8_srgb") {
+    if (value == "rgba8_srgb")
+    {
         mode = DDSCompressionMode::RGBA8_sRGB;
         return true;
     }
-    if (value == "rgba8_linear") {
+    if (value == "rgba8_linear")
+    {
         mode = DDSCompressionMode::RGBA8_Linear;
         return true;
     }
@@ -139,7 +197,8 @@ bool tryParseCompressionMode(const std::string& value, DDSCompressionMode& mode)
 
 const char* rmaosSourceModeKey(RMAOSSourceMode mode)
 {
-    switch (mode) {
+    switch (mode)
+    {
     case RMAOSSourceMode::PackedTexture:
         return "packed";
     case RMAOSSourceMode::SeparateChannels:
@@ -151,11 +210,13 @@ const char* rmaosSourceModeKey(RMAOSSourceMode mode)
 
 bool tryParseRmaosSourceMode(const std::string& value, RMAOSSourceMode& mode)
 {
-    if (value == "packed") {
+    if (value == "packed")
+    {
         mode = RMAOSSourceMode::PackedTexture;
         return true;
     }
-    if (value == "split") {
+    if (value == "split")
+    {
         mode = RMAOSSourceMode::SeparateChannels;
         return true;
     }
@@ -165,7 +226,8 @@ bool tryParseRmaosSourceMode(const std::string& value, RMAOSSourceMode& mode)
 
 const char* textureMatchModeKey(TextureMatchMode mode)
 {
-    switch (mode) {
+    switch (mode)
+    {
     case TextureMatchMode::Auto:
         return "auto";
     case TextureMatchMode::Diffuse:
@@ -179,7 +241,8 @@ const char* textureMatchModeKey(TextureMatchMode mode)
 
 const char* textureMatchModeDisplayName(TextureMatchMode mode)
 {
-    switch (mode) {
+    switch (mode)
+    {
     case TextureMatchMode::Auto:
         return "Auto";
     case TextureMatchMode::Diffuse:
@@ -193,15 +256,18 @@ const char* textureMatchModeDisplayName(TextureMatchMode mode)
 
 bool tryParseTextureMatchMode(const std::string& value, TextureMatchMode& mode)
 {
-    if (value == "auto") {
+    if (value == "auto")
+    {
         mode = TextureMatchMode::Auto;
         return true;
     }
-    if (value == "diffuse") {
+    if (value == "diffuse")
+    {
         mode = TextureMatchMode::Diffuse;
         return true;
     }
-    if (value == "normal") {
+    if (value == "normal")
+    {
         mode = TextureMatchMode::Normal;
         return true;
     }

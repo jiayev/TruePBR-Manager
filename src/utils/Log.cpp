@@ -6,7 +6,8 @@
 #include <cstdlib>
 #include <vector>
 
-namespace tpbr {
+namespace tpbr
+{
 
 static std::filesystem::path s_logFilePath;
 
@@ -17,23 +18,25 @@ static std::filesystem::path getLogDirectory()
 
 #ifdef _WIN32
     const char* appdata = std::getenv("APPDATA");
-    if (appdata) {
+    if (appdata)
+    {
         logDir = std::filesystem::path(appdata) / "TruePBR-Manager" / "logs";
     }
 #endif
 
     // Fallback: logs/ next to the executable
-    if (logDir.empty()) {
+    if (logDir.empty())
+    {
         logDir = std::filesystem::current_path() / "logs";
     }
 
     return logDir;
 }
 
-void Log::init(spdlog::level::level_enum consoleLevel,
-               spdlog::level::level_enum fileLevel)
+void Log::init(spdlog::level::level_enum consoleLevel, spdlog::level::level_enum fileLevel)
 {
-    try {
+    try
+    {
         // Create log directory
         auto logDir = getLogDirectory();
         std::filesystem::create_directories(logDir);
@@ -46,8 +49,8 @@ void Log::init(spdlog::level::level_enum consoleLevel,
         consoleSink->set_pattern("[%H:%M:%S.%e] [%^%l%$] %v");
 
         // Rotating file sink: 5 MB max, 3 backup files
-        auto fileSink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-            s_logFilePath.string(), 5 * 1024 * 1024, 3);
+        auto fileSink =
+            std::make_shared<spdlog::sinks::rotating_file_sink_mt>(s_logFilePath.string(), 5 * 1024 * 1024, 3);
         fileSink->set_level(fileLevel);
         fileSink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] [tid %t] [%s:%#] %v");
 
@@ -64,8 +67,9 @@ void Log::init(spdlog::level::level_enum consoleLevel,
 
         SPDLOG_INFO("Logging initialized");
         SPDLOG_INFO("Log file: {}", s_logFilePath.string());
-
-    } catch (const spdlog::spdlog_ex& ex) {
+    }
+    catch (const spdlog::spdlog_ex& ex)
+    {
         // If file logging fails, at least set up console
         spdlog::set_level(consoleLevel);
         spdlog::error("Log init failed: {}. Falling back to console only.", ex.what());

@@ -5,7 +5,8 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
-namespace tpbr {
+namespace tpbr
+{
 
 ImageUtils::ImageData ImageUtils::loadImage(const std::filesystem::path& path)
 {
@@ -13,13 +14,14 @@ ImageUtils::ImageData ImageUtils::loadImage(const std::filesystem::path& path)
 
     int w, h, c;
     unsigned char* pixels = stbi_load(path.string().c_str(), &w, &h, &c, 4);
-    if (!pixels) {
+    if (!pixels)
+    {
         spdlog::error("Failed to load image: {}", path.string());
         return data;
     }
 
-    data.width    = w;
-    data.height   = h;
+    data.width = w;
+    data.height = h;
     data.channels = 4; // forced RGBA
     data.pixels.assign(pixels, pixels + (w * h * 4));
 

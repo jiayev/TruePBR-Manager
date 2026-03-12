@@ -5,7 +5,8 @@
 
 #include <algorithm>
 
-namespace tpbr {
+namespace tpbr
+{
 
 // ─── Helpers ───────────────────────────────────────────────
 
@@ -18,29 +19,46 @@ static std::wstring toWide(const std::filesystem::path& p)
 /// Get a human-readable name for common DXGI formats
 static std::string dxgiFormatName(DXGI_FORMAT fmt)
 {
-    switch (fmt) {
-    case DXGI_FORMAT_R8G8B8A8_UNORM:       return "R8G8B8A8_UNORM";
-    case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:  return "R8G8B8A8_UNORM_SRGB";
-    case DXGI_FORMAT_B8G8R8A8_UNORM:       return "B8G8R8A8_UNORM";
-    case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:  return "B8G8R8A8_UNORM_SRGB";
-    case DXGI_FORMAT_BC1_UNORM:            return "BC1_UNORM";
-    case DXGI_FORMAT_BC1_UNORM_SRGB:       return "BC1_UNORM_SRGB";
-    case DXGI_FORMAT_BC3_UNORM:            return "BC3_UNORM";
-    case DXGI_FORMAT_BC3_UNORM_SRGB:       return "BC3_UNORM_SRGB";
-    case DXGI_FORMAT_BC4_UNORM:            return "BC4_UNORM";
-    case DXGI_FORMAT_BC5_UNORM:            return "BC5_UNORM";
-    case DXGI_FORMAT_BC6H_UF16:            return "BC6H_UF16";
-    case DXGI_FORMAT_BC7_UNORM:            return "BC7_UNORM";
-    case DXGI_FORMAT_BC7_UNORM_SRGB:       return "BC7_UNORM_SRGB";
-    case DXGI_FORMAT_R8_UNORM:             return "R8_UNORM";
-    default:                               return "DXGI_FORMAT(" + std::to_string(static_cast<int>(fmt)) + ")";
+    switch (fmt)
+    {
+    case DXGI_FORMAT_R8G8B8A8_UNORM:
+        return "R8G8B8A8_UNORM";
+    case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:
+        return "R8G8B8A8_UNORM_SRGB";
+    case DXGI_FORMAT_B8G8R8A8_UNORM:
+        return "B8G8R8A8_UNORM";
+    case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:
+        return "B8G8R8A8_UNORM_SRGB";
+    case DXGI_FORMAT_BC1_UNORM:
+        return "BC1_UNORM";
+    case DXGI_FORMAT_BC1_UNORM_SRGB:
+        return "BC1_UNORM_SRGB";
+    case DXGI_FORMAT_BC3_UNORM:
+        return "BC3_UNORM";
+    case DXGI_FORMAT_BC3_UNORM_SRGB:
+        return "BC3_UNORM_SRGB";
+    case DXGI_FORMAT_BC4_UNORM:
+        return "BC4_UNORM";
+    case DXGI_FORMAT_BC5_UNORM:
+        return "BC5_UNORM";
+    case DXGI_FORMAT_BC6H_UF16:
+        return "BC6H_UF16";
+    case DXGI_FORMAT_BC7_UNORM:
+        return "BC7_UNORM";
+    case DXGI_FORMAT_BC7_UNORM_SRGB:
+        return "BC7_UNORM_SRGB";
+    case DXGI_FORMAT_R8_UNORM:
+        return "R8_UNORM";
+    default:
+        return "DXGI_FORMAT(" + std::to_string(static_cast<int>(fmt)) + ")";
     }
 }
 
 /// Approximate channel count from DXGI format
 static int dxgiFormatChannels(DXGI_FORMAT fmt)
 {
-    switch (fmt) {
+    switch (fmt)
+    {
     case DXGI_FORMAT_R8_UNORM:
     case DXGI_FORMAT_BC4_UNORM:
     case DXGI_FORMAT_BC4_SNORM:
@@ -58,30 +76,28 @@ static int dxgiFormatChannels(DXGI_FORMAT fmt)
 
 static DXGI_FORMAT preferredRGBAFormat(DXGI_FORMAT sourceFormat)
 {
-    return DirectX::IsSRGB(sourceFormat)
-        ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB
-        : DXGI_FORMAT_R8G8B8A8_UNORM;
+    return DirectX::IsSRGB(sourceFormat) ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
 }
 
 /// Create a ScratchImage from raw RGBA8 pixels (no copy — caller must keep pixels alive)
 /// Returns a newly initialized ScratchImage with pixel data copied in.
-static HRESULT createScratchFromRGBA(int width, int height, const uint8_t* rgbaPixels,
-                                      DirectX::ScratchImage& scratch,
-                                      bool srgb = false)
+static HRESULT createScratchFromRGBA(int width, int height, const uint8_t* rgbaPixels, DirectX::ScratchImage& scratch,
+                                     bool srgb = false)
 {
     HRESULT hr = scratch.Initialize2D(srgb ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM,
-                                       static_cast<size_t>(width),
-                                       static_cast<size_t>(height),
-                                       1, 1);
-    if (FAILED(hr)) return hr;
+                                      static_cast<size_t>(width), static_cast<size_t>(height), 1, 1);
+    if (FAILED(hr))
+        return hr;
 
     const DirectX::Image* img = scratch.GetImage(0, 0, 0);
-    if (!img) return E_FAIL;
+    if (!img)
+        return E_FAIL;
 
     const size_t srcRowPitch = static_cast<size_t>(width) * 4;
-    for (int y = 0; y < height; ++y) {
+    for (int y = 0; y < height; ++y)
+    {
         const uint8_t* srcRow = rgbaPixels + y * srcRowPitch;
-        uint8_t*       dstRow = img->pixels + y * img->rowPitch;
+        uint8_t* dstRow = img->pixels + y * img->rowPitch;
         std::memcpy(dstRow, srcRow, srcRowPitch);
     }
 
@@ -91,8 +107,10 @@ static HRESULT createScratchFromRGBA(int width, int height, const uint8_t* rgbaP
 static DirectX::TEX_ALPHA_MODE detectAlphaMode(const uint8_t* rgbaPixels, int width, int height)
 {
     const size_t pixelCount = static_cast<size_t>(width) * height;
-    for (size_t i = 0; i < pixelCount; ++i) {
-        if (rgbaPixels[i * 4 + 3] != 255) {
+    for (size_t i = 0; i < pixelCount; ++i)
+    {
+        if (rgbaPixels[i * 4 + 3] != 255)
+        {
             return DirectX::TEX_ALPHA_MODE_STRAIGHT;
         }
     }
@@ -100,16 +118,13 @@ static DirectX::TEX_ALPHA_MODE detectAlphaMode(const uint8_t* rgbaPixels, int wi
     return DirectX::TEX_ALPHA_MODE_OPAQUE;
 }
 
-static bool generateMipChain(const DirectX::ScratchImage& source,
-                             DirectX::ScratchImage& mipChain)
+static bool generateMipChain(const DirectX::ScratchImage& source, DirectX::ScratchImage& mipChain)
 {
-    HRESULT hr = DirectX::GenerateMipMaps(
-        source.GetImages(), source.GetImageCount(), source.GetMetadata(),
-        DirectX::TEX_FILTER_DEFAULT,
-        0,
-        mipChain);
+    HRESULT hr = DirectX::GenerateMipMaps(source.GetImages(), source.GetImageCount(), source.GetMetadata(),
+                                          DirectX::TEX_FILTER_DEFAULT, 0, mipChain);
 
-    if (FAILED(hr)) {
+    if (FAILED(hr))
+    {
         spdlog::error("DDS mipmap generation failed: 0x{:08X}", static_cast<unsigned>(hr));
         return false;
     }
@@ -118,8 +133,7 @@ static bool generateMipChain(const DirectX::ScratchImage& source,
 }
 
 /// Compress a ScratchImage and save to DDS file.
-static bool compressAndSave(const DirectX::ScratchImage& source,
-                            DXGI_FORMAT targetFormat,
+static bool compressAndSave(const DirectX::ScratchImage& source, DXGI_FORMAT targetFormat,
                             const std::filesystem::path& path,
                             DirectX::TEX_ALPHA_MODE alphaMode = DirectX::TEX_ALPHA_MODE_UNKNOWN)
 {
@@ -127,26 +141,26 @@ static bool compressAndSave(const DirectX::ScratchImage& source,
     std::filesystem::create_directories(path.parent_path());
 
     DirectX::ScratchImage mipChain;
-    if (!generateMipChain(source, mipChain)) {
+    if (!generateMipChain(source, mipChain))
+    {
         return false;
     }
 
     const DirectX::ScratchImage& sourceWithMips = mipChain;
 
     DirectX::TEX_COMPRESS_FLAGS compressFlags = DirectX::TEX_COMPRESS_PARALLEL;
-    if (targetFormat == DXGI_FORMAT_BC7_UNORM || targetFormat == DXGI_FORMAT_BC7_UNORM_SRGB) {
+    if (targetFormat == DXGI_FORMAT_BC7_UNORM || targetFormat == DXGI_FORMAT_BC7_UNORM_SRGB)
+    {
         compressFlags = static_cast<DirectX::TEX_COMPRESS_FLAGS>(compressFlags | DirectX::TEX_COMPRESS_BC7_QUICK);
     }
 
     DirectX::ScratchImage compressed;
-    HRESULT hr = DirectX::Compress(
-        sourceWithMips.GetImages(), sourceWithMips.GetImageCount(), sourceWithMips.GetMetadata(),
-        targetFormat,
-        compressFlags,
-        DirectX::TEX_THRESHOLD_DEFAULT,
-        compressed);
+    HRESULT hr =
+        DirectX::Compress(sourceWithMips.GetImages(), sourceWithMips.GetImageCount(), sourceWithMips.GetMetadata(),
+                          targetFormat, compressFlags, DirectX::TEX_THRESHOLD_DEFAULT, compressed);
 
-    if (FAILED(hr)) {
+    if (FAILED(hr))
+    {
         spdlog::error("DDS compress failed: 0x{:08X} -> {}", static_cast<unsigned>(hr), path.string());
         return false;
     }
@@ -154,12 +168,11 @@ static bool compressAndSave(const DirectX::ScratchImage& source,
     auto metadata = compressed.GetMetadata();
     metadata.SetAlphaMode(alphaMode);
 
-    hr = DirectX::SaveToDDSFile(
-        compressed.GetImages(), compressed.GetImageCount(), metadata,
-        DirectX::DDS_FLAGS_NONE,
-        toWide(path).c_str());
+    hr = DirectX::SaveToDDSFile(compressed.GetImages(), compressed.GetImageCount(), metadata, DirectX::DDS_FLAGS_NONE,
+                                toWide(path).c_str());
 
-    if (FAILED(hr)) {
+    if (FAILED(hr))
+    {
         spdlog::error("DDS save failed: 0x{:08X} -> {}", static_cast<unsigned>(hr), path.string());
         return false;
     }
@@ -174,50 +187,45 @@ bool DDSUtils::getDDSInfo(const std::filesystem::path& path, DDSInfo& info)
     DirectX::TexMetadata metadata{};
     DirectX::ScratchImage scratch;
 
-    HRESULT hr = DirectX::LoadFromDDSFile(
-        toWide(path).c_str(),
-        DirectX::DDS_FLAGS_NONE,
-        &metadata, scratch);
+    HRESULT hr = DirectX::LoadFromDDSFile(toWide(path).c_str(), DirectX::DDS_FLAGS_NONE, &metadata, scratch);
 
-    if (FAILED(hr)) {
+    if (FAILED(hr))
+    {
         spdlog::error("getDDSInfo: failed to load {} (0x{:08X})", path.string(), static_cast<unsigned>(hr));
         return false;
     }
 
-    info.width      = static_cast<int>(metadata.width);
-    info.height     = static_cast<int>(metadata.height);
-    info.mipLevels  = metadata.mipLevels;
+    info.width = static_cast<int>(metadata.width);
+    info.height = static_cast<int>(metadata.height);
+    info.mipLevels = metadata.mipLevels;
     info.dxgiFormat = static_cast<uint32_t>(metadata.format);
-    info.hasAlpha   = DirectX::HasAlpha(metadata.format);
-    info.isSRGB     = DirectX::IsSRGB(metadata.format);
+    info.hasAlpha = DirectX::HasAlpha(metadata.format);
+    info.isSRGB = DirectX::IsSRGB(metadata.format);
     info.formatName = dxgiFormatName(metadata.format);
-    info.channels   = dxgiFormatChannels(metadata.format);
+    info.channels = dxgiFormatChannels(metadata.format);
 
     return true;
 }
 
 // ─── loadDDS ───────────────────────────────────────────────
 
-bool DDSUtils::loadDDS(const std::filesystem::path& path,
-                       int& width, int& height,
-                       std::vector<uint8_t>& rgbaPixels,
+bool DDSUtils::loadDDS(const std::filesystem::path& path, int& width, int& height, std::vector<uint8_t>& rgbaPixels,
                        bool* isSRGB)
 {
     DirectX::TexMetadata metadata{};
     DirectX::ScratchImage scratch;
 
-    HRESULT hr = DirectX::LoadFromDDSFile(
-        toWide(path).c_str(),
-        DirectX::DDS_FLAGS_NONE,
-        &metadata, scratch);
+    HRESULT hr = DirectX::LoadFromDDSFile(toWide(path).c_str(), DirectX::DDS_FLAGS_NONE, &metadata, scratch);
 
-    if (FAILED(hr)) {
+    if (FAILED(hr))
+    {
         spdlog::error("loadDDS: failed to load {} (0x{:08X})", path.string(), static_cast<unsigned>(hr));
         return false;
     }
 
     const DXGI_FORMAT targetRGBAFormat = preferredRGBAFormat(metadata.format);
-    if (isSRGB) {
+    if (isSRGB)
+    {
         *isSRGB = DirectX::IsSRGB(metadata.format);
     }
 
@@ -225,13 +233,13 @@ bool DDSUtils::loadDDS(const std::filesystem::path& path,
     DirectX::ScratchImage decompressed;
     const DirectX::ScratchImage* source = &scratch;
 
-    if (DirectX::IsCompressed(metadata.format)) {
-        hr = DirectX::Decompress(
-            scratch.GetImages(), scratch.GetImageCount(), scratch.GetMetadata(),
-            DXGI_FORMAT_UNKNOWN,
-            decompressed);
+    if (DirectX::IsCompressed(metadata.format))
+    {
+        hr = DirectX::Decompress(scratch.GetImages(), scratch.GetImageCount(), scratch.GetMetadata(),
+                                 DXGI_FORMAT_UNKNOWN, decompressed);
 
-        if (FAILED(hr)) {
+        if (FAILED(hr))
+        {
             spdlog::error("loadDDS: decompress failed for {} (0x{:08X})", path.string(), static_cast<unsigned>(hr));
             return false;
         }
@@ -242,14 +250,13 @@ bool DDSUtils::loadDDS(const std::filesystem::path& path,
     DirectX::ScratchImage converted;
     const auto& srcMeta = source->GetMetadata();
 
-    if (srcMeta.format != targetRGBAFormat) {
-        hr = DirectX::Convert(
-            source->GetImages(), source->GetImageCount(), srcMeta,
-            targetRGBAFormat,
-            DirectX::TEX_FILTER_DEFAULT, DirectX::TEX_THRESHOLD_DEFAULT,
-            converted);
+    if (srcMeta.format != targetRGBAFormat)
+    {
+        hr = DirectX::Convert(source->GetImages(), source->GetImageCount(), srcMeta, targetRGBAFormat,
+                              DirectX::TEX_FILTER_DEFAULT, DirectX::TEX_THRESHOLD_DEFAULT, converted);
 
-        if (FAILED(hr)) {
+        if (FAILED(hr))
+        {
             spdlog::error("loadDDS: convert failed for {} (0x{:08X})", path.string(), static_cast<unsigned>(hr));
             return false;
         }
@@ -258,20 +265,22 @@ bool DDSUtils::loadDDS(const std::filesystem::path& path,
 
     // Extract mip 0
     const DirectX::Image* img = source->GetImage(0, 0, 0);
-    if (!img || !img->pixels) {
+    if (!img || !img->pixels)
+    {
         spdlog::error("loadDDS: no image data in {}", path.string());
         return false;
     }
 
-    width  = static_cast<int>(img->width);
+    width = static_cast<int>(img->width);
     height = static_cast<int>(img->height);
 
     const size_t dstRowPitch = static_cast<size_t>(width) * 4;
     rgbaPixels.resize(dstRowPitch * height);
 
-    for (int y = 0; y < height; ++y) {
+    for (int y = 0; y < height; ++y)
+    {
         const uint8_t* srcRow = img->pixels + y * img->rowPitch;
-        uint8_t*       dstRow = rgbaPixels.data() + y * dstRowPitch;
+        uint8_t* dstRow = rgbaPixels.data() + y * dstRowPitch;
         std::memcpy(dstRow, srcRow, dstRowPitch);
     }
 
@@ -281,169 +290,159 @@ bool DDSUtils::loadDDS(const std::filesystem::path& path,
 
 // ─── saveDDS_BC7 ───────────────────────────────────────────
 
-bool DDSUtils::saveDDS_BC7(const std::filesystem::path& path,
-                           int width, int height,
-                           const uint8_t* rgbaPixels,
+bool DDSUtils::saveDDS_BC7(const std::filesystem::path& path, int width, int height, const uint8_t* rgbaPixels,
                            bool srgb)
 {
     DirectX::ScratchImage scratch;
     HRESULT hr = createScratchFromRGBA(width, height, rgbaPixels, scratch, srgb);
-    if (FAILED(hr)) {
+    if (FAILED(hr))
+    {
         spdlog::error("saveDDS_BC7: init failed (0x{:08X})", static_cast<unsigned>(hr));
         return false;
     }
 
-    bool ok = compressAndSave(
-        scratch,
-        srgb ? DXGI_FORMAT_BC7_UNORM_SRGB : DXGI_FORMAT_BC7_UNORM,
-        path,
-        detectAlphaMode(rgbaPixels, width, height));
-    if (ok) spdlog::debug("saveDDS_BC7: {} ({}x{})", path.string(), width, height);
+    bool ok = compressAndSave(scratch, srgb ? DXGI_FORMAT_BC7_UNORM_SRGB : DXGI_FORMAT_BC7_UNORM, path,
+                              detectAlphaMode(rgbaPixels, width, height));
+    if (ok)
+        spdlog::debug("saveDDS_BC7: {} ({}x{})", path.string(), width, height);
     return ok;
 }
 
 // ─── saveDDS_BC5 ───────────────────────────────────────────
 
-bool DDSUtils::saveDDS_BC5(const std::filesystem::path& path,
-                           int width, int height,
-                           const uint8_t* rgbaPixels)
+bool DDSUtils::saveDDS_BC5(const std::filesystem::path& path, int width, int height, const uint8_t* rgbaPixels)
 {
     DirectX::ScratchImage scratch;
     HRESULT hr = createScratchFromRGBA(width, height, rgbaPixels, scratch, false);
-    if (FAILED(hr)) {
+    if (FAILED(hr))
+    {
         spdlog::error("saveDDS_BC5: init failed (0x{:08X})", static_cast<unsigned>(hr));
         return false;
     }
 
     bool ok = compressAndSave(scratch, DXGI_FORMAT_BC5_UNORM, path);
-    if (ok) spdlog::debug("saveDDS_BC5: {} ({}x{})", path.string(), width, height);
+    if (ok)
+        spdlog::debug("saveDDS_BC5: {} ({}x{})", path.string(), width, height);
     return ok;
 }
 
 // ─── saveDDS_BC3 ───────────────────────────────────────────
 
-bool DDSUtils::saveDDS_BC3(const std::filesystem::path& path,
-                           int width, int height,
-                           const uint8_t* rgbaPixels,
+bool DDSUtils::saveDDS_BC3(const std::filesystem::path& path, int width, int height, const uint8_t* rgbaPixels,
                            bool srgb)
 {
     DirectX::ScratchImage scratch;
     HRESULT hr = createScratchFromRGBA(width, height, rgbaPixels, scratch, srgb);
-    if (FAILED(hr)) {
+    if (FAILED(hr))
+    {
         spdlog::error("saveDDS_BC3: init failed (0x{:08X})", static_cast<unsigned>(hr));
         return false;
     }
 
-    bool ok = compressAndSave(
-        scratch,
-        srgb ? DXGI_FORMAT_BC3_UNORM_SRGB : DXGI_FORMAT_BC3_UNORM,
-        path,
-        detectAlphaMode(rgbaPixels, width, height));
-    if (ok) spdlog::debug("saveDDS_BC3: {} ({}x{})", path.string(), width, height);
+    bool ok = compressAndSave(scratch, srgb ? DXGI_FORMAT_BC3_UNORM_SRGB : DXGI_FORMAT_BC3_UNORM, path,
+                              detectAlphaMode(rgbaPixels, width, height));
+    if (ok)
+        spdlog::debug("saveDDS_BC3: {} ({}x{})", path.string(), width, height);
     return ok;
 }
 
 // ─── saveDDS_BC6H ──────────────────────────────────────────
 
-bool DDSUtils::saveDDS_BC6H(const std::filesystem::path& path,
-                            int width, int height,
-                            const uint8_t* rgbaPixels)
+bool DDSUtils::saveDDS_BC6H(const std::filesystem::path& path, int width, int height, const uint8_t* rgbaPixels)
 {
     DirectX::ScratchImage rgbaScratch;
     HRESULT hr = createScratchFromRGBA(width, height, rgbaPixels, rgbaScratch, false);
-    if (FAILED(hr)) {
+    if (FAILED(hr))
+    {
         spdlog::error("saveDDS_BC6H: init failed (0x{:08X})", static_cast<unsigned>(hr));
         return false;
     }
 
     DirectX::ScratchImage hdrScratch;
-    hr = DirectX::Convert(
-        rgbaScratch.GetImages(), rgbaScratch.GetImageCount(), rgbaScratch.GetMetadata(),
-        DXGI_FORMAT_R16G16B16A16_FLOAT,
-        DirectX::TEX_FILTER_DEFAULT, DirectX::TEX_THRESHOLD_DEFAULT,
-        hdrScratch);
+    hr = DirectX::Convert(rgbaScratch.GetImages(), rgbaScratch.GetImageCount(), rgbaScratch.GetMetadata(),
+                          DXGI_FORMAT_R16G16B16A16_FLOAT, DirectX::TEX_FILTER_DEFAULT, DirectX::TEX_THRESHOLD_DEFAULT,
+                          hdrScratch);
 
-    if (FAILED(hr)) {
+    if (FAILED(hr))
+    {
         spdlog::error("saveDDS_BC6H: convert failed (0x{:08X})", static_cast<unsigned>(hr));
         return false;
     }
 
     bool ok = compressAndSave(hdrScratch, DXGI_FORMAT_BC6H_UF16, path);
-    if (ok) spdlog::debug("saveDDS_BC6H: {} ({}x{})", path.string(), width, height);
+    if (ok)
+        spdlog::debug("saveDDS_BC6H: {} ({}x{})", path.string(), width, height);
     return ok;
 }
 
 // ─── saveDDS_BC4 ───────────────────────────────────────────
 
-bool DDSUtils::saveDDS_BC4(const std::filesystem::path& path,
-                           int width, int height,
-                           const uint8_t* singleChannelPixels)
+bool DDSUtils::saveDDS_BC4(const std::filesystem::path& path, int width, int height, const uint8_t* singleChannelPixels)
 {
     // Create R8_UNORM scratch image
     DirectX::ScratchImage scratch;
-    HRESULT hr = scratch.Initialize2D(DXGI_FORMAT_R8_UNORM,
-                                       static_cast<size_t>(width),
-                                       static_cast<size_t>(height),
-                                       1, 1);
-    if (FAILED(hr)) {
+    HRESULT hr =
+        scratch.Initialize2D(DXGI_FORMAT_R8_UNORM, static_cast<size_t>(width), static_cast<size_t>(height), 1, 1);
+    if (FAILED(hr))
+    {
         spdlog::error("saveDDS_BC4: init failed (0x{:08X})", static_cast<unsigned>(hr));
         return false;
     }
 
     const DirectX::Image* img = scratch.GetImage(0, 0, 0);
-    if (!img) return false;
+    if (!img)
+        return false;
 
     const size_t srcRowPitch = static_cast<size_t>(width);
-    for (int y = 0; y < height; ++y) {
+    for (int y = 0; y < height; ++y)
+    {
         const uint8_t* srcRow = singleChannelPixels + y * srcRowPitch;
-        uint8_t*       dstRow = img->pixels + y * img->rowPitch;
+        uint8_t* dstRow = img->pixels + y * img->rowPitch;
         std::memcpy(dstRow, srcRow, srcRowPitch);
     }
 
     bool ok = compressAndSave(scratch, DXGI_FORMAT_BC4_UNORM, path);
-    if (ok) spdlog::debug("saveDDS_BC4: {} ({}x{})", path.string(), width, height);
+    if (ok)
+        spdlog::debug("saveDDS_BC4: {} ({}x{})", path.string(), width, height);
     return ok;
 }
 
 // ─── saveDDS_BC1 ───────────────────────────────────────────
 
-bool DDSUtils::saveDDS_BC1(const std::filesystem::path& path,
-                           int width, int height,
-                           const uint8_t* rgbaPixels,
+bool DDSUtils::saveDDS_BC1(const std::filesystem::path& path, int width, int height, const uint8_t* rgbaPixels,
                            bool srgb)
 {
     DirectX::ScratchImage scratch;
     HRESULT hr = createScratchFromRGBA(width, height, rgbaPixels, scratch, srgb);
-    if (FAILED(hr)) {
+    if (FAILED(hr))
+    {
         spdlog::error("saveDDS_BC1: init failed (0x{:08X})", static_cast<unsigned>(hr));
         return false;
     }
 
-    bool ok = compressAndSave(
-        scratch,
-        srgb ? DXGI_FORMAT_BC1_UNORM_SRGB : DXGI_FORMAT_BC1_UNORM,
-        path,
-        detectAlphaMode(rgbaPixels, width, height));
-    if (ok) spdlog::debug("saveDDS_BC1: {} ({}x{})", path.string(), width, height);
+    bool ok = compressAndSave(scratch, srgb ? DXGI_FORMAT_BC1_UNORM_SRGB : DXGI_FORMAT_BC1_UNORM, path,
+                              detectAlphaMode(rgbaPixels, width, height));
+    if (ok)
+        spdlog::debug("saveDDS_BC1: {} ({}x{})", path.string(), width, height);
     return ok;
 }
 
 // ─── saveDDS_RGBA ──────────────────────────────────────────
 
-bool DDSUtils::saveDDS_RGBA(const std::filesystem::path& path,
-                            int width, int height,
-                            const uint8_t* rgbaPixels,
+bool DDSUtils::saveDDS_RGBA(const std::filesystem::path& path, int width, int height, const uint8_t* rgbaPixels,
                             bool srgb)
 {
     DirectX::ScratchImage scratch;
     HRESULT hr = createScratchFromRGBA(width, height, rgbaPixels, scratch, srgb);
-    if (FAILED(hr)) {
+    if (FAILED(hr))
+    {
         spdlog::error("saveDDS_RGBA: init failed (0x{:08X})", static_cast<unsigned>(hr));
         return false;
     }
 
     DirectX::ScratchImage mipChain;
-    if (!generateMipChain(scratch, mipChain)) {
+    if (!generateMipChain(scratch, mipChain))
+    {
         return false;
     }
 
@@ -452,12 +451,11 @@ bool DDSUtils::saveDDS_RGBA(const std::filesystem::path& path,
 
     std::filesystem::create_directories(path.parent_path());
 
-    hr = DirectX::SaveToDDSFile(
-        mipChain.GetImages(), mipChain.GetImageCount(), metadata,
-        DirectX::DDS_FLAGS_NONE,
-        toWide(path).c_str());
+    hr = DirectX::SaveToDDSFile(mipChain.GetImages(), mipChain.GetImageCount(), metadata, DirectX::DDS_FLAGS_NONE,
+                                toWide(path).c_str());
 
-    if (FAILED(hr)) {
+    if (FAILED(hr))
+    {
         spdlog::error("saveDDS_RGBA: save failed (0x{:08X}) -> {}", static_cast<unsigned>(hr), path.string());
         return false;
     }
@@ -468,10 +466,10 @@ bool DDSUtils::saveDDS_RGBA(const std::filesystem::path& path,
 
 // ─── copyDDS ───────────────────────────────────────────────
 
-bool DDSUtils::copyDDS(const std::filesystem::path& src,
-                       const std::filesystem::path& dst)
+bool DDSUtils::copyDDS(const std::filesystem::path& src, const std::filesystem::path& dst)
 {
-    if (!std::filesystem::exists(src)) {
+    if (!std::filesystem::exists(src))
+    {
         spdlog::error("copyDDS: source not found: {}", src.string());
         return false;
     }
@@ -480,7 +478,8 @@ bool DDSUtils::copyDDS(const std::filesystem::path& src,
 
     std::error_code ec;
     std::filesystem::copy_file(src, dst, std::filesystem::copy_options::overwrite_existing, ec);
-    if (ec) {
+    if (ec)
+    {
         spdlog::error("copyDDS: copy failed: {} -> {} ({})", src.string(), dst.string(), ec.message());
         return false;
     }

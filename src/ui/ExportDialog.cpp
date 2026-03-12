@@ -5,10 +5,10 @@
 #include <QLabel>
 #include <QVBoxLayout>
 
-namespace tpbr {
+namespace tpbr
+{
 
-ExportDialog::ExportDialog(QWidget* parent)
-    : QDialog(parent)
+ExportDialog::ExportDialog(QWidget* parent) : QDialog(parent)
 {
     setWindowTitle(tr("Export to Mod Folder"));
     setMinimumWidth(450);
@@ -18,7 +18,7 @@ ExportDialog::ExportDialog(QWidget* parent)
     layout->addWidget(new QLabel(tr("Select the target mod folder:"), this));
 
     auto* pathLayout = new QHBoxLayout();
-    m_pathEdit  = new QLineEdit(this);
+    m_pathEdit = new QLineEdit(this);
     m_browseBtn = new QPushButton(tr("Browse..."), this);
     pathLayout->addWidget(m_pathEdit, 1);
     pathLayout->addWidget(m_browseBtn);
@@ -32,11 +32,13 @@ ExportDialog::ExportDialog(QWidget* parent)
     btnLayout->addWidget(m_cancelBtn);
     layout->addLayout(btnLayout);
 
-    connect(m_browseBtn, &QPushButton::clicked, this, [this]() {
-        auto dir = QFileDialog::getExistingDirectory(this, tr("Select Mod Folder"));
-        if (!dir.isEmpty())
-            m_pathEdit->setText(dir);
-    });
+    connect(m_browseBtn, &QPushButton::clicked, this,
+            [this]()
+            {
+                auto dir = QFileDialog::getExistingDirectory(this, tr("Select Mod Folder"));
+                if (!dir.isEmpty())
+                    m_pathEdit->setText(dir);
+            });
 
     connect(m_exportBtn, &QPushButton::clicked, this, &QDialog::accept);
     connect(m_cancelBtn, &QPushButton::clicked, this, &QDialog::reject);

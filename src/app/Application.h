@@ -2,17 +2,19 @@
 
 #include <QApplication>
 
-namespace tpbr {
+namespace tpbr
+{
 
 /// Application wrapper — initializes logging, styles, etc.
-class Application {
-public:
+class Application
+{
+  public:
     Application(int& argc, char** argv);
     ~Application();
 
     int run();
 
-private:
+  private:
     QApplication m_app;
 
     void initLogging();

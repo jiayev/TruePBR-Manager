@@ -3,13 +3,15 @@
 #include <QGraphicsView>
 #include <QImage>
 
-namespace tpbr {
+namespace tpbr
+{
 
 /// Widget for displaying and navigating a texture (zoom, pan).
-class TexturePreviewWidget : public QGraphicsView {
+class TexturePreviewWidget : public QGraphicsView
+{
     Q_OBJECT
 
-public:
+  public:
     explicit TexturePreviewWidget(QWidget* parent = nullptr);
 
     /// Display an image in the viewer
@@ -18,10 +20,10 @@ public:
     /// Clear the display
     void clear();
 
-protected:
+  protected:
     void wheelEvent(QWheelEvent* event) override;
 
-private:
+  private:
     QGraphicsScene* m_scene = nullptr;
 };
 
