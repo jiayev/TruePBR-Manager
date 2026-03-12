@@ -4,7 +4,6 @@
 
 #include <QLabel>
 #include <QLineEdit>
-#include <QPushButton>
 #include <QWidget>
 
 #include <functional>
@@ -30,12 +29,14 @@ public:
     void clear();
 
 signals:
+    void clicked();
     void fileDropped(const QString& filePath);
 
 protected:
     void dragEnterEvent(QDragEnterEvent* event) override;
     void dragLeaveEvent(QDragLeaveEvent* event) override;
     void dropEvent(QDropEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
     void paintEvent(QPaintEvent* event) override;
 
 private:
@@ -79,14 +80,12 @@ private:
     struct SlotRow {
         QLabel*        labelWidget  = nullptr;
         DropZoneLabel* dropZone     = nullptr;
-        QPushButton*   importButton = nullptr;
         QWidget*       container    = nullptr;
     };
 
     struct ChannelRowData {
         QLabel*        labelWidget  = nullptr;
         DropZoneLabel* dropZone     = nullptr;
-        QPushButton*   importButton = nullptr;
         QWidget*       container    = nullptr;
     };
 

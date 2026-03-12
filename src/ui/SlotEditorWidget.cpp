@@ -5,6 +5,7 @@
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QMimeData>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -31,7 +32,9 @@ DropZoneLabel::DropZoneLabel(QWidget* parent)
     setFixedHeight(ThumbnailSize + 8);
     setFrameStyle(QFrame::StyledPanel | QFrame::Sunken);
     setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    setCursor(Qt::PointingHandCursor);
     setStyleSheet("DropZoneLabel { background: #2a2a2a; color: #888; padding: 2px 4px; }");
+    setToolTip(tr("Click to browse or drop an image here"));
     setText(tr("(drop image here)"));
 }
 
@@ -107,6 +110,17 @@ void DropZoneLabel::dropEvent(QDropEvent* event)
         }
     }
     event->ignore();
+}
+
+void DropZoneLabel::mouseReleaseEvent(QMouseEvent* event)
+{
+    if (event->button() == Qt::LeftButton && rect().contains(event->position().toPoint())) {
+        emit clicked();
+        event->accept();
+        return;
+    }
+
+    QLabel::mouseReleaseEvent(event);
 }
 
 void DropZoneLabel::paintEvent(QPaintEvent* /*event*/)
@@ -226,17 +240,12 @@ void SlotEditorWidget::addSlotRow(PBRTextureSlot slot, const QString& label, boo
 
     row.dropZone = new DropZoneLabel(row.container);
 
-    row.importButton = new QPushButton(tr("..."), row.container);
-    row.importButton->setFixedWidth(32);
-    row.importButton->setToolTip(tr("Browse..."));
-
     layout->addWidget(row.labelWidget);
     layout->addWidget(row.dropZone, 1);
-    layout->addWidget(row.importButton);
 
     row.container->setVisible(visible);
 
-    connect(row.importButton, &QPushButton::clicked, this, [this, slot]() {
+    connect(row.dropZone, &DropZoneLabel::clicked, this, [this, slot]() {
         emit importRequested(slot);
     });
 
@@ -259,15 +268,10 @@ void SlotEditorWidget::addChannelRow(ChannelMap channel, const QString& label)
 
     row.dropZone = new DropZoneLabel(row.container);
 
-    row.importButton = new QPushButton(tr("..."), row.container);
-    row.importButton->setFixedWidth(32);
-    row.importButton->setToolTip(tr("Browse..."));
-
     layout->addWidget(row.labelWidget);
     layout->addWidget(row.dropZone, 1);
-    layout->addWidget(row.importButton);
 
-    connect(row.importButton, &QPushButton::clicked, this, [this, channel]() {
+    connect(row.dropZone, &DropZoneLabel::clicked, this, [this, channel]() {
         emit importChannelRequested(channel);
     });
 
