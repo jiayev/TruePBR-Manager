@@ -6,6 +6,7 @@
 #include "utils/ImageUtils.h"
 
 #include <filesystem>
+#include <dxgiformat.h>
 #include "utils/Log.h"
 
 namespace tpbr {
@@ -41,6 +42,35 @@ static bool loadTextureRGBA(const fs::path& sourcePath,
     height = imgData.height;
     rgbaPixels = std::move(imgData.pixels);
     return true;
+}
+
+static bool ddsFormatMatchesCompressionMode(uint32_t dxgiFormatValue,
+                                            DDSCompressionMode compressionMode)
+{
+    const auto dxgiFormat = static_cast<DXGI_FORMAT>(dxgiFormatValue);
+
+    switch (compressionMode) {
+    case DDSCompressionMode::BC7_sRGB:
+        return dxgiFormat == DXGI_FORMAT_BC7_UNORM_SRGB;
+    case DDSCompressionMode::BC7_Linear:
+        return dxgiFormat == DXGI_FORMAT_BC7_UNORM;
+    case DDSCompressionMode::BC6H_UF16:
+        return dxgiFormat == DXGI_FORMAT_BC6H_UF16;
+    case DDSCompressionMode::BC5_Linear:
+        return dxgiFormat == DXGI_FORMAT_BC5_UNORM;
+    case DDSCompressionMode::BC4_Linear:
+        return dxgiFormat == DXGI_FORMAT_BC4_UNORM;
+    case DDSCompressionMode::BC1_sRGB:
+        return dxgiFormat == DXGI_FORMAT_BC1_UNORM_SRGB;
+    case DDSCompressionMode::BC1_Linear:
+        return dxgiFormat == DXGI_FORMAT_BC1_UNORM;
+    case DDSCompressionMode::RGBA8_sRGB:
+        return dxgiFormat == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+    case DDSCompressionMode::RGBA8_Linear:
+        return dxgiFormat == DXGI_FORMAT_R8G8B8A8_UNORM;
+    }
+
+    return false;
 }
 
 static bool saveTextureWithCompression(const fs::path& outputPath,
@@ -100,6 +130,16 @@ static bool exportSingleTexture(
     DDSCompressionMode compressionMode)
 {
     fs::create_directories(outputPath.parent_path());
+
+    if (FileUtils::getExtensionLower(entry.sourcePath) == ".dds") {
+        DDSUtils::DDSInfo info;
+        if (DDSUtils::getDDSInfo(entry.sourcePath, info)
+            && ddsFormatMatchesCompressionMode(info.dxgiFormat, compressionMode)) {
+            spdlog::info("ModExporter: copying DDS without re-encoding {} -> {}",
+                         entry.sourcePath.string(), outputPath.string());
+            return DDSUtils::copyDDS(entry.sourcePath, outputPath);
+        }
+    }
 
     int width = 0;
     int height = 0;

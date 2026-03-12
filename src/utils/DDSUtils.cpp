@@ -56,6 +56,13 @@ static int dxgiFormatChannels(DXGI_FORMAT fmt)
     }
 }
 
+static DXGI_FORMAT preferredRGBAFormat(DXGI_FORMAT sourceFormat)
+{
+    return DirectX::IsSRGB(sourceFormat)
+        ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB
+        : DXGI_FORMAT_R8G8B8A8_UNORM;
+}
+
 /// Create a ScratchImage from raw RGBA8 pixels (no copy — caller must keep pixels alive)
 /// Returns a newly initialized ScratchImage with pixel data copied in.
 static HRESULT createScratchFromRGBA(int width, int height, const uint8_t* rgbaPixels,
@@ -141,6 +148,7 @@ bool DDSUtils::getDDSInfo(const std::filesystem::path& path, DDSInfo& info)
     info.height     = static_cast<int>(metadata.height);
     info.mipLevels  = metadata.mipLevels;
     info.dxgiFormat = static_cast<uint32_t>(metadata.format);
+    info.isSRGB     = DirectX::IsSRGB(metadata.format);
     info.formatName = dxgiFormatName(metadata.format);
     info.channels   = dxgiFormatChannels(metadata.format);
 
@@ -151,7 +159,8 @@ bool DDSUtils::getDDSInfo(const std::filesystem::path& path, DDSInfo& info)
 
 bool DDSUtils::loadDDS(const std::filesystem::path& path,
                        int& width, int& height,
-                       std::vector<uint8_t>& rgbaPixels)
+                       std::vector<uint8_t>& rgbaPixels,
+                       bool* isSRGB)
 {
     DirectX::TexMetadata metadata{};
     DirectX::ScratchImage scratch;
@@ -166,6 +175,11 @@ bool DDSUtils::loadDDS(const std::filesystem::path& path,
         return false;
     }
 
+    const DXGI_FORMAT targetRGBAFormat = preferredRGBAFormat(metadata.format);
+    if (isSRGB) {
+        *isSRGB = DirectX::IsSRGB(metadata.format);
+    }
+
     // If compressed, decompress first
     DirectX::ScratchImage decompressed;
     const DirectX::ScratchImage* source = &scratch;
@@ -173,7 +187,7 @@ bool DDSUtils::loadDDS(const std::filesystem::path& path,
     if (DirectX::IsCompressed(metadata.format)) {
         hr = DirectX::Decompress(
             scratch.GetImages(), scratch.GetImageCount(), scratch.GetMetadata(),
-            DXGI_FORMAT_R8G8B8A8_UNORM,
+            DXGI_FORMAT_UNKNOWN,
             decompressed);
 
         if (FAILED(hr)) {
@@ -187,10 +201,10 @@ bool DDSUtils::loadDDS(const std::filesystem::path& path,
     DirectX::ScratchImage converted;
     const auto& srcMeta = source->GetMetadata();
 
-    if (srcMeta.format != DXGI_FORMAT_R8G8B8A8_UNORM) {
+    if (srcMeta.format != targetRGBAFormat) {
         hr = DirectX::Convert(
             source->GetImages(), source->GetImageCount(), srcMeta,
-            DXGI_FORMAT_R8G8B8A8_UNORM,
+            targetRGBAFormat,
             DirectX::TEX_FILTER_DEFAULT, DirectX::TEX_THRESHOLD_DEFAULT,
             converted);
 
