@@ -178,29 +178,57 @@ PreviewMesh MeshGenerator::generateCube()
 {
     PreviewMesh mesh;
 
-    // 6 faces, 4 vertices each, CCW winding when viewed from outside
+    // 6 faces, 4 vertices each
+    // Vertices ordered CCW when viewed from outside (facing normal direction)
+    // For each face: define 4 corners going counter-clockwise as seen from the normal side
+    // UV: v0=(0,0) top-left, v1=(0,1) bottom-left, v2=(1,1) bottom-right, v3=(1,0) top-right
     struct FaceInfo
     {
         float normal[3];
         float tangent[4];
-        float positions[4][3]; // CCW order when viewed from normal direction
+        float positions[4][3];
         float uvs[4][2];
     };
 
     // clang-format off
+    // Looking at each face from outside (from the normal direction):
+    // v0=TL, v1=BL, v2=BR, v3=TR — CCW order
     FaceInfo faces[] = {
-        // +Z face (front): CCW from +Z is BL→BR→TR→TL
-        {{0, 0, 1}, {1, 0, 0, 1}, {{-1,-1, 1},{ 1,-1, 1},{ 1, 1, 1},{-1, 1, 1}}, {{0,1},{1,1},{1,0},{0,0}}},
-        // -Z face (back): CCW from -Z is BR→BL→TL→TR
-        {{0, 0,-1}, {-1,0, 0, 1}, {{ 1,-1,-1},{-1,-1,-1},{-1, 1,-1},{ 1, 1,-1}}, {{0,1},{1,1},{1,0},{0,0}}},
-        // +X face (right): CCW from +X
-        {{1, 0, 0}, {0, 0,-1, 1}, {{ 1,-1, 1},{ 1,-1,-1},{ 1, 1,-1},{ 1, 1, 1}}, {{0,1},{1,1},{1,0},{0,0}}},
-        // -X face (left): CCW from -X
-        {{-1,0, 0}, {0, 0, 1, 1}, {{-1,-1,-1},{-1,-1, 1},{-1, 1, 1},{-1, 1,-1}}, {{0,1},{1,1},{1,0},{0,0}}},
-        // +Y face (top): CCW from +Y
-        {{0, 1, 0}, {1, 0, 0, 1}, {{-1, 1, 1},{ 1, 1, 1},{ 1, 1,-1},{-1, 1,-1}}, {{0,0},{1,0},{1,1},{0,1}}},
-        // -Y face (bottom): CCW from -Y
-        {{0,-1, 0}, {1, 0, 0, 1}, {{-1,-1,-1},{ 1,-1,-1},{ 1,-1, 1},{-1,-1, 1}}, {{0,0},{1,0},{1,1},{0,1}}},
+        // +Z face: looking from +Z toward origin, X goes right, Y goes up
+        // TL=(-1,1,1) BL=(-1,-1,1) BR=(1,-1,1) TR=(1,1,1)
+        {{0, 0, 1}, {1, 0, 0, 1},
+         {{-1, 1, 1},{-1,-1, 1},{ 1,-1, 1},{ 1, 1, 1}},
+         {{0,0},{0,1},{1,1},{1,0}}},
+
+        // -Z face: looking from -Z toward origin, X goes left, Y goes up
+        // TL=(1,1,-1) BL=(1,-1,-1) BR=(-1,-1,-1) TR=(-1,1,-1)
+        {{0, 0,-1}, {-1, 0, 0, 1},
+         {{ 1, 1,-1},{ 1,-1,-1},{-1,-1,-1},{-1, 1,-1}},
+         {{0,0},{0,1},{1,1},{1,0}}},
+
+        // +X face: looking from +X toward origin, Z goes left, Y goes up
+        // TL=(1,1,1) BL=(1,-1,1) BR=(1,-1,-1) TR=(1,1,-1)
+        {{1, 0, 0}, {0, 0,-1, 1},
+         {{ 1, 1, 1},{ 1,-1, 1},{ 1,-1,-1},{ 1, 1,-1}},
+         {{0,0},{0,1},{1,1},{1,0}}},
+
+        // -X face: looking from -X toward origin, Z goes right, Y goes up
+        // TL=(-1,1,-1) BL=(-1,-1,-1) BR=(-1,-1,1) TR=(-1,1,1)
+        {{-1, 0, 0}, {0, 0, 1, 1},
+         {{-1, 1,-1},{-1,-1,-1},{-1,-1, 1},{-1, 1, 1}},
+         {{0,0},{0,1},{1,1},{1,0}}},
+
+        // +Y face: looking from +Y down, X goes right, Z goes down (away)
+        // TL=(-1,1,-1) BL=(-1,1,1) BR=(1,1,1) TR=(1,1,-1)
+        {{0, 1, 0}, {1, 0, 0, 1},
+         {{-1, 1,-1},{-1, 1, 1},{ 1, 1, 1},{ 1, 1,-1}},
+         {{0,0},{0,1},{1,1},{1,0}}},
+
+        // -Y face: looking from -Y up, X goes right, Z goes up (toward)
+        // TL=(-1,-1,1) BL=(-1,-1,-1) BR=(1,-1,-1) TR=(1,-1,1)
+        {{0,-1, 0}, {1, 0, 0, 1},
+         {{-1,-1, 1},{-1,-1,-1},{ 1,-1,-1},{ 1,-1, 1}},
+         {{0,0},{0,1},{1,1},{1,0}}},
     };
     // clang-format on
 
@@ -224,7 +252,7 @@ PreviewMesh MeshGenerator::generateCube()
             v.uv[1] = face.uvs[i][1];
             mesh.vertices.push_back(v);
         }
-        // Standard CCW triangle fan: 0-1-2, 0-2-3
+        // CCW: 0→1→2, 0→2→3
         mesh.indices.push_back(base);
         mesh.indices.push_back(base + 1);
         mesh.indices.push_back(base + 2);
