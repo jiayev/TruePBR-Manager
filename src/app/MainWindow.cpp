@@ -3,6 +3,7 @@
 #include "core/JsonExporter.h"
 #include "core/ModExporter.h"
 #include "core/TextureImporter.h"
+#include "core/TextureSetValidator.h"
 #include "ui/FeatureTogglePanel.h"
 #include "ui/ParameterPanel.h"
 #include "ui/SlotEditorWidget.h"
@@ -117,6 +118,8 @@ void MainWindow::setupMenuBar()
     fileMenu->addAction(tr("Save Project &As..."), this, &MainWindow::onSaveProjectAs, QKeySequence::SaveAs);
     fileMenu->addAction(tr("Project &Name..."), this, &MainWindow::onRenameProject);
     fileMenu->addSeparator();
+    fileMenu->addAction(tr("&Batch Import Folder..."), this, &MainWindow::onBatchImport);
+    fileMenu->addSeparator();
     fileMenu->addAction(tr("E&xit"), this, &QWidget::close, QKeySequence::Quit);
 }
 
@@ -202,6 +205,7 @@ void MainWindow::setupCentralWidget()
     connect(m_slotEditor, &SlotEditorWidget::importChannelRequested, this, &MainWindow::onImportChannel);
     connect(m_slotEditor, &SlotEditorWidget::fileDroppedOnSlot, this, &MainWindow::onDroppedOnSlot);
     connect(m_slotEditor, &SlotEditorWidget::fileDroppedOnChannel, this, &MainWindow::onDroppedOnChannel);
+    connect(m_slotEditor, &SlotEditorWidget::slotPreviewRequested, this, &MainWindow::onSlotPreviewRequested);
     connect(m_slotEditor, &SlotEditorWidget::rmaosSourceModeChanged, this, &MainWindow::onRmaosSourceModeChanged);
     connect(m_slotEditor, &SlotEditorWidget::matchTextureChanged, this, &MainWindow::onMatchTextureChanged);
     connect(m_slotEditor, &SlotEditorWidget::matchTextureModeChanged, this, &MainWindow::onMatchTextureModeChanged);
@@ -348,6 +352,45 @@ void MainWindow::onExportMod()
     {
         QMessageBox::warning(this, tr("Export"), tr("Please choose an export folder first."));
         return;
+    }
+
+    // Run validation on all texture sets
+    bool hasErrors = false;
+    QString validationReport;
+    for (size_t i = 0; i < m_project.textureSets.size(); ++i)
+    {
+        auto issues = TextureSetValidator::validate(m_project.textureSets[i]);
+        if (!issues.empty())
+        {
+            validationReport +=
+                tr("Texture Set \"%1\":\n").arg(QString::fromStdString(m_project.textureSets[i].name));
+            for (const auto& issue : issues)
+            {
+                bool isError = (issue.severity == ValidationSeverity::Error);
+                if (isError)
+                    hasErrors = true;
+                validationReport += tr("  %1 %2\n")
+                                        .arg(isError ? "[ERROR]" : "[WARNING]")
+                                        .arg(QString::fromStdString(issue.message));
+            }
+            validationReport += "\n";
+        }
+    }
+
+    if (hasErrors)
+    {
+        QMessageBox::warning(this, tr("Export - Validation Errors"),
+                             tr("Export cannot proceed due to errors:\n\n%1").arg(validationReport));
+        return;
+    }
+
+    if (!validationReport.isEmpty())
+    {
+        auto reply = QMessageBox::warning(this, tr("Export - Warnings"),
+                                          tr("There are warnings:\n\n%1\nContinue with export?").arg(validationReport),
+                                          QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
+        if (reply != QMessageBox::Yes)
+            return;
     }
 
     if (ModExporter::exportMod(m_project))
@@ -541,6 +584,66 @@ void MainWindow::onImportChannel(ChannelMap channel)
                                  .arg(entry.height));
 }
 
+void MainWindow::onBatchImport()
+{
+    if (m_currentSetIndex < 0)
+    {
+        QMessageBox::information(this, tr("Batch Import"),
+                                 tr("Select or create a Texture Set first."));
+        return;
+    }
+
+    auto dir = QFileDialog::getExistingDirectory(this, tr("Select Folder for Batch Import"));
+    if (dir.isEmpty())
+        return;
+
+    auto scanResult = TextureImporter::scanFolder(dir.toStdString());
+
+    auto& ts = m_project.textureSets[m_currentSetIndex];
+    int imported = 0;
+
+    // Import slot files
+    for (const auto& [slot, path] : scanResult.slotFiles)
+    {
+        auto entry = TextureImporter::importTexture(path, slot);
+        ts.textures[slot] = entry;
+        ++imported;
+    }
+
+    // Import channel files
+    for (const auto& [ch, path] : scanResult.channelFiles)
+    {
+        auto entry = TextureImporter::importChannelMap(path, ch);
+        ts.channelMaps[ch] = entry;
+        ++imported;
+    }
+
+    // If we found individual channels, switch to split mode
+    if (!scanResult.channelFiles.empty())
+    {
+        ts.rmaosSourceMode = RMAOSSourceMode::SeparateChannels;
+    }
+
+    m_slotEditor->setTextureSet(ts);
+    m_featurePanel->setFeatures(ts.features);
+    refreshPreview();
+
+    QString msg = tr("Batch import: %1 files imported").arg(imported);
+    if (!scanResult.unmatched.empty())
+    {
+        msg += tr(", %1 unmatched").arg(static_cast<int>(scanResult.unmatched.size()));
+    }
+    statusBar()->showMessage(msg);
+
+    if (imported == 0)
+    {
+        QMessageBox::information(this, tr("Batch Import"),
+                                 tr("No matching textures found in the selected folder.\n\n"
+                                    "Expected suffixes: _n, _rmaos, _g, _p, _s, _f, _cnr, "
+                                    "_roughness, _metallic, _ao, _specular"));
+    }
+}
+
 void MainWindow::onDroppedOnSlot(PBRTextureSlot slot, const QString& filePath)
 {
     if (m_currentSetIndex < 0)
@@ -580,6 +683,42 @@ void MainWindow::onDroppedOnChannel(ChannelMap channel, const QString& filePath)
                                  .arg(QString::fromStdString(entry.sourcePath.filename().string()))
                                  .arg(entry.width)
                                  .arg(entry.height));
+}
+
+void MainWindow::onSlotPreviewRequested(PBRTextureSlot slot)
+{
+    if (m_currentSetIndex < 0 || m_currentSetIndex >= static_cast<int>(m_project.textureSets.size()))
+        return;
+
+    const auto& ts = m_project.textureSets[m_currentSetIndex];
+    auto it = ts.textures.find(slot);
+    if (it == ts.textures.end() || it->second.sourcePath.empty())
+    {
+        statusBar()->showMessage(tr("No texture assigned to %1").arg(slotDisplayName(slot)));
+        return;
+    }
+
+    const QImage image = loadPreviewImage(it->second.sourcePath);
+    if (image.isNull())
+    {
+        statusBar()->showMessage(tr("Failed to load preview for %1").arg(slotDisplayName(slot)));
+        return;
+    }
+
+    m_previewWidget->setImage(image);
+    // Show channel selector for multi-channel data textures (RMAOS, CoatNormalRoughness, Fuzz, Subsurface)
+    bool showChannels = (slot == PBRTextureSlot::RMAOS || slot == PBRTextureSlot::CoatNormalRoughness
+                         || slot == PBRTextureSlot::Fuzz || slot == PBRTextureSlot::Subsurface
+                         || slot == PBRTextureSlot::Diffuse);
+    m_previewWidget->setChannelSelectorVisible(showChannels);
+
+    if (m_previewStack != nullptr)
+    {
+        m_previewStack->setCurrentWidget(m_previewWidget);
+    }
+    statusBar()->showMessage(tr("Previewing: %1 (%2)")
+                                 .arg(slotDisplayName(slot))
+                                 .arg(QString::fromStdString(it->second.sourcePath.filename().string())));
 }
 
 void MainWindow::onRmaosSourceModeChanged(RMAOSSourceMode mode)

@@ -79,6 +79,9 @@ class SlotEditorWidget : public QWidget
     /// Emitted when a file is dropped onto a channel row
     void fileDroppedOnChannel(ChannelMap channel, const QString& filePath);
 
+    /// Emitted when a slot's drop zone is clicked (for preview)
+    void slotPreviewRequested(PBRTextureSlot slot);
+
   private:
     void setupUI();
     void addSlotRow(PBRTextureSlot slot, const QString& label, bool visible);

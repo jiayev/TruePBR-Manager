@@ -41,8 +41,10 @@ class MainWindow : public QMainWindow
     void onRemoveTextureSet(int index);
     void onImportTexture(PBRTextureSlot slot);
     void onImportChannel(ChannelMap channel);
+    void onBatchImport();
     void onDroppedOnSlot(PBRTextureSlot slot, const QString& filePath);
     void onDroppedOnChannel(ChannelMap channel, const QString& filePath);
+    void onSlotPreviewRequested(PBRTextureSlot slot);
     void onRmaosSourceModeChanged(RMAOSSourceMode mode);
     void onMatchTextureChanged(const QString& newPath);
     void onMatchTextureModeChanged(TextureMatchMode mode);

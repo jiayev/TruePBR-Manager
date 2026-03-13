@@ -468,7 +468,7 @@ void SlotEditorWidget::addSlotRow(PBRTextureSlot slot, const QString& label, boo
 
     row.container->setVisible(visible);
 
-    connect(row.dropZone, &DropZoneLabel::clicked, this, [this, slot]() { emit importRequested(slot); });
+    connect(row.dropZone, &DropZoneLabel::clicked, this, [this, slot]() { emit slotPreviewRequested(slot); });
 
     connect(row.dropZone, &DropZoneLabel::fileDropped, this,
             [this, slot](const QString& path) { emit fileDroppedOnSlot(slot, path); });

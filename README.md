@@ -23,7 +23,10 @@ The application currently supports:
 - Alpha mode detection (None, Opaque, Transparent) to gate compression options
 - Vanilla texture match modes: Auto, Match Diffuse, Match Normal
 - Copy-through optimization: source DDS files already in the target format are copied without re-encoding
-- Previewing imported textures with zoom and pan
+- Previewing imported textures with zoom, pan, and per-channel isolation (R/G/B/A)
+- Click any slot's texture to preview it in the viewer
+- Batch import: scan a folder and auto-assign textures by suffix (_n, _rmaos, _g, _p, _roughness, etc.)
+- Pre-export validation: resolution mismatches, missing slots, slot conflicts, non-power-of-two warnings
 - Exporting DDS textures into the correct `textures/pbr/...` layout and generating a PGPatcher JSON file
 - PGPatcher JSON with `rename`, `lock_*`, `match_normal`, explicit `slotN` overrides, and conditional feature fields
 
@@ -209,11 +212,12 @@ src/
 - [x] PGPatcher JSON export with rename, lock, match_normal, and slotN support
 - [x] Vanilla texture match modes (Auto/Diffuse/Normal)
 - [x] Basic preview with zoom and pan
+- [x] Per-channel preview (R/G/B/A isolation) for RMAOS and other textures
+- [x] Batch import with suffix auto-detection
+- [x] Pre-export validation with error/warning reporting
 - [x] CI/CD with GitHub Actions (build + release packaging)
-- [ ] Batch import with suffix detection
-- [ ] Channel-isolated preview tools
+- [ ] Landscape texture set support (PBRTextureSets JSON)
 - [ ] Undo/redo
-- [ ] Validation and warning surface for mismatched inputs
 - [ ] 3D material preview
 - [ ] Localization
 

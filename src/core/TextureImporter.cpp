@@ -202,4 +202,94 @@ const char* TextureImporter::fileFilter()
     return "Images (*.png *.dds *.tga *.bmp);;DDS Files (*.dds);;PNG Files (*.png);;All Files (*)";
 }
 
+// ─── Suffix detection ──────────────────────────────────────
+
+static std::string toLower(const std::string& s)
+{
+    std::string result = s;
+    std::transform(result.begin(), result.end(), result.begin(), ::tolower);
+    return result;
+}
+
+std::optional<PBRTextureSlot> TextureImporter::detectSlotFromSuffix(const std::string& stem)
+{
+    auto lower = toLower(stem);
+
+    // Order matters — check longer suffixes first
+    if (lower.ends_with("_rmaos"))  return PBRTextureSlot::RMAOS;
+    if (lower.ends_with("_cnr"))    return PBRTextureSlot::CoatNormalRoughness;
+    if (lower.ends_with("_n"))      return PBRTextureSlot::Normal;
+    if (lower.ends_with("_msn"))    return PBRTextureSlot::Normal;
+    if (lower.ends_with("_g"))      return PBRTextureSlot::Emissive;
+    if (lower.ends_with("_p"))      return PBRTextureSlot::Displacement;
+    if (lower.ends_with("_f"))      return PBRTextureSlot::Fuzz;
+    if (lower.ends_with("_s"))      return PBRTextureSlot::Subsurface;
+
+    return std::nullopt; // Could be diffuse (no suffix) but needs caller to decide
+}
+
+std::optional<ChannelMap> TextureImporter::detectChannelFromSuffix(const std::string& stem)
+{
+    auto lower = toLower(stem);
+
+    if (lower.ends_with("_roughness") || lower.ends_with("_rough"))  return ChannelMap::Roughness;
+    if (lower.ends_with("_metallic") || lower.ends_with("_metal"))   return ChannelMap::Metallic;
+    if (lower.ends_with("_ao") || lower.ends_with("_occlusion"))     return ChannelMap::AO;
+    if (lower.ends_with("_specular") || lower.ends_with("_spec"))    return ChannelMap::Specular;
+
+    return std::nullopt;
+}
+
+TextureImporter::BatchScanResult TextureImporter::scanFolder(const std::filesystem::path& folder)
+{
+    BatchScanResult result;
+
+    auto files = FileUtils::listImages(folder);
+    spdlog::info("Batch scan: {} images found in {}", files.size(), folder.string());
+
+    for (const auto& filePath : files)
+    {
+        auto stem = filePath.stem().string();
+
+        // Try slot detection
+        auto slot = detectSlotFromSuffix(stem);
+        if (slot.has_value())
+        {
+            result.slotFiles[slot.value()] = filePath;
+            spdlog::debug("  {} -> slot {}", filePath.filename().string(), slotDisplayName(slot.value()));
+            continue;
+        }
+
+        // Try channel detection (for split RMAOS)
+        auto channel = detectChannelFromSuffix(stem);
+        if (channel.has_value())
+        {
+            result.channelFiles[channel.value()] = filePath;
+            spdlog::debug("  {} -> channel {}", filePath.filename().string(), channelDisplayName(channel.value()));
+            continue;
+        }
+
+        // No known suffix — assume diffuse if no diffuse yet assigned
+        if (result.slotFiles.find(PBRTextureSlot::Diffuse) == result.slotFiles.end())
+        {
+            // Heuristic: file with no PBR suffix is likely diffuse
+            // Additional check: skip if name ends with _d (also diffuse)
+            auto lower = toLower(stem);
+            if (lower.ends_with("_d") || !lower.empty())
+            {
+                result.slotFiles[PBRTextureSlot::Diffuse] = filePath;
+                spdlog::debug("  {} -> Diffuse (default)", filePath.filename().string());
+                continue;
+            }
+        }
+
+        result.unmatched.push_back(filePath);
+        spdlog::debug("  {} -> unmatched", filePath.filename().string());
+    }
+
+    spdlog::info("Batch scan result: {} slots, {} channels, {} unmatched", result.slotFiles.size(),
+                 result.channelFiles.size(), result.unmatched.size());
+    return result;
+}
+
 } // namespace tpbr

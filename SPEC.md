@@ -58,20 +58,39 @@ Primary references:
 
 ### 3.4 Preview and export
 
-- Basic image preview with zoom and pan
+- Image preview with zoom, pan, and per-channel isolation (R/G/B/A)
+- Click any slot's texture to preview it; channel buttons appear for multi-channel textures
 - DDS export for each assigned slot
 - Split-channel packing into `_rmaos.dds` during export
 - PGPatcher JSON export to `PBRNIFPatcher/<project>.json`
 - Automatic export directory creation under `textures/pbr/...`
+- Pre-export validation with error/warning reporting
+
+### 3.5 Batch import
+
+- Scan a folder and auto-assign textures to slots by suffix convention
+- Recognized slot suffixes: `_n`, `_g`, `_p`, `_rmaos`, `_cnr`, `_f`, `_s`
+- Recognized channel suffixes: `_roughness`, `_metallic`, `_ao`, `_specular` (and abbreviations)
+- Files with no recognized suffix are assigned as Diffuse
+- If channel maps are found, RMAOS source mode is automatically set to SeparateChannels
+
+### 3.6 Input validation
+
+- Pre-export validation checks per texture set:
+  - Missing required slots (Diffuse, Normal, RMAOS)
+  - Resolution mismatches between slot textures
+  - Non-power-of-two resolutions
+  - Enabled features with missing corresponding textures
+  - NIF slot conflicts (TX06: CoatNormalRoughness vs Fuzz; TX07: Subsurface vs CoatColor)
+  - Empty vanilla match texture path
+- Errors block export; warnings allow continue with user confirmation
 
 ### 3.5 Known current limitations
 
-- No batch import or suffix auto-detection
 - No undo/redo
-- No validation UI for resolution or format mismatches
-- No isolated channel preview for RMAOS
 - No 3D shaded material preview
 - No localization support
+- No Landscape texture set support (PBRTextureSets JSON)
 - Vertex-color tuning fields exist in the data/export layer but are not exposed in the current UI
 
 ## 4. Texture Slot Model
@@ -414,6 +433,7 @@ Important implementation modules:
 - `core/ChannelPacker.*`: split-channel RMAOS generation
 - `core/JsonExporter.*`: PGPatcher JSON generation
 - `core/ModExporter.*`: DDS and JSON export orchestration
+- `core/TextureSetValidator.*`: pre-export validation checks
 - `ui/SlotEditorWidget.*`: slot/channel authoring UI
 - `ui/ParameterPanel.*`: numeric material parameter UI
 

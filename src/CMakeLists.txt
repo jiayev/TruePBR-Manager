@@ -12,6 +12,8 @@ set(CORE_SOURCES
     core/JsonExporter.cpp
     core/ModExporter.h
     core/ModExporter.cpp
+    core/TextureSetValidator.h
+    core/TextureSetValidator.cpp
 )
 
 set(UI_SOURCES
