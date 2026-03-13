@@ -834,6 +834,9 @@ void D3D12Renderer::uploadCubemap(int srvIndex, ComPtr<ID3D12Resource>& resource
     m_commandAllocator->Reset();
     m_commandList->Reset(m_commandAllocator.Get(), nullptr);
 
+    // Keep upload buffers alive until after GPU executes the copy commands
+    std::vector<ComPtr<ID3D12Resource>> uploadBuffers;
+
     for (int f = 0; f < 6; ++f)
     {
         UINT subresource = 0 + static_cast<UINT>(f) * static_cast<UINT>(mipLevels); // mip 0, array slice f
@@ -882,6 +885,8 @@ void D3D12Renderer::uploadCubemap(int srvIndex, ComPtr<ID3D12Resource>& resource
         src.PlacedFootprint = footprint;
 
         m_commandList->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+
+        uploadBuffers.push_back(std::move(uploadBuf)); // Keep alive until GPU finishes
     }
 
     // Transition to SRV
