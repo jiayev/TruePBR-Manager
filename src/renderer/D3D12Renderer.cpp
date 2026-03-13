@@ -5,6 +5,8 @@
 #include <DirectXMath.h>
 #include <d3dcompiler.h>
 
+#include <chrono>
+
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "dxgi.lib")
 #pragma comment(lib, "d3dcompiler.lib")
@@ -853,21 +855,33 @@ void D3D12Renderer::waitForGPU()
         return;
     }
 
-    m_commandQueue->Signal(m_fence.Get(), m_fenceValue);
-    if (m_fence->GetCompletedValue() < m_fenceValue)
+    const UINT64 targetValue = m_fenceValue;
+    m_commandQueue->Signal(m_fence.Get(), targetValue);
+    ++m_fenceValue;
+
+    // Spin-wait with Sleep instead of event-based wait.
+    // Some drivers (notably RTX 5070 / Blackwell) have issues with
+    // SetEventOnCompletion not firing reliably for the first few fences.
+    if (m_fence->GetCompletedValue() < targetValue)
     {
-        m_fence->SetEventOnCompletion(m_fenceValue, m_fenceEvent);
-        DWORD result = WaitForSingleObject(m_fenceEvent, 10000); // 10 second timeout
-        if (result == WAIT_TIMEOUT)
+        const auto start = std::chrono::steady_clock::now();
+        const auto timeout = std::chrono::seconds(10);
+
+        while (m_fence->GetCompletedValue() < targetValue)
         {
-            spdlog::error("D3D12Renderer::waitForGPU TIMEOUT waiting for fence value {}", m_fenceValue);
-            // Check device removed after timeout
-            HRESULT reason = m_device->GetDeviceRemovedReason();
-            spdlog::error("D3D12Renderer::waitForGPU: device removed reason: 0x{:08X}", static_cast<unsigned>(reason));
-            spdlog::default_logger()->flush();
+            auto elapsed = std::chrono::steady_clock::now() - start;
+            if (elapsed > timeout)
+            {
+                spdlog::error("D3D12Renderer::waitForGPU TIMEOUT (spin) waiting for fence value {}", targetValue);
+                HRESULT reason = m_device->GetDeviceRemovedReason();
+                spdlog::error("D3D12Renderer::waitForGPU: device removed reason: 0x{:08X}",
+                              static_cast<unsigned>(reason));
+                spdlog::default_logger()->flush();
+                return;
+            }
+            Sleep(0); // Yield CPU
         }
     }
-    ++m_fenceValue;
 }
 
 void D3D12Renderer::setIBLIntensity(float intensity)
