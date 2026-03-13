@@ -126,6 +126,19 @@ void ParameterPanel::setupUI()
     m_glintSection->setVisible(false);
     mainLayout->addWidget(m_glintSection);
 
+    // ── Vertex Color Section (always visible) ──────────────
+    m_vertexColorSection = new QGroupBox(tr("Vertex Color"), this);
+    auto* vcLayout = new QFormLayout(m_vertexColorSection);
+    m_vertexColorsEnabled = new QCheckBox(tr("Enable Vertex Colors"), this);
+    m_vertexColorsEnabled->setChecked(true);
+    connect(m_vertexColorsEnabled, &QCheckBox::toggled, this, &ParameterPanel::onAnyChanged);
+    vcLayout->addRow(m_vertexColorsEnabled);
+    makeSpin(m_vertexColorLumMult, 0.0, 5.0, 0.1, 1.0, 2);
+    makeSpin(m_vertexColorSatMult, 0.0, 5.0, 0.1, 1.0, 2);
+    vcLayout->addRow(tr("Luminance Multiplier"), m_vertexColorLumMult);
+    vcLayout->addRow(tr("Saturation Multiplier"), m_vertexColorSatMult);
+    mainLayout->addWidget(m_vertexColorSection);
+
     mainLayout->addStretch();
 }
 
@@ -182,6 +195,13 @@ void ParameterPanel::setParameters(const PBRParameters& p, const PBRFeatureFlags
     block(m_glintMicrofacetRoughness, p.glintMicrofacetRoughness);
     block(m_glintDensityRandomization, p.glintDensityRandomization);
     m_glintSection->setVisible(f.glint);
+
+    // Vertex Color
+    m_vertexColorsEnabled->blockSignals(true);
+    m_vertexColorsEnabled->setChecked(p.vertexColors);
+    m_vertexColorsEnabled->blockSignals(false);
+    block(m_vertexColorLumMult, p.vertexColorLumMult);
+    block(m_vertexColorSatMult, p.vertexColorSatMult);
 }
 
 PBRParameters ParameterPanel::getParameters() const
@@ -211,6 +231,10 @@ PBRParameters ParameterPanel::getParameters() const
     p.glintLogMicrofacetDensity = static_cast<float>(m_glintLogMicrofacetDensity->value());
     p.glintMicrofacetRoughness = static_cast<float>(m_glintMicrofacetRoughness->value());
     p.glintDensityRandomization = static_cast<float>(m_glintDensityRandomization->value());
+
+    p.vertexColors = m_vertexColorsEnabled->isChecked();
+    p.vertexColorLumMult = static_cast<float>(m_vertexColorLumMult->value());
+    p.vertexColorSatMult = static_cast<float>(m_vertexColorSatMult->value());
 
     return p;
 }

@@ -33,6 +33,8 @@ set(UI_SOURCES
     ui/ExportDialog.cpp
     ui/ImportDialog.h
     ui/ImportDialog.cpp
+    ui/MaterialPreviewWidget.h
+    ui/MaterialPreviewWidget.cpp
 )
 
 set(APP_SOURCES
@@ -53,12 +55,20 @@ set(UTIL_SOURCES
     utils/DDSUtils.cpp
 )
 
+set(RENDERER_SOURCES
+    renderer/D3D12Renderer.h
+    renderer/D3D12Renderer.cpp
+    renderer/MeshGenerator.h
+    renderer/MeshGenerator.cpp
+)
+
 set(ALL_SOURCES
     main.cpp
     ${CORE_SOURCES}
     ${UI_SOURCES}
     ${APP_SOURCES}
     ${UTIL_SOURCES}
+    ${RENDERER_SOURCES}
 )
 
 # Qt resources
@@ -88,6 +98,9 @@ target_link_libraries(TruePBR-Manager PRIVATE
     nlohmann_json::nlohmann_json
     spdlog::spdlog
     Microsoft::DirectXTex
+    d3d12.lib
+    dxgi.lib
+    d3dcompiler.lib
 )
 
 # Windows-specific: embed manifest, set subsystem
@@ -158,4 +171,13 @@ add_custom_command(TARGET TruePBR-Manager POST_BUILD
         "${CMAKE_SOURCE_DIR}/LICENSE"
         "${DIST_DIR}/LICENSE"
     COMMENT "Copying LICENSE to dist/..."
+)
+
+# Copy HLSL shader
+add_custom_command(TARGET TruePBR-Manager POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${DIST_DIR}/shaders"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/renderer/PBRShader.hlsl"
+        "${DIST_DIR}/shaders/PBRShader.hlsl"
+    COMMENT "Copying PBR shader to dist/..."
 )

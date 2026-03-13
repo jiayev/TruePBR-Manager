@@ -66,6 +66,12 @@ class ParameterPanel : public QWidget
     QDoubleSpinBox* m_glintLogMicrofacetDensity = nullptr;
     QDoubleSpinBox* m_glintMicrofacetRoughness = nullptr;
     QDoubleSpinBox* m_glintDensityRandomization = nullptr;
+
+    // Vertex Color
+    QWidget* m_vertexColorSection = nullptr;
+    QCheckBox* m_vertexColorsEnabled = nullptr;
+    QDoubleSpinBox* m_vertexColorLumMult = nullptr;
+    QDoubleSpinBox* m_vertexColorSatMult = nullptr;
 };
 
 } // namespace tpbr
