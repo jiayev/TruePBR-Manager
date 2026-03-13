@@ -9,9 +9,11 @@
 #include "ui/SlotEditorWidget.h"
 #include "ui/TexturePreviewWidget.h"
 #include "ui/TextureSetPanel.h"
+#include "ui/MaterialPreviewWidget.h"
 
 #include "utils/DDSUtils.h"
 #include "utils/FileUtils.h"
+#include "utils/ImageUtils.h"
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
@@ -176,15 +178,76 @@ void MainWindow::setupCentralWidget()
     m_editorStack->addWidget(m_editorPlaceholder);
     splitter->addWidget(m_editorStack);
 
-    // Right: Texture Preview
+    // Right: Preview area with 2D/3D toggle
+    auto* previewContainer = new QWidget(this);
+    auto* previewLayout = new QVBoxLayout(previewContainer);
+    previewLayout->setContentsMargins(0, 0, 0, 0);
+    previewLayout->setSpacing(2);
+
+    // 2D/3D toggle bar
+    m_previewModeBar = new QWidget(previewContainer);
+    auto* modeBarLayout = new QHBoxLayout(m_previewModeBar);
+    modeBarLayout->setContentsMargins(4, 2, 4, 2);
+    modeBarLayout->setSpacing(2);
+
+    m_preview2DBtn = new QToolButton(m_previewModeBar);
+    m_preview2DBtn->setText(tr("2D"));
+    m_preview2DBtn->setCheckable(true);
+    m_preview2DBtn->setChecked(true);
+    m_preview2DBtn->setFixedSize(48, 24);
+
+    m_preview3DBtn = new QToolButton(m_previewModeBar);
+    m_preview3DBtn->setText(tr("3D"));
+    m_preview3DBtn->setCheckable(true);
+    m_preview3DBtn->setFixedSize(48, 24);
+
+    modeBarLayout->addWidget(m_preview2DBtn);
+    modeBarLayout->addWidget(m_preview3DBtn);
+    modeBarLayout->addStretch();
+
+    previewLayout->addWidget(m_previewModeBar);
+
+    // Preview stack: 2D texture viewer, 3D material viewer, placeholder
     m_previewWidget = new TexturePreviewWidget(this);
+    m_materialPreview = new MaterialPreviewWidget(this);
+
     m_previewStack = new QStackedWidget(this);
-    m_previewStack->addWidget(m_previewWidget);
+    m_previewStack->addWidget(m_previewWidget);   // index 0 = 2D
+    m_previewStack->addWidget(m_materialPreview); // index 1 = 3D
     m_previewPlaceholder = createPlaceholderLabel(
         tr("Preview is unavailable until a Texture Set is selected and at least one texture is imported."),
         m_previewStack);
-    m_previewStack->addWidget(m_previewPlaceholder);
-    splitter->addWidget(m_previewStack);
+    m_previewStack->addWidget(m_previewPlaceholder); // index 2 = placeholder
+
+    previewLayout->addWidget(m_previewStack, 1);
+
+    // Shape combo from MaterialPreviewWidget (show below preview in 3D mode)
+    auto* shapeCombo = m_materialPreview->shapeCombo();
+    shapeCombo->setParent(previewContainer);
+    shapeCombo->setVisible(false);
+    previewLayout->addWidget(shapeCombo);
+
+    splitter->addWidget(previewContainer);
+
+    // 2D/3D toggle connections
+    connect(m_preview2DBtn, &QToolButton::clicked, this,
+            [this]()
+            {
+                m_preview3DMode = false;
+                m_preview2DBtn->setChecked(true);
+                m_preview3DBtn->setChecked(false);
+                m_materialPreview->shapeCombo()->setVisible(false);
+                refreshPreview();
+            });
+    connect(m_preview3DBtn, &QToolButton::clicked, this,
+            [this]()
+            {
+                m_preview3DMode = true;
+                m_preview2DBtn->setChecked(false);
+                m_preview3DBtn->setChecked(true);
+                m_materialPreview->shapeCombo()->setVisible(true);
+                refresh3DPreview();
+            });
 
     splitter->setStretchFactor(0, 1); // list
     splitter->setStretchFactor(1, 2); // editor
@@ -858,6 +921,12 @@ void MainWindow::updateEditorState()
 
 void MainWindow::refreshPreview()
 {
+    if (m_preview3DMode)
+    {
+        refresh3DPreview();
+        return;
+    }
+
     if (m_currentSetIndex < 0 || m_currentSetIndex >= static_cast<int>(m_project.textureSets.size()))
     {
         m_previewWidget->clear();
@@ -908,8 +977,65 @@ void MainWindow::refreshPreview()
         m_previewPlaceholder->setText(tr("No previewable texture has been imported for the selected Texture Set yet."));
         m_previewStack->setCurrentWidget(m_previewPlaceholder);
     }
+}
 
-    m_previewWidget->clear();
+void MainWindow::refresh3DPreview()
+{
+    if (m_currentSetIndex < 0 || m_currentSetIndex >= static_cast<int>(m_project.textureSets.size()))
+    {
+        if (m_previewStack != nullptr)
+        {
+            m_previewStack->setCurrentWidget(m_previewPlaceholder);
+        }
+        return;
+    }
+
+    const auto& ts = m_project.textureSets[m_currentSetIndex];
+
+    // Load RGBA pixel data for each PBR texture
+    auto loadPixels = [](const PBRTextureSet& set, PBRTextureSlot slot, std::vector<uint8_t>& pixels, int& w,
+                         int& h) -> bool
+    {
+        auto it = set.textures.find(slot);
+        if (it == set.textures.end() || it->second.sourcePath.empty())
+            return false;
+
+        const auto ext = FileUtils::getExtensionLower(it->second.sourcePath);
+        if (ext == ".dds")
+        {
+            return DDSUtils::loadDDS(it->second.sourcePath, w, h, pixels);
+        }
+        else
+        {
+            auto img = ImageUtils::loadImage(it->second.sourcePath);
+            if (img.pixels.empty())
+                return false;
+            w = img.width;
+            h = img.height;
+            pixels = std::move(img.pixels);
+            return true;
+        }
+    };
+
+    std::vector<uint8_t> diffusePixels, normalPixels, rmaosPixels;
+    int dw = 0, dh = 0, nw = 0, nh = 0, rw = 0, rh = 0;
+
+    loadPixels(ts, PBRTextureSlot::Diffuse, diffusePixels, dw, dh);
+    loadPixels(ts, PBRTextureSlot::Normal, normalPixels, nw, nh);
+    loadPixels(ts, PBRTextureSlot::RMAOS, rmaosPixels, rw, rh);
+
+    m_materialPreview->setTextures(diffusePixels.empty() ? nullptr : diffusePixels.data(), dw, dh,
+                                   normalPixels.empty() ? nullptr : normalPixels.data(), nw, nh,
+                                   rmaosPixels.empty() ? nullptr : rmaosPixels.data(), rw, rh);
+
+    m_materialPreview->setMaterialParams(ts.params.specularLevel, ts.params.roughnessScale);
+
+    if (m_previewStack != nullptr)
+    {
+        m_previewStack->setCurrentWidget(m_materialPreview);
+    }
+
+    statusBar()->showMessage(tr("3D Preview: %1").arg(QString::fromStdString(ts.name)));
 }
 
 } // namespace tpbr

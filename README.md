@@ -216,9 +216,10 @@ src/
 - [x] Batch import with suffix auto-detection
 - [x] Pre-export validation with error/warning reporting
 - [x] Landscape support (optional PBRTextureSets JSON per EDID)
+- [x] D3D12 PBR material preview (Cook-Torrance, 4 mesh shapes, orbit camera)
+- [x] Vertex color parameter UI
 - [x] CI/CD with GitHub Actions (build + release packaging)
 - [ ] Undo/redo
-- [ ] 3D material preview
 - [ ] Localization
 
 ## References

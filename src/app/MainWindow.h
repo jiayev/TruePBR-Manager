@@ -7,11 +7,13 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QStackedWidget>
+#include <QToolButton>
 
 namespace tpbr
 {
 
 class TexturePreviewWidget;
+class MaterialPreviewWidget;
 class TextureSetPanel;
 class SlotEditorWidget;
 class FeatureTogglePanel;
@@ -62,6 +64,7 @@ class MainWindow : public QMainWindow
     void updateEditorState();
     void refreshUI();
     void refreshPreview();
+    void refresh3DPreview();
 
     Project m_project;
     std::filesystem::path m_projectFilePath;
@@ -73,11 +76,16 @@ class MainWindow : public QMainWindow
     FeatureTogglePanel* m_featurePanel = nullptr;
     ParameterPanel* m_paramPanel = nullptr;
     TexturePreviewWidget* m_previewWidget = nullptr;
+    MaterialPreviewWidget* m_materialPreview = nullptr;
     ::QLineEdit* m_exportPathEdit = nullptr;
     ::QPushButton* m_exportBrowseBtn = nullptr;
     ::QPushButton* m_exportBtn = nullptr;
     QStackedWidget* m_editorStack = nullptr;
     QStackedWidget* m_previewStack = nullptr;
+    QWidget* m_previewModeBar = nullptr;
+    QToolButton* m_preview2DBtn = nullptr;
+    QToolButton* m_preview3DBtn = nullptr;
+    bool m_preview3DMode = false;
     QLabel* m_editorPlaceholder = nullptr;
     QLabel* m_previewPlaceholder = nullptr;
 };

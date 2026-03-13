@@ -96,9 +96,8 @@ Primary references:
 ### 3.8 Known current limitations
 
 - No undo/redo
-- No 3D shaded material preview
 - No localization support
-- Vertex-color tuning fields exist in the data/export layer but are not exposed in the current UI
+- Vertex-color tuning fields exist in the data/export layer and are now exposed in the UI
 
 ## 4. Texture Slot Model
 
@@ -409,11 +408,22 @@ Note: `ExportDialog` exists in the codebase but is currently unused; `MainWindow
 
 ### 9.3 Current preview behavior
 
-Preview selection logic is simple:
+The preview area supports two modes toggled via 2D/3D buttons:
 
+**2D Mode** (default):
 1. Show the current set's diffuse texture if present.
 2. Otherwise show the normal map if present.
 3. Otherwise clear the preview.
+4. Channel isolation (R/G/B/A) available via buttons when a texture is shown.
+5. Click any slot's DropZone to preview that specific texture.
+
+**3D Mode**:
+1. D3D12-rendered material preview using Cook-Torrance PBR BRDF.
+2. Loads Diffuse, Normal, and RMAOS textures from the current texture set.
+3. Four mesh shapes: Sphere, Plane, Cube, Rounded Cube.
+4. Single directional light, Reinhard tone mapping.
+5. Orbit camera: left-drag to rotate, scroll wheel to zoom.
+6. Material parameters (specularLevel, roughnessScale) applied from the texture set.
 
 ## 10. Source Tree
 
