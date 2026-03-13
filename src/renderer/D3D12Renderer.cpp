@@ -173,6 +173,14 @@ bool D3D12Renderer::createCommandQueue()
                                 IID_PPV_ARGS(&m_commandList));
     m_commandList->Close();
 
+    // Submit an empty command list to prime the queue and fence
+    ID3D12CommandList* lists[] = {m_commandList.Get()};
+    m_commandQueue->ExecuteCommandLists(1, lists);
+    m_commandQueue->Signal(m_fence.Get(), m_fenceValue);
+    m_fence->SetEventOnCompletion(m_fenceValue, m_fenceEvent);
+    WaitForSingleObject(m_fenceEvent, 5000); // 5 second timeout instead of INFINITE
+    ++m_fenceValue;
+
     return true;
 }
 
@@ -790,7 +798,12 @@ void D3D12Renderer::waitForGPU()
     if (m_fence->GetCompletedValue() < m_fenceValue)
     {
         m_fence->SetEventOnCompletion(m_fenceValue, m_fenceEvent);
-        WaitForSingleObject(m_fenceEvent, INFINITE);
+        DWORD result = WaitForSingleObject(m_fenceEvent, 10000); // 10 second timeout
+        if (result == WAIT_TIMEOUT)
+        {
+            spdlog::error("D3D12Renderer::waitForGPU TIMEOUT waiting for fence value {}", m_fenceValue);
+            spdlog::default_logger()->flush();
+        }
     }
     ++m_fenceValue;
 }
