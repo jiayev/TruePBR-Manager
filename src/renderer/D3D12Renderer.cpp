@@ -112,7 +112,8 @@ bool D3D12Renderer::createDevice()
 {
     UINT dxgiFlags = 0;
 
-    // Always enable debug layer for now (to diagnose GPU hangs)
+#ifndef NDEBUG
+    // Enable D3D12 debug layer in Debug builds
     ComPtr<ID3D12Debug> debug;
     if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug))))
     {
@@ -120,6 +121,7 @@ bool D3D12Renderer::createDevice()
         dxgiFlags |= DXGI_CREATE_FACTORY_DEBUG;
         spdlog::info("D3D12 debug layer enabled");
     }
+#endif
 
     if (FAILED(CreateDXGIFactory2(dxgiFlags, IID_PPV_ARGS(&m_factory))))
     {
@@ -169,10 +171,36 @@ bool D3D12Renderer::createCommandQueue()
         return false;
     }
 
-    m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_commandAllocator));
-    m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocator.Get(), nullptr,
-                                IID_PPV_ARGS(&m_commandList));
-    m_commandList->Close();
+    HRESULT hr = m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_commandAllocator));
+    if (FAILED(hr))
+    {
+        spdlog::error("Failed to create command allocator: 0x{:08X}", static_cast<unsigned>(hr));
+        return false;
+    }
+
+    // Use CreateCommandList1 (creates in closed state) to avoid the
+    // Create-in-recording → immediate Close pattern that causes timing
+    // issues on some drivers (notably RTX 5070).
+    ComPtr<ID3D12Device4> device4;
+    if (SUCCEEDED(m_device->QueryInterface(IID_PPV_ARGS(&device4))))
+    {
+        hr = device4->CreateCommandList1(0, D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_LIST_FLAG_NONE,
+                                         IID_PPV_ARGS(&m_commandList));
+    }
+    else
+    {
+        // Fallback for older D3D12 runtime: create in recording state then close
+        hr = m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocator.Get(), nullptr,
+                                         IID_PPV_ARGS(&m_commandList));
+        if (SUCCEEDED(hr))
+            m_commandList->Close();
+    }
+
+    if (FAILED(hr))
+    {
+        spdlog::error("Failed to create command list: 0x{:08X}", static_cast<unsigned>(hr));
+        return false;
+    }
 
     return true;
 }
