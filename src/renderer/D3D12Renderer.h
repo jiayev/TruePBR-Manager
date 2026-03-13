@@ -40,7 +40,8 @@ struct SceneCBData
     float _pad2;                           // 4 bytes
     float _pad3;                           // 4 bytes
     // ZH3 irradiance: pre-convolved SH2 + ZH3 zonal coefficient
-    DirectX::XMFLOAT4 zh3Data[5]; // 80 bytes  => total 336 bytes
+    DirectX::XMFLOAT4 zh3Data[5];    // 80 bytes
+    DirectX::XMFLOAT4X4 invViewProj; // 64 bytes  => total 400 bytes
 };
 
 /// Material constant buffer data (matches cbuffer MaterialCB in shader).
@@ -217,6 +218,7 @@ class D3D12Renderer
     // Pipeline state
     ComPtr<ID3D12RootSignature> m_rootSignature;
     ComPtr<ID3D12PipelineState> m_pipelineState;
+    ComPtr<ID3D12PipelineState> m_skyboxPSO;
 
     // Mesh
     ComPtr<ID3D12Resource> m_vertexBuffer;

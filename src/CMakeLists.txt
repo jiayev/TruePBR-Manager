@@ -68,6 +68,7 @@ set(RENDERER_SOURCES
     renderer/MeshGenerator.cpp
     renderer/IBLProcessor.h
     renderer/IBLProcessor.cpp
+    renderer/SkyboxShader.hlsl
 )
 
 set(ALL_SOURCES

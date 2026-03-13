@@ -20,6 +20,7 @@ cbuffer SceneCB : register(b0)
     float _pad3;
     float4 g_SH[4];  // Pre-convolved SH2 radiance: [0]=DC, [1]=L1y, [2]=L1z, [3]=L1x
     float4 g_ZH3;    // Pre-convolved ZH3 zonal L2 coefficient (.xyz = RGB)
+    row_major float4x4 g_InvViewProj; // Inverse view-projection (used by skybox)
 };
 
 cbuffer MaterialCB : register(b1)

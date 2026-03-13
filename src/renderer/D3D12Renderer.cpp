@@ -334,19 +334,21 @@ bool D3D12Renderer::createRootSignatureAndPSO()
     m_device->CreateRootSignature(0, sigBlob->GetBufferPointer(), sigBlob->GetBufferSize(),
                                   IID_PPV_ARGS(&m_rootSignature));
 
-    // Compile shaders
-    std::filesystem::path shaderPath;
+    // Locate shader directory
+    std::filesystem::path shaderDir;
     {
         wchar_t exePath[MAX_PATH] = {};
         GetModuleFileNameW(nullptr, exePath, MAX_PATH);
         auto exeDir = std::filesystem::path(exePath).parent_path();
-        auto distPath = exeDir / "shaders" / "PBRShader.hlsl";
-        if (std::filesystem::exists(distPath))
-            shaderPath = distPath;
+        auto distDir = exeDir / "shaders";
+        if (std::filesystem::exists(distDir / "PBRShader.hlsl"))
+            shaderDir = distDir;
         else
-            shaderPath = std::filesystem::path(__FILE__).parent_path() / "PBRShader.hlsl";
+            shaderDir = std::filesystem::path(__FILE__).parent_path();
     }
-    std::wstring shaderPathW = shaderPath.wstring();
+
+    // Compile PBR shaders
+    std::wstring shaderPathW = (shaderDir / "PBRShader.hlsl").wstring();
 
     ComPtr<ID3DBlob> vsBlob, psBlob;
     UINT compileFlags = 0;
@@ -405,6 +407,38 @@ bool D3D12Renderer::createRootSignatureAndPSO()
     {
         spdlog::error("Failed to create PSO");
         return false;
+    }
+
+    // ── Skybox PSO (full-screen triangle, no depth write, no input layout) ──
+    {
+        std::wstring skyboxPathW = (shaderDir / "SkyboxShader.hlsl").wstring();
+        ComPtr<ID3DBlob> skyVS, skyPS;
+        if (!compileShader(skyboxPathW.c_str(), "SkyboxVS", "vs_5_0", skyVS))
+            return false;
+        if (!compileShader(skyboxPathW.c_str(), "SkyboxPS", "ps_5_0", skyPS))
+            return false;
+
+        D3D12_GRAPHICS_PIPELINE_STATE_DESC skyPso{};
+        skyPso.pRootSignature = m_rootSignature.Get();
+        skyPso.VS = {skyVS->GetBufferPointer(), skyVS->GetBufferSize()};
+        skyPso.PS = {skyPS->GetBufferPointer(), skyPS->GetBufferSize()};
+        skyPso.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+        skyPso.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+        skyPso.RasterizerState.DepthClipEnable = FALSE;
+        skyPso.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+        skyPso.DepthStencilState.DepthEnable = FALSE;
+        skyPso.SampleMask = UINT_MAX;
+        skyPso.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+        skyPso.NumRenderTargets = 1;
+        skyPso.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+        skyPso.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+        skyPso.SampleDesc.Count = 1;
+
+        if (FAILED(m_device->CreateGraphicsPipelineState(&skyPso, IID_PPV_ARGS(&m_skyboxPSO))))
+        {
+            spdlog::error("Failed to create skybox PSO");
+            return false;
+        }
     }
 
     return true;
@@ -1105,6 +1139,8 @@ void D3D12Renderer::render()
     XMStoreFloat4x4(&frame.sceneCBMapped->world, world);
     XMMATRIX worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, world));
     XMStoreFloat4x4(&frame.sceneCBMapped->worldInvTranspose, worldInvTranspose);
+    XMMATRIX invViewProj = XMMatrixInverse(nullptr, view * proj);
+    XMStoreFloat4x4(&frame.sceneCBMapped->invViewProj, invViewProj);
     frame.sceneCBMapped->cameraPos = {camX, camY, camZ};
     frame.sceneCBMapped->lightDir = m_lightDir;
     frame.sceneCBMapped->lightColor = m_lightColor;
@@ -1156,7 +1192,16 @@ void D3D12Renderer::render()
     // Set SRV table
     m_commandList->SetGraphicsRootDescriptorTable(2, m_srvHeap.gpuHandle(m_srvBaseIndex));
 
-    // Draw
+    // Draw skybox background (before mesh, no depth write)
+    if (m_iblLoaded)
+    {
+        m_commandList->SetPipelineState(m_skyboxPSO.Get());
+        m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        m_commandList->DrawInstanced(3, 1, 0, 0);
+    }
+
+    // Draw PBR mesh
+    m_commandList->SetPipelineState(m_pipelineState.Get());
     m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     m_commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
     m_commandList->IASetIndexBuffer(&m_indexBufferView);
