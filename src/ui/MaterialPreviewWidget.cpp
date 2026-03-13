@@ -1,4 +1,5 @@
 #include "MaterialPreviewWidget.h"
+#include "utils/Log.h"
 
 #include <QMouseEvent>
 #include <QResizeEvent>
