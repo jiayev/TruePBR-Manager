@@ -1,5 +1,7 @@
-// PBR Preview Shader — Cook-Torrance BRDF + IBL + single directional light
-// DX normal convention (Y+ down in tangent space)
+// PBR Preview Shader — Feature-aware with CS-aligned BRDF + IBL
+// Uses Common/*.hlsli adapted from skyrim-community-shaders
+
+#include "Common/PBR.hlsli"
 
 // ─── Constant Buffers ──────────────────────────────────────
 
@@ -16,7 +18,7 @@ cbuffer SceneCB : register(b0)
     float g_LightIntensity;
     float g_IBLIntensity; // IBL environment intensity (0 = disabled)
     float g_MaxPrefilteredMip;
-    float _pad2;
+    uint g_FrameCount;
     float _pad3;
     float4 g_SH[4];  // Pre-convolved SH2 radiance: [0]=DC, [1]=L1y, [2]=L1z, [3]=L1x
     float4 g_ZH3;    // Pre-convolved ZH3 zonal L2 coefficient (.xyz = RGB)
@@ -28,7 +30,23 @@ cbuffer MaterialCB : register(b1)
     float g_SpecularLevel;
     float g_RoughnessScale;
     uint g_RenderFlags; // bit0=HorizonOcclusion, bit1=MultiBounceAO, bit2=SpecularOcclusion
-    float _matPad1;
+    uint g_FeatureFlags; // PBR::Flags bitmask
+
+    float3 g_SubsurfaceColor;
+    float g_SubsurfaceOpacity;
+
+    float g_CoatStrength;
+    float g_CoatRoughness;
+    float g_CoatSpecularLevel;
+    float g_EmissiveScale;
+
+    float3 g_FuzzColor;
+    float g_FuzzWeight;
+
+    float g_GlintScreenSpaceScale;
+    float g_GlintLogMicrofacetDensity;
+    float g_GlintMicrofacetRoughness;
+    float g_GlintDensityRandomization;
 };
 
 // ─── Textures & Samplers ───────────────────────────────────
@@ -38,6 +56,10 @@ Texture2D g_Normal : register(t1);              // Normal map (DX convention)
 Texture2D g_RMAOS : register(t2);               // R=Roughness G=Metallic B=AO A=Specular
 TextureCube g_PrefilteredMap : register(t3);     // Specular IBL (prefiltered cubemap with mips)
 Texture2D g_BRDFLut : register(t4);             // BRDF integration LUT
+Texture2D g_Emissive : register(t5);            // Emissive RGB
+Texture2D g_FeatureTex0 : register(t6);         // CoatNormalRoughness / Fuzz
+Texture2D g_FeatureTex1 : register(t7);         // Subsurface / CoatColor
+// t8 = GlintNoiseMap is declared inside Common/Glints/Glints2023.hlsli
 
 SamplerState g_Sampler : register(s0);           // Linear wrap
 SamplerState g_ClampSampler : register(s1);      // Linear clamp (for BRDF LUT)
@@ -76,54 +98,12 @@ PSInput VSMain(VSInput input)
     return output;
 }
 
-// ─── PBR Functions ─────────────────────────────────────────
-
-static const float PI = 3.14159265359;
-
-float DistributionGGX(float NdotH, float roughness)
-{
-    float a = roughness * roughness;
-    float a2 = a * a;
-    float denom = NdotH * NdotH * (a2 - 1.0) + 1.0;
-    return a2 / (PI * denom * denom + 0.0001);
-}
-
-float GeometrySchlickGGX(float NdotV, float roughness)
-{
-    float r = roughness + 1.0;
-    float k = (r * r) / 8.0;
-    return NdotV / (NdotV * (1.0 - k) + k + 0.0001);
-}
-
-float GeometrySmith(float NdotV, float NdotL, float roughness)
-{
-    return GeometrySchlickGGX(NdotV, roughness) * GeometrySchlickGGX(NdotL, roughness);
-}
-
-float3 FresnelSchlick(float cosTheta, float3 F0)
-{
-    return F0 + (1.0 - F0) * pow(saturate(1.0 - cosTheta), 5.0);
-}
+// ─── Fresnel with roughness (for IBL) ──────────────────────
 
 float3 FresnelSchlickRoughness(float cosTheta, float3 F0, float roughness)
 {
     float3 oneMinusR = float3(1.0 - roughness, 1.0 - roughness, 1.0 - roughness);
     return F0 + (max(oneMinusR, F0) - F0) * pow(saturate(1.0 - cosTheta), 5.0);
-}
-
-// [Jimenez et al. 2016, "Practical Realtime Strategies for Accurate Indirect Occlusion"]
-float3 MultiBounceAO(float3 baseColor, float ao)
-{
-    float3 a = 2.0404 * baseColor - 0.3324;
-    float3 b = -4.7951 * baseColor + 0.6417;
-    float3 c = 2.7552 * baseColor + 0.6903;
-    return max(ao, ((ao * a + b) * ao + c) * ao);
-}
-
-// Specular occlusion from AO
-float SpecularOcclusion(float NdotV, float alpha, float occlusion)
-{
-    return saturate(pow(abs(NdotV + occlusion), alpha) - 1.0 + occlusion);
 }
 
 // ─── AgX Tone Mapping ──────────────────────────────────────
@@ -171,7 +151,7 @@ float3 agxEotf(float3 color)
 
 float4 PSMain(PSInput input) : SV_TARGET
 {
-    // Sample textures
+    // ── Sample textures ────────────────────────────────────
     float4 albedoSample = g_Diffuse.Sample(g_Sampler, input.uv);
     float3 albedo = albedoSample.rgb;
     float alpha = albedoSample.a;
@@ -185,9 +165,9 @@ float4 PSMain(PSInput input) : SV_TARGET
     float ao = rmaos.b;
     float specularMap = rmaos.a;
 
-    roughness = clamp(roughness, 0.04, 1.0);
+    roughness = clamp(roughness, PBR::Constants::MinRoughness, PBR::Constants::MaxRoughness);
 
-    // Build TBN and transform normal
+    // ── Build TBN and transform normal ─────────────────────
     float3 N = normalize(input.normalWS);
     float3 T = normalize(input.tangentWS);
     float3 B = normalize(input.bitangentWS);
@@ -195,77 +175,172 @@ float4 PSMain(PSInput input) : SV_TARGET
     N = normalize(mul(normalTS, TBN));
 
     float3 V = normalize(g_CameraPos - input.positionWS);
-    float NdotV = max(dot(N, V), 0.0001);
+    float NdotV = max(dot(N, V), EPSILON_DOT_CLAMP);
 
-    // F0
+    // ── Populate PBRMaterial ───────────────────────────────
     float3 F0 = lerp(float3(1, 1, 1) * g_SpecularLevel * specularMap, albedo, metallic);
 
-    // ── Direct lighting (Cook-Torrance) ────────────────────
+    PBRMaterial mat = (PBRMaterial)0;
+    mat.BaseColor = albedo;
+    mat.Roughness = roughness;
+    mat.F0 = F0;
+    mat.AO = ao;
+    mat.Metallic = metallic;
+
+    // Subsurface
+    [branch] if (g_FeatureFlags & PBR::Flags::Subsurface)
+    {
+        [branch] if (g_FeatureFlags & PBR::Flags::HasFeatureTexture1)
+        {
+            float4 ssTex = g_FeatureTex1.Sample(g_Sampler, input.uv);
+            mat.SubsurfaceColor = ssTex.rgb * g_SubsurfaceColor;
+            mat.Thickness = 1.0 - ssTex.a * g_SubsurfaceOpacity;
+        }
+        else
+        {
+            mat.SubsurfaceColor = g_SubsurfaceColor;
+            mat.Thickness = 1.0 - g_SubsurfaceOpacity;
+        }
+    }
+
+    // Two-Layer (Coat)
+    [branch] if (g_FeatureFlags & PBR::Flags::TwoLayer)
+    {
+        mat.CoatF0 = float3(1, 1, 1) * g_CoatSpecularLevel;
+        mat.CoatRoughness = clamp(g_CoatRoughness, PBR::Constants::MinRoughness, PBR::Constants::MaxRoughness);
+        mat.CoatStrength = g_CoatStrength;
+        mat.CoatColor = float3(1, 1, 1);
+
+        [branch] if (g_FeatureFlags & PBR::Flags::HasFeatureTexture0)
+        {
+            float4 coatTex = g_FeatureTex0.Sample(g_Sampler, input.uv);
+            mat.CoatRoughness = clamp(coatTex.a, PBR::Constants::MinRoughness, PBR::Constants::MaxRoughness);
+        }
+
+        [branch] if ((g_FeatureFlags & PBR::Flags::ColoredCoat) && (g_FeatureFlags & PBR::Flags::HasFeatureTexture1))
+        {
+            float4 coatColorTex = g_FeatureTex1.Sample(g_Sampler, input.uv);
+            mat.CoatColor = coatColorTex.rgb;
+            mat.CoatStrength *= coatColorTex.a;
+        }
+    }
+
+    // Fuzz
+    [branch] if (g_FeatureFlags & PBR::Flags::Fuzz)
+    {
+        mat.FuzzColor = g_FuzzColor;
+        mat.FuzzWeight = g_FuzzWeight;
+
+        [branch] if (g_FeatureFlags & PBR::Flags::HasFeatureTexture0)
+        {
+            float4 fuzzTex = g_FeatureTex0.Sample(g_Sampler, input.uv);
+            mat.FuzzColor *= fuzzTex.rgb;
+            mat.FuzzWeight *= fuzzTex.a;
+        }
+    }
+
+    // Glint
+    [branch] if (g_FeatureFlags & PBR::Flags::Glint)
+    {
+        mat.GlintLogMicrofacetDensity = clamp(PBR::Constants::MaxGlintDensity - g_GlintLogMicrofacetDensity,
+            PBR::Constants::MinGlintDensity, PBR::Constants::MaxGlintDensity);
+        mat.GlintMicrofacetRoughness = clamp(g_GlintMicrofacetRoughness,
+            PBR::Constants::MinGlintRoughness, PBR::Constants::MaxGlintRoughness);
+        mat.GlintDensityRandomization = clamp(g_GlintDensityRandomization,
+            PBR::Constants::MinGlintDensityRandomization, PBR::Constants::MaxGlintDensityRandomization);
+        mat.Tangent = T;
+
+        float glintNoise = Random::R1Modified(float(g_FrameCount),
+            (Random::pcg2d(uint2(input.positionCS.xy)) / 4294967296.0).x);
+        mat.GlintNoise = glintNoise;
+
+        float2 duvdx = ddx(input.uv);
+        float2 duvdy = ddy(input.uv);
+        Glints::PrecomputeGlints(glintNoise, input.uv, duvdx, duvdy,
+            max(1, g_GlintScreenSpaceScale), mat.GlintCache);
+    }
+
+    // ── Direct lighting ────────────────────────────────────
     float3 L = normalize(g_LightDir);
-    float3 H = normalize(V + L);
-    float NdotL = max(dot(N, L), 0.0);
-    float NdotH = max(dot(N, H), 0.0);
-    float HdotV = max(dot(H, V), 0.0);
-
-    float D = DistributionGGX(NdotH, roughness);
-    float G = GeometrySmith(NdotV, NdotL, roughness);
-    float3 F = FresnelSchlick(HdotV, F0);
-
-    float3 specular = (D * G * F) / (4.0 * NdotV * NdotL + 0.0001);
-    float3 kD = (1.0 - F) * (1.0 - metallic);
-    float3 diffuse = kD * albedo / PI;
-
     float3 radiance = g_LightColor * g_LightIntensity;
-    float3 directColor = (diffuse + specular) * radiance * NdotL;
+
+    PBR::DirectLightResult directResult = PBR::GetDirectLight(
+        N, V, L, radiance, mat, g_FeatureFlags);
+
+    float3 directDiffuse = directResult.diffuse;
+    float3 directCoatDiffuse = 0;
+
+    [branch] if ((g_FeatureFlags & PBR::Flags::TwoLayer) && (g_FeatureFlags & PBR::Flags::ColoredCoat))
+    {
+        directCoatDiffuse = directResult.coatDiffuse * mat.CoatColor * mat.CoatStrength;
+    }
+
+    float3 directColor = directDiffuse + directResult.specular + directResult.transmission + directCoatDiffuse;
+
+    // ── Emissive ───────────────────────────────────────────
+    float3 emissive = float3(0, 0, 0);
+    [branch] if (g_FeatureFlags & PBR::Flags::HasEmissive)
+    {
+        emissive = g_Emissive.Sample(g_Sampler, input.uv).rgb * g_EmissiveScale;
+    }
 
     // ── Image-Based Lighting ───────────────────────────────
     float3 iblColor = float3(0, 0, 0);
 
     if (g_IBLIntensity > 0)
     {
-        float3 F_ibl = FresnelSchlickRoughness(NdotV, F0, roughness);
-        float3 kD_ibl = (1.0 - F_ibl) * (1.0 - metallic);
+        PBR::IndirectLobeWeights lobes = PBR::GetIndirectLobeWeights(N, V, mat, g_FeatureFlags);
 
-        // Diffuse IBL: ZH3 evaluation (Roughton et al. 2024)
-        // Luminance zonal axis from pre-convolved SH2 (A_1 cancels in normalize)
+        // Diffuse IBL: ZH3 evaluation
         const float3 lumCoeffs = float3(0.2126, 0.7152, 0.0722);
         float3 l1_lum = float3(
-            dot(g_SH[3].xyz, lumCoeffs),  // x
-            dot(g_SH[1].xyz, lumCoeffs),  // y
-            dot(g_SH[2].xyz, lumCoeffs)   // z
+            dot(g_SH[3].xyz, lumCoeffs),
+            dot(g_SH[1].xyz, lumCoeffs),
+            dot(g_SH[2].xyz, lumCoeffs)
         );
         float l1Len = length(l1_lum);
         float3 zonalAxis = (l1Len > 1e-6) ? (l1_lum / l1Len) : float3(0, 1, 0);
 
-        // Linear SH irradiance (pre-convolved coefficients × basis functions)
         float3 irradiance = g_SH[0].xyz * 0.282095
                           + g_SH[1].xyz * (0.488603 * N.y)
                           + g_SH[2].xyz * (0.488603 * N.z)
                           + g_SH[3].xyz * (0.488603 * N.x);
 
-        // ZH3 quadratic zonal term
         float fZ = dot(zonalAxis, N);
-        float zhBasis = sqrt(5.0 / (16.0 * PI)) * (3.0 * fZ * fZ - 1.0);
+        float zhBasis = sqrt(5.0 / (16.0 * Math::PI)) * (3.0 * fZ * fZ - 1.0);
         irradiance += g_ZH3.xyz * zhBasis;
         irradiance = max(irradiance, float3(0, 0, 0));
 
-        // Apply AO to diffuse IBL
-        float3 diffuseAO;
+        float3 iblDiffuse = lobes.diffuse * irradiance;
+
+        // Diffuse AO
         if (g_RenderFlags & 2u)
-            diffuseAO = MultiBounceAO(albedo, ao);
+            iblDiffuse *= MultiBounceAO(mat.BaseColor, ao);
         else
-            diffuseAO = float3(ao, ao, ao);
-        float3 iblDiffuse = kD_ibl * albedo * irradiance * diffuseAO;
+            iblDiffuse *= ao;
 
         // Specular IBL: sample prefiltered map + BRDF LUT
         float3 R = reflect(-V, N);
         float mipLevel = roughness * g_MaxPrefilteredMip;
         float3 prefilteredColor = g_PrefilteredMap.SampleLevel(g_Sampler, R, mipLevel).rgb;
         float2 brdfSample = g_BRDFLut.Sample(g_ClampSampler, float2(NdotV, roughness)).rg;
-        float3 iblSpecular = prefilteredColor * (F_ibl * brdfSample.x + brdfSample.y);
+        float3 iblSpecular = prefilteredColor * (mat.F0 * brdfSample.x + brdfSample.y);
 
-        // Horizon occlusion: attenuate specular IBL when reflection direction
-        // falls below the geometric (un-perturbed) normal's hemisphere.
+        // Coat specular IBL (additional reflection lobe)
+        [branch] if (g_FeatureFlags & PBR::Flags::TwoLayer)
+        {
+            float coatMip = mat.CoatRoughness * g_MaxPrefilteredMip;
+            float3 coatPref = g_PrefilteredMap.SampleLevel(g_Sampler, R, coatMip).rgb;
+            float2 coatBrdf = g_BRDFLut.Sample(g_ClampSampler, float2(NdotV, mat.CoatRoughness)).rg;
+            float3 coatSpecIBL = coatPref * (mat.CoatF0 * coatBrdf.x + coatBrdf.y);
+
+            float3 coatF = BRDF::F_Schlick(mat.CoatF0, NdotV);
+            float3 layerAtten = 1 - coatF * mat.CoatStrength;
+            iblSpecular *= layerAtten;
+            iblSpecular += coatSpecIBL * mat.CoatStrength;
+        }
+
+        // Horizon occlusion
         if (g_RenderFlags & 1u)
         {
             float3 N_geo = normalize(input.normalWS);
@@ -276,21 +351,16 @@ float4 PSMain(PSInput input) : SV_TARGET
         // Specular occlusion from AO map
         if (g_RenderFlags & 4u)
         {
-            float alpha = roughness * roughness;
-            float specOcc = SpecularOcclusion(NdotV, alpha, ao);
+            float a2 = roughness * roughness;
+            float specOcc = SpecularOcclusion(NdotV, a2, ao);
             iblSpecular *= specOcc;
         }
 
         iblColor = (iblDiffuse + iblSpecular) * g_IBLIntensity;
     }
-    else
-    {
-        // Fallback ambient when no IBL
-        iblColor = albedo * 0.03;
-    }
 
-    // Final color
-    float3 color = directColor + iblColor;
+    // ── Final color ────────────────────────────────────────
+    float3 color = directColor + iblColor + emissive;
 
     // AgX tone mapping
     color = max(float3(0, 0, 0), color);

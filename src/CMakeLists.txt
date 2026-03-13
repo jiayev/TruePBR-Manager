@@ -69,6 +69,14 @@ set(RENDERER_SOURCES
     renderer/IBLProcessor.h
     renderer/IBLProcessor.cpp
     renderer/SkyboxShader.hlsl
+    renderer/PBRShader.hlsl
+    renderer/Common/Math.hlsli
+    renderer/Common/BRDF.hlsli
+    renderer/Common/Shading.hlsli
+    renderer/Common/PBRMath.hlsli
+    renderer/Common/PBR.hlsli
+    renderer/Common/Random.hlsli
+    renderer/Common/Glints/Glints2023.hlsli
 )
 
 set(ALL_SOURCES
@@ -184,29 +192,42 @@ add_custom_command(TARGET TruePBR-Manager POST_BUILD
     COMMENT "Copying LICENSE to dist/..."
 )
 
-# Copy HLSL shaders
-add_custom_command(TARGET TruePBR-Manager POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${DIST_DIR}/shaders"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_CURRENT_SOURCE_DIR}/renderer/PBRShader.hlsl"
-        "${DIST_DIR}/shaders/PBRShader.hlsl"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_CURRENT_SOURCE_DIR}/renderer/IBLEquirectToCube.hlsl"
-        "${DIST_DIR}/shaders/IBLEquirectToCube.hlsl"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_CURRENT_SOURCE_DIR}/renderer/IBLProjectSH.hlsl"
-        "${DIST_DIR}/shaders/IBLProjectSH.hlsl"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_CURRENT_SOURCE_DIR}/renderer/IBLReduceSH.hlsl"
-        "${DIST_DIR}/shaders/IBLReduceSH.hlsl"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_CURRENT_SOURCE_DIR}/renderer/IBLPrefilter.hlsl"
-        "${DIST_DIR}/shaders/IBLPrefilter.hlsl"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_CURRENT_SOURCE_DIR}/renderer/IBLBrdfLut.hlsl"
-        "${DIST_DIR}/shaders/IBLBrdfLut.hlsl"
-    COMMENT "Copying shaders to dist/..."
+# Copy HLSL shaders — file-level dependency tracking so that modifying
+# any shader triggers a re-copy on the next build, even when no C++ changed.
+set(SHADER_FILES
+    PBRShader.hlsl
+    IBLEquirectToCube.hlsl
+    IBLProjectSH.hlsl
+    IBLReduceSH.hlsl
+    IBLPrefilter.hlsl
+    IBLBrdfLut.hlsl
+    SkyboxShader.hlsl
+    Common/Math.hlsli
+    Common/BRDF.hlsli
+    Common/Shading.hlsli
+    Common/PBRMath.hlsli
+    Common/PBR.hlsli
+    Common/Random.hlsli
+    Common/Glints/Glints2023.hlsli
 )
+
+set(SHADER_OUTPUTS)
+foreach(shader IN LISTS SHADER_FILES)
+    set(_src "${CMAKE_CURRENT_SOURCE_DIR}/renderer/${shader}")
+    set(_dst "${DIST_DIR}/shaders/${shader}")
+    get_filename_component(_dst_dir "${_dst}" DIRECTORY)
+    add_custom_command(
+        OUTPUT "${_dst}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${_dst_dir}"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_src}" "${_dst}"
+        DEPENDS "${_src}"
+        COMMENT "Shader: ${shader}"
+    )
+    list(APPEND SHADER_OUTPUTS "${_dst}")
+endforeach()
+
+add_custom_target(copy_shaders ALL DEPENDS ${SHADER_OUTPUTS})
+add_dependencies(TruePBR-Manager copy_shaders)
 
 # Create hdris directory in dist (user places HDRI files here)
 add_custom_command(TARGET TruePBR-Manager POST_BUILD

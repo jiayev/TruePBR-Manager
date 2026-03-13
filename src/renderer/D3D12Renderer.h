@@ -5,6 +5,8 @@
 #include "IBLProcessor.h"
 #include "MeshGenerator.h"
 
+#include "core/PBRTextureSet.h"
+
 #include <DirectXMath.h>
 #include <d3d12.h>
 #include <dxgi1_4.h>
@@ -37,7 +39,7 @@ struct SceneCBData
     float lightIntensity;                  // 4 bytes
     float iblIntensity;                    // 4 bytes
     float maxPrefilteredMip;               // 4 bytes
-    float _pad2;                           // 4 bytes
+    uint32_t frameCount;                   // 4 bytes
     float _pad3;                           // 4 bytes
     // ZH3 irradiance: pre-convolved SH2 + ZH3 zonal coefficient
     DirectX::XMFLOAT4 zh3Data[5];    // 80 bytes
@@ -49,8 +51,24 @@ struct MaterialCBData
 {
     float specularLevel;
     float roughnessScale;
-    uint32_t renderFlags; // bit0=HorizonOcclusion, bit1=MultiBounceAO, bit2=SpecularOcclusion
-    float _pad1;
+    uint32_t renderFlags;  // bit0=HorizonOcclusion, bit1=MultiBounceAO, bit2=SpecularOcclusion
+    uint32_t featureFlags; // PBR::Flags bitmask
+
+    DirectX::XMFLOAT3 subsurfaceColor;
+    float subsurfaceOpacity;
+
+    float coatStrength;
+    float coatRoughness;
+    float coatSpecularLevel;
+    float emissiveScale;
+
+    DirectX::XMFLOAT3 fuzzColor;
+    float fuzzWeight;
+
+    float glintScreenSpaceScale;
+    float glintLogMicrofacetDensity;
+    float glintMicrofacetRoughness;
+    float glintDensityRandomization;
 };
 
 /// Per-frame resources for double-buffered rendering.
@@ -95,6 +113,14 @@ class D3D12Renderer
 
     /// Set material parameters.
     void setMaterialParams(float specularLevel, float roughnessScale);
+
+    /// Set full PBR feature flags and parameters for preview.
+    void setFeatureParams(const PBRFeatureFlags& features, const PBRParameters& params);
+
+    /// Set feature textures (emissive, feature0=coat/fuzz, feature1=subsurface/coatColor).
+    /// Pass nullptr/0 for any unused texture.
+    void setFeatureTextures(const uint8_t* emissiveRGBA, int ew, int eh, const uint8_t* feat0RGBA, int f0w, int f0h,
+                            const uint8_t* feat1RGBA, int f1w, int f1h);
 
     /// Set render flags (bit0=HorizonOcclusion, bit1=MultiBounceAO, bit2=SpecularOcclusion).
     void setRenderFlags(uint32_t flags);
@@ -158,7 +184,7 @@ class D3D12Renderer
     void createDefaultIBL();
 
     // ── Resource upload ────────────────────────────────────
-    void uploadTexture(int srvIndex, const uint8_t* rgba, int w, int h, bool srgb);
+    void uploadTexture(int texIndex, int srvIndex, const uint8_t* rgba, int w, int h, bool srgb);
     void uploadCubemap(int srvIndex, ComPtr<ID3D12Resource>& resource, const std::vector<float>* faces, int faceSize,
                        int mipLevels);
     void uploadCubemapMipped(int srvIndex, ComPtr<ID3D12Resource>& resource,
@@ -203,14 +229,15 @@ class D3D12Renderer
     DescriptorHeap m_srvHeap; // Shader-visible, CBV/SRV/UAV
 
     // SRV slot indices within m_srvHeap
-    static constexpr uint32_t SRVCount = 5; // diffuse, normal, rmaos, prefiltered, brdfLut
-    uint32_t m_srvBaseIndex = 0;            // First SRV slot index in heap
+    // SRV slots: diffuse, normal, rmaos, prefiltered, brdfLut, emissive, feat0, feat1, glintNoise
+    static constexpr uint32_t SRVCount = 9;
+    uint32_t m_srvBaseIndex = 0; // First SRV slot index in heap
 
     // Depth
     ComPtr<ID3D12Resource> m_depthStencilBuffer;
 
-    // Textures (material)
-    std::array<ComPtr<ID3D12Resource>, 3> m_textures; // diffuse, normal, rmaos
+    // Textures (material): diffuse, normal, rmaos, (3..4 IBL), emissive, feat0, feat1, glintNoise
+    std::array<ComPtr<ID3D12Resource>, 7> m_textures; // [0..2]=material, [3..5]=feature, [6]=glintNoise
 
     // IBL resources
     ComPtr<ID3D12Resource> m_prefilteredCubemap;
@@ -256,6 +283,23 @@ class D3D12Renderer
     float m_specularLevel = 0.04f;
     float m_roughnessScale = 1.0f;
     uint32_t m_renderFlags = 0x7; // all on by default
+    uint32_t m_featureFlags = 0;
+
+    // Feature parameters
+    DirectX::XMFLOAT3 m_subsurfaceColor = {1.0f, 1.0f, 1.0f};
+    float m_subsurfaceOpacity = 1.0f;
+    float m_coatStrength = 0.0f;
+    float m_coatRoughness = 0.0f;
+    float m_coatSpecularLevel = 0.04f;
+    float m_emissiveScale = 0.0f;
+    DirectX::XMFLOAT3 m_fuzzColor = {1.0f, 1.0f, 1.0f};
+    float m_fuzzWeight = 1.0f;
+
+    // Glint parameters
+    float m_glintScreenSpaceScale = 1.5f;
+    float m_glintLogMicrofacetDensity = 40.0f;
+    float m_glintMicrofacetRoughness = 0.015f;
+    float m_glintDensityRandomization = 2.0f;
 };
 
 } // namespace tpbr

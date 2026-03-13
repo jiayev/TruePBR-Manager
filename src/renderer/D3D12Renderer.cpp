@@ -359,7 +359,8 @@ bool D3D12Renderer::createRootSignatureAndPSO()
     auto compileShader = [&](const wchar_t* path, const char* entry, const char* target, ComPtr<ID3DBlob>& blob) -> bool
     {
         ComPtr<ID3DBlob> err;
-        HRESULT hr = D3DCompileFromFile(path, nullptr, nullptr, entry, target, compileFlags, 0, &blob, &err);
+        HRESULT hr = D3DCompileFromFile(path, nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, entry, target, compileFlags,
+                                        0, &blob, &err);
         if (FAILED(hr))
         {
             spdlog::error("Shader compile failed ({}): {}", entry,
@@ -531,15 +532,225 @@ void D3D12Renderer::createDefaultTextures()
 {
     // 1x1 white diffuse
     uint8_t whiteDiffuse[] = {255, 255, 255, 255};
-    uploadTexture(0, whiteDiffuse, 1, 1, true);
+    uploadTexture(0, 0, whiteDiffuse, 1, 1, true);
 
     // 1x1 flat normal (128, 128, 255) = (0, 0, 1) in tangent space
     uint8_t flatNormal[] = {128, 128, 255, 255};
-    uploadTexture(1, flatNormal, 1, 1, false);
+    uploadTexture(1, 1, flatNormal, 1, 1, false);
 
     // 1x1 default RMAOS: roughness=128, metallic=0, ao=255, specular=255
     uint8_t defaultRMAOS[] = {128, 0, 255, 255};
-    uploadTexture(2, defaultRMAOS, 1, 1, false);
+    uploadTexture(2, 2, defaultRMAOS, 1, 1, false);
+
+    // 1x1 black emissive (SRV slot 5, tex index 3)
+    uint8_t blackEmissive[] = {0, 0, 0, 255};
+    uploadTexture(3, 5, blackEmissive, 1, 1, true);
+
+    // 1x1 default feature tex0 — flat coat normal, roughness=128 (SRV slot 6, tex index 4)
+    uint8_t defaultFeat0[] = {128, 128, 255, 128};
+    uploadTexture(4, 6, defaultFeat0, 1, 1, false);
+
+    // 1x1 default feature tex1 — white subsurface/coat color, full opacity (SRV slot 7, tex index 5)
+    uint8_t defaultFeat1[] = {255, 255, 255, 255};
+    uploadTexture(5, 7, defaultFeat1, 1, 1, false);
+
+    // Generate 128x128 glint noise texture (SRV slot 8, tex index 6)
+    // Each texel packs 4 pairs of (uniform, gaussian) as half-floats into 4 floats.
+    // Matches CS noisegen.cs.hlsl output format.
+    {
+        constexpr int noiseSize = 128;
+        constexpr int offset = noiseSize * noiseSize * 0x69420;
+
+        auto wangHash = [](uint32_t seed) -> uint32_t
+        {
+            seed = (seed ^ 61) ^ (seed >> 16);
+            seed *= 9;
+            seed = seed ^ (seed >> 4);
+            seed *= 0x27d4eb2d;
+            seed = seed ^ (seed >> 15);
+            return seed;
+        };
+
+        auto xorshift = [](uint32_t& state)
+        {
+            state ^= (state << 13);
+            state ^= (state >> 17);
+            state ^= (state << 5);
+        };
+
+        auto xorshiftFloat = [&xorshift](uint32_t& state) -> float
+        {
+            xorshift(state);
+            return static_cast<float>(state) * (1.0f / 4294967296.0f);
+        };
+
+        auto erfinvf = [](float x) -> float
+        {
+            float w, p;
+            w = -logf((1.0f - x) * (1.0f + x));
+            if (w < 5.0f)
+            {
+                w = w - 2.5f;
+                p = 2.81022636e-08f;
+                p = 3.43273939e-07f + p * w;
+                p = -3.5233877e-06f + p * w;
+                p = -4.39150654e-06f + p * w;
+                p = 0.00021858087f + p * w;
+                p = -0.00125372503f + p * w;
+                p = -0.00417768164f + p * w;
+                p = 0.246640727f + p * w;
+                p = 1.50140941f + p * w;
+            }
+            else
+            {
+                w = sqrtf(w) - 3.0f;
+                p = -0.000200214257f;
+                p = 0.000100950558f + p * w;
+                p = 0.00134934322f + p * w;
+                p = -0.00367342844f + p * w;
+                p = 0.00573950773f + p * w;
+                p = -0.0076224613f + p * w;
+                p = 0.00943887047f + p * w;
+                p = 1.00167406f + p * w;
+                p = 2.83297682f + p * w;
+            }
+            return p * x;
+        };
+
+        auto invCDF = [&erfinvf](float U) -> float { return sqrtf(2.0f) * erfinvf(2.0f * U - 1.0f); };
+
+        auto packHalves = [](float a, float b) -> float
+        {
+            // Convert float to IEEE 754 half-float (16-bit), matching HLSL f32tof16
+            auto f32tof16 = [](float val) -> uint16_t
+            {
+                uint32_t f;
+                std::memcpy(&f, &val, sizeof(float));
+                uint32_t sign = (f >> 16) & 0x8000;
+                int32_t exponent = ((f >> 23) & 0xFF) - 127 + 15;
+                uint32_t mantissa = f & 0x7FFFFF;
+                if (exponent <= 0)
+                    return static_cast<uint16_t>(sign);
+                if (exponent >= 31)
+                    return static_cast<uint16_t>(sign | 0x7C00);
+                return static_cast<uint16_t>(sign | (exponent << 10) | (mantissa >> 13));
+            };
+            uint32_t a16 = f32tof16(a);
+            uint32_t b16 = f32tof16(b);
+            uint32_t packed = (a16 << 16) | b16;
+            float result;
+            std::memcpy(&result, &packed, sizeof(float));
+            return result;
+        };
+
+        std::vector<float> noiseData(noiseSize * noiseSize * 4);
+
+        for (int y = 0; y < noiseSize; ++y)
+        {
+            for (int x = 0; x < noiseSize; ++x)
+            {
+                struct Sample
+                {
+                    float u, g;
+                };
+                Sample samples[4];
+
+                int cx[4] = {x, x, (x + 1) % noiseSize, (x + 1) % noiseSize};
+                int cy[4] = {y, (y + 1) % noiseSize, y, (y + 1) % noiseSize};
+
+                for (int i = 0; i < 4; ++i)
+                {
+                    uint32_t flatId = static_cast<uint32_t>((cy[i] * 123) * noiseSize + (cx[i] * 123));
+                    uint32_t state = wangHash(flatId * 123 + offset);
+                    samples[i].u = xorshiftFloat(state);
+                    samples[i].g = invCDF(xorshiftFloat(state));
+                }
+
+                int idx = (y * noiseSize + x) * 4;
+                noiseData[idx + 0] = packHalves(samples[0].u, samples[0].g);
+                noiseData[idx + 1] = packHalves(samples[1].u, samples[1].g);
+                noiseData[idx + 2] = packHalves(samples[2].u, samples[2].g);
+                noiseData[idx + 3] = packHalves(samples[3].u, samples[3].g);
+            }
+        }
+
+        // Upload as DXGI_FORMAT_R32G32B32A32_FLOAT texture
+        const DXGI_FORMAT noiseFormat = DXGI_FORMAT_R32G32B32A32_FLOAT;
+
+        D3D12_HEAP_PROPERTIES heapProps{};
+        heapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
+
+        D3D12_RESOURCE_DESC texDesc{};
+        texDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        texDesc.Width = noiseSize;
+        texDesc.Height = noiseSize;
+        texDesc.DepthOrArraySize = 1;
+        texDesc.MipLevels = 1;
+        texDesc.Format = noiseFormat;
+        texDesc.SampleDesc.Count = 1;
+
+        m_device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &texDesc, D3D12_RESOURCE_STATE_COPY_DEST,
+                                          nullptr, IID_PPV_ARGS(&m_textures[6]));
+
+        D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint;
+        UINT64 requiredSize = 0;
+        m_device->GetCopyableFootprints(&texDesc, 0, 1, 0, &footprint, nullptr, nullptr, &requiredSize);
+
+        uint64_t ringOffset = 0;
+        uint8_t* mapped = m_uploadQueue->allocate(requiredSize, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT, ringOffset);
+        if (!mapped)
+        {
+            m_uploadQueue->flush();
+            m_uploadQueue->resetRingBuffer();
+            mapped = m_uploadQueue->allocate(requiredSize, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT, ringOffset);
+        }
+
+        footprint.Offset = ringOffset;
+        const int rowBytes = noiseSize * 4 * sizeof(float);
+        for (int row = 0; row < noiseSize; ++row)
+        {
+            memcpy(mapped + row * footprint.Footprint.RowPitch, noiseData.data() + row * noiseSize * 4, rowBytes);
+        }
+
+        m_uploadQueue->resetCommandList();
+        auto* copyList = m_uploadQueue->commandList();
+
+        D3D12_TEXTURE_COPY_LOCATION dst{};
+        dst.pResource = m_textures[6].Get();
+        dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+        dst.SubresourceIndex = 0;
+
+        D3D12_TEXTURE_COPY_LOCATION src{};
+        src.pResource = m_uploadQueue->ringBuffer();
+        src.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+        src.PlacedFootprint = footprint;
+
+        copyList->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+        uint64_t copyFence = m_uploadQueue->execute();
+        m_uploadQueue->directQueueWaitForCopy(m_directQueue.Get(), copyFence);
+
+        flushGPU();
+        m_frames[0].commandAllocator->Reset();
+        m_commandList->Reset(m_frames[0].commandAllocator.Get(), nullptr);
+
+        D3D12_RESOURCE_BARRIER barrier{};
+        barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barrier.Transition.pResource = m_textures[6].Get();
+        barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+        barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        m_commandList->ResourceBarrier(1, &barrier);
+        m_commandList->Close();
+        ID3D12CommandList* lists[] = {m_commandList.Get()};
+        m_directQueue->ExecuteCommandLists(1, lists);
+        flushGPU();
+
+        D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+        srvDesc.Format = noiseFormat;
+        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        srvDesc.Texture2D.MipLevels = 1;
+        m_device->CreateShaderResourceView(m_textures[6].Get(), &srvDesc, m_srvHeap.cpuHandle(m_srvBaseIndex + 8));
+    }
 }
 
 void D3D12Renderer::createDefaultIBL()
@@ -567,7 +778,7 @@ void D3D12Renderer::createDefaultIBL()
 // Resource Upload (using copy queue)
 // ═══════════════════════════════════════════════════════════
 
-void D3D12Renderer::uploadTexture(int srvIndex, const uint8_t* rgba, int w, int h, bool srgb)
+void D3D12Renderer::uploadTexture(int texIndex, int srvIndex, const uint8_t* rgba, int w, int h, bool srgb)
 {
     const DXGI_FORMAT texFormat = srgb ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
 
@@ -586,7 +797,7 @@ void D3D12Renderer::uploadTexture(int srvIndex, const uint8_t* rgba, int w, int 
 
     HRESULT hr =
         m_device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &texDesc, D3D12_RESOURCE_STATE_COPY_DEST,
-                                          nullptr, IID_PPV_ARGS(&m_textures[srvIndex]));
+                                          nullptr, IID_PPV_ARGS(&m_textures[texIndex]));
     if (FAILED(hr))
     {
         spdlog::error("uploadTexture: CreateCommittedResource failed: 0x{:08X}", static_cast<unsigned>(hr));
@@ -626,7 +837,7 @@ void D3D12Renderer::uploadTexture(int srvIndex, const uint8_t* rgba, int w, int 
     auto* copyList = m_uploadQueue->commandList();
 
     D3D12_TEXTURE_COPY_LOCATION dst{};
-    dst.pResource = m_textures[srvIndex].Get();
+    dst.pResource = m_textures[texIndex].Get();
     dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
     dst.SubresourceIndex = 0;
 
@@ -650,7 +861,7 @@ void D3D12Renderer::uploadTexture(int srvIndex, const uint8_t* rgba, int w, int 
 
     D3D12_RESOURCE_BARRIER barrier{};
     barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    barrier.Transition.pResource = m_textures[srvIndex].Get();
+    barrier.Transition.pResource = m_textures[texIndex].Get();
     barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
     barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     m_commandList->ResourceBarrier(1, &barrier);
@@ -667,7 +878,7 @@ void D3D12Renderer::uploadTexture(int srvIndex, const uint8_t* rgba, int w, int 
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
     srvDesc.Texture2D.MipLevels = 1;
 
-    m_device->CreateShaderResourceView(m_textures[srvIndex].Get(), &srvDesc,
+    m_device->CreateShaderResourceView(m_textures[texIndex].Get(), &srvDesc,
                                        m_srvHeap.cpuHandle(m_srvBaseIndex + srvIndex));
 }
 
@@ -1012,27 +1223,27 @@ void D3D12Renderer::setTextures(const uint8_t* diffuseRGBA, int diffuseW, int di
                                 int normalW, int normalH, const uint8_t* rmaosRGBA, int rmaosW, int rmaosH)
 {
     if (diffuseRGBA && diffuseW > 0 && diffuseH > 0)
-        uploadTexture(0, diffuseRGBA, diffuseW, diffuseH, true);
+        uploadTexture(0, 0, diffuseRGBA, diffuseW, diffuseH, true);
     else
     {
         uint8_t whiteDiffuse[] = {255, 255, 255, 255};
-        uploadTexture(0, whiteDiffuse, 1, 1, true);
+        uploadTexture(0, 0, whiteDiffuse, 1, 1, true);
     }
 
     if (normalRGBA && normalW > 0 && normalH > 0)
-        uploadTexture(1, normalRGBA, normalW, normalH, false);
+        uploadTexture(1, 1, normalRGBA, normalW, normalH, false);
     else
     {
         uint8_t flatNormal[] = {128, 128, 255, 255};
-        uploadTexture(1, flatNormal, 1, 1, false);
+        uploadTexture(1, 1, flatNormal, 1, 1, false);
     }
 
     if (rmaosRGBA && rmaosW > 0 && rmaosH > 0)
-        uploadTexture(2, rmaosRGBA, rmaosW, rmaosH, false);
+        uploadTexture(2, 2, rmaosRGBA, rmaosW, rmaosH, false);
     else
     {
         uint8_t defaultRMAOS[] = {128, 0, 255, 255};
-        uploadTexture(2, defaultRMAOS, 1, 1, false);
+        uploadTexture(2, 2, defaultRMAOS, 1, 1, false);
     }
 }
 
@@ -1040,6 +1251,81 @@ void D3D12Renderer::setMaterialParams(float specularLevel, float roughnessScale)
 {
     m_specularLevel = specularLevel;
     m_roughnessScale = roughnessScale;
+}
+
+void D3D12Renderer::setFeatureParams(const PBRFeatureFlags& features, const PBRParameters& params)
+{
+    // Build bitmask matching PBR::Flags in PBRMath.hlsli
+    uint32_t flags = 0;
+    if (features.emissive)
+        flags |= (1 << 0); // HasEmissive
+    if (features.parallax)
+        flags |= (1 << 1); // HasDisplacement
+    if (features.subsurface)
+        flags |= (1 << 4); // Subsurface
+    if (features.multilayer)
+        flags |= (1 << 5); // TwoLayer
+    if (features.coatDiffuse)
+        flags |= (1 << 6); // ColoredCoat
+    if (features.coatNormal)
+        flags |= (1 << 8); // CoatNormal
+    if (features.fuzz)
+        flags |= (1 << 9); // Fuzz
+    if (features.hair)
+        flags |= (1 << 10); // HairMarschner
+    if (features.glint)
+        flags |= (1 << 11); // Glint
+
+    m_featureFlags = flags;
+
+    m_subsurfaceColor = {params.subsurfaceColor[0], params.subsurfaceColor[1], params.subsurfaceColor[2]};
+    m_subsurfaceOpacity = params.subsurfaceOpacity;
+    m_coatStrength = params.coatStrength;
+    m_coatRoughness = params.coatRoughness;
+    m_coatSpecularLevel = params.coatSpecularLevel;
+    m_emissiveScale = params.emissiveScale;
+    m_fuzzColor = {params.fuzzColor[0], params.fuzzColor[1], params.fuzzColor[2]};
+    m_fuzzWeight = params.fuzzWeight;
+    m_glintScreenSpaceScale = params.glintScreenSpaceScale;
+    m_glintLogMicrofacetDensity = params.glintLogMicrofacetDensity;
+    m_glintMicrofacetRoughness = params.glintMicrofacetRoughness;
+    m_glintDensityRandomization = params.glintDensityRandomization;
+}
+
+void D3D12Renderer::setFeatureTextures(const uint8_t* emissiveRGBA, int ew, int eh, const uint8_t* feat0RGBA, int f0w,
+                                       int f0h, const uint8_t* feat1RGBA, int f1w, int f1h)
+{
+    if (emissiveRGBA && ew > 0 && eh > 0)
+        uploadTexture(3, 5, emissiveRGBA, ew, eh, true);
+    else
+    {
+        uint8_t black[] = {0, 0, 0, 255};
+        uploadTexture(3, 5, black, 1, 1, true);
+    }
+
+    if (feat0RGBA && f0w > 0 && f0h > 0)
+    {
+        uploadTexture(4, 6, feat0RGBA, f0w, f0h, false);
+        m_featureFlags |= (1 << 2); // HasFeatureTexture0
+    }
+    else
+    {
+        uint8_t defaultFeat0[] = {128, 128, 255, 128};
+        uploadTexture(4, 6, defaultFeat0, 1, 1, false);
+        m_featureFlags &= ~(1 << 2);
+    }
+
+    if (feat1RGBA && f1w > 0 && f1h > 0)
+    {
+        uploadTexture(5, 7, feat1RGBA, f1w, f1h, false);
+        m_featureFlags |= (1 << 3); // HasFeatureTexture1
+    }
+    else
+    {
+        uint8_t defaultFeat1[] = {255, 255, 255, 255};
+        uploadTexture(5, 7, defaultFeat1, 1, 1, false);
+        m_featureFlags &= ~(1 << 3);
+    }
 }
 
 void D3D12Renderer::setRenderFlags(uint32_t flags)
@@ -1152,6 +1438,7 @@ void D3D12Renderer::render()
     frame.sceneCBMapped->lightIntensity = m_lightIntensity;
     frame.sceneCBMapped->iblIntensity = m_iblLoaded ? m_iblIntensity : 0.0f;
     frame.sceneCBMapped->maxPrefilteredMip = static_cast<float>(m_maxPrefilteredMip);
+    frame.sceneCBMapped->frameCount = static_cast<uint32_t>(m_frameNumber);
     for (int i = 0; i < 5; i++)
     {
         frame.sceneCBMapped->zh3Data[i] = {m_zh3Data[i][0], m_zh3Data[i][1], m_zh3Data[i][2], m_zh3Data[i][3]};
@@ -1160,6 +1447,19 @@ void D3D12Renderer::render()
     frame.materialCBMapped->specularLevel = m_specularLevel;
     frame.materialCBMapped->roughnessScale = m_roughnessScale;
     frame.materialCBMapped->renderFlags = m_renderFlags;
+    frame.materialCBMapped->featureFlags = m_featureFlags;
+    frame.materialCBMapped->subsurfaceColor = m_subsurfaceColor;
+    frame.materialCBMapped->subsurfaceOpacity = m_subsurfaceOpacity;
+    frame.materialCBMapped->coatStrength = m_coatStrength;
+    frame.materialCBMapped->coatRoughness = m_coatRoughness;
+    frame.materialCBMapped->coatSpecularLevel = m_coatSpecularLevel;
+    frame.materialCBMapped->emissiveScale = m_emissiveScale;
+    frame.materialCBMapped->fuzzColor = m_fuzzColor;
+    frame.materialCBMapped->fuzzWeight = m_fuzzWeight;
+    frame.materialCBMapped->glintScreenSpaceScale = m_glintScreenSpaceScale;
+    frame.materialCBMapped->glintLogMicrofacetDensity = m_glintLogMicrofacetDensity;
+    frame.materialCBMapped->glintMicrofacetRoughness = m_glintMicrofacetRoughness;
+    frame.materialCBMapped->glintDensityRandomization = m_glintDensityRandomization;
 
     // 4. Record commands
     UINT backBufferIdx = m_swapChain->GetCurrentBackBufferIndex();

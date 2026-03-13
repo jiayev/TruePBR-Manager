@@ -1121,6 +1121,7 @@ void MainWindow::onFeaturesChanged(const PBRFeatureFlags& flags)
     m_project.textureSets[m_currentSetIndex].features = flags;
     m_slotEditor->updateSlots(flags);
     m_paramPanel->setParameters(m_project.textureSets[m_currentSetIndex].params, flags);
+    m_materialPreview->setFeatureParams(flags, m_project.textureSets[m_currentSetIndex].params);
 }
 
 void MainWindow::onParametersChanged(const PBRParameters& params)
@@ -1128,6 +1129,8 @@ void MainWindow::onParametersChanged(const PBRParameters& params)
     if (m_currentSetIndex < 0)
         return;
     m_project.textureSets[m_currentSetIndex].params = params;
+    m_materialPreview->setMaterialParams(params.specularLevel, params.roughnessScale);
+    m_materialPreview->setFeatureParams(m_project.textureSets[m_currentSetIndex].features, params);
 }
 
 void MainWindow::onLandscapeEdidsChanged(const QStringList& edids)
@@ -1419,6 +1422,31 @@ void MainWindow::refresh3DPreview()
                                    rmaosPixels.empty() ? nullptr : rmaosPixels.data(), rw, rh);
 
     m_materialPreview->setMaterialParams(ts.params.specularLevel, ts.params.roughnessScale);
+    m_materialPreview->setFeatureParams(ts.features, ts.params);
+
+    // Load feature textures
+    {
+        std::vector<uint8_t> emissivePixels, feat0Pixels, feat1Pixels;
+        int ew = 0, eh = 0, f0w = 0, f0h = 0, f1w = 0, f1h = 0;
+
+        loadPixels(ts, PBRTextureSlot::Emissive, emissivePixels, ew, eh);
+
+        // Feature texture 0: CoatNormalRoughness or Fuzz
+        if (ts.features.multilayer)
+            loadPixels(ts, PBRTextureSlot::CoatNormalRoughness, feat0Pixels, f0w, f0h);
+        else if (ts.features.fuzz)
+            loadPixels(ts, PBRTextureSlot::Fuzz, feat0Pixels, f0w, f0h);
+
+        // Feature texture 1: Subsurface or CoatColor
+        if (ts.features.subsurface)
+            loadPixels(ts, PBRTextureSlot::Subsurface, feat1Pixels, f1w, f1h);
+        else if (ts.features.coatDiffuse)
+            loadPixels(ts, PBRTextureSlot::CoatColor, feat1Pixels, f1w, f1h);
+
+        m_materialPreview->setFeatureTextures(emissivePixels.empty() ? nullptr : emissivePixels.data(), ew, eh,
+                                              feat0Pixels.empty() ? nullptr : feat0Pixels.data(), f0w, f0h,
+                                              feat1Pixels.empty() ? nullptr : feat1Pixels.data(), f1w, f1h);
+    }
 
     if (m_previewStack != nullptr)
     {

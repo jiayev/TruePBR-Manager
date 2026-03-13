@@ -112,6 +112,19 @@ void MaterialPreviewWidget::setMaterialParams(float specularLevel, float roughne
         m_renderer->setMaterialParams(specularLevel, roughnessScale);
 }
 
+void MaterialPreviewWidget::setFeatureParams(const PBRFeatureFlags& features, const PBRParameters& params)
+{
+    if (m_renderer)
+        m_renderer->setFeatureParams(features, params);
+}
+
+void MaterialPreviewWidget::setFeatureTextures(const uint8_t* emissiveRGBA, int ew, int eh, const uint8_t* feat0RGBA,
+                                               int f0w, int f0h, const uint8_t* feat1RGBA, int f1w, int f1h)
+{
+    if (m_renderer)
+        m_renderer->setFeatureTextures(emissiveRGBA, ew, eh, feat0RGBA, f0w, f0h, feat1RGBA, f1w, f1h);
+}
+
 void MaterialPreviewWidget::setRenderFlags(uint32_t flags)
 {
     if (m_renderer)
