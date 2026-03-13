@@ -443,20 +443,31 @@ bool D3D12Renderer::createConstantBuffers()
 void D3D12Renderer::createDefaultTextures()
 {
     // 1x1 white diffuse
+    spdlog::debug("D3D12Renderer: uploading default diffuse...");
+    spdlog::default_logger()->flush();
     uint8_t whiteDiffuse[] = {255, 255, 255, 255};
     uploadTexture(0, whiteDiffuse, 1, 1, true);
 
     // 1x1 flat normal (128, 128, 255) = (0, 0, 1) in tangent space
+    spdlog::debug("D3D12Renderer: uploading default normal...");
+    spdlog::default_logger()->flush();
     uint8_t flatNormal[] = {128, 128, 255, 255};
     uploadTexture(1, flatNormal, 1, 1, false);
 
     // 1x1 default RMAOS: roughness=128, metallic=0, ao=255, specular=255
+    spdlog::debug("D3D12Renderer: uploading default RMAOS...");
+    spdlog::default_logger()->flush();
     uint8_t defaultRMAOS[] = {128, 0, 255, 255};
     uploadTexture(2, defaultRMAOS, 1, 1, false);
+
+    spdlog::debug("D3D12Renderer: all default textures uploaded");
+    spdlog::default_logger()->flush();
 }
 
 void D3D12Renderer::uploadTexture(int srvIndex, const uint8_t* rgba, int w, int h, bool srgb)
 {
+    spdlog::debug("D3D12Renderer::uploadTexture(slot={}, {}x{}, srgb={})", srvIndex, w, h, srgb);
+    spdlog::default_logger()->flush();
     // sRGB textures (diffuse/albedo) use _SRGB format so the GPU automatically
     // converts from sRGB to linear on sampling. Linear data (normal, RMAOS) uses _UNORM.
     const DXGI_FORMAT texFormat = srgb ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -512,8 +523,9 @@ void D3D12Renderer::uploadTexture(int srvIndex, const uint8_t* rgba, int w, int 
     }
     m_textureUploadHeaps[srvIndex]->Unmap(0, nullptr);
 
-    // Copy to texture — wait for any previous GPU work first
-    waitForGPU();
+    // Record copy command
+    spdlog::debug("D3D12Renderer::uploadTexture: resetting command list...");
+    spdlog::default_logger()->flush();
     m_commandAllocator->Reset();
     m_commandList->Reset(m_commandAllocator.Get(), nullptr);
 
@@ -538,9 +550,14 @@ void D3D12Renderer::uploadTexture(int srvIndex, const uint8_t* rgba, int w, int 
     m_commandList->ResourceBarrier(1, &barrier);
 
     m_commandList->Close();
+
+    spdlog::debug("D3D12Renderer::uploadTexture: executing and waiting...");
+    spdlog::default_logger()->flush();
     ID3D12CommandList* lists[] = {m_commandList.Get()};
     m_commandQueue->ExecuteCommandLists(1, lists);
     waitForGPU();
+    spdlog::debug("D3D12Renderer::uploadTexture: complete");
+    spdlog::default_logger()->flush();
 
     // Create SRV
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
@@ -827,9 +844,6 @@ void D3D12Renderer::uploadCubemap(int srvIndex, ComPtr<ID3D12Resource>& resource
     m_device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &texDesc, D3D12_RESOURCE_STATE_COPY_DEST,
                                       nullptr, IID_PPV_ARGS(&resource));
 
-    // Ensure any previous GPU work is complete before resetting allocator
-    waitForGPU();
-
     // Upload each face
     m_commandAllocator->Reset();
     m_commandList->Reset(m_commandAllocator.Get(), nullptr);
@@ -960,7 +974,6 @@ void D3D12Renderer::uploadBRDFLut(int srvIndex, const float* rgPixels, int size)
     }
     uploadBuf->Unmap(0, nullptr);
 
-    waitForGPU();
     m_commandAllocator->Reset();
     m_commandList->Reset(m_commandAllocator.Get(), nullptr);
 
