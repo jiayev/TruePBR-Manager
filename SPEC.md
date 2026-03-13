@@ -44,7 +44,7 @@ Primary references:
 
 ### 3.2 Texture authoring
 
-- Import slot textures from DDS and raster formats supported by the app
+- Import slot textures from DDS and raster formats (PNG, TGA, BMP, JPG/JPEG)
 - Import split RMAOS channels independently
 - Drag-and-drop import onto slot and channel controls
 - Persist imported file metadata: source path, dimensions, channel count, format
@@ -120,10 +120,12 @@ When a split channel is missing, exporter defaults are used:
 
 Implemented enums in the model layer:
 
-- `PBRTextureSlot`
-- `ChannelMap`
+- `PBRTextureSlot` (9 values)
+- `ChannelMap` (4 values)
 - `RMAOSSourceMode` with `PackedTexture` and `SeparateChannels`
-- `DDSCompressionMode` with BC7, BC6H, BC5, BC4, BC1, and RGBA8 variants
+- `TextureMatchMode` with `Auto`, `Diffuse`, and `Normal`
+- `DDSCompressionMode` with BC7, BC6H, BC5, BC4, BC3, BC1, and RGBA8 variants (10 total, both sRGB and Linear where applicable)
+- `TextureAlphaMode` with `Unknown`, `None`, `Opaque`, and `Transparent`
 
 ### 5.2 Texture entry types
 
@@ -134,9 +136,10 @@ Implemented enums in the model layer:
 - `width`
 - `height`
 - `channels`
+- `alphaMode` (detected during import: Unknown, None, Opaque, Transparent)
 - `format`
 
-`ChannelMapEntry` stores the same metadata except for slot.
+`ChannelMapEntry` stores the same metadata except for slot and alphaMode.
 
 ### 5.3 Feature flags
 
@@ -238,6 +241,7 @@ Compression overrides are stored using stable keys such as:
 
 - `bc7_srgb`
 - `bc7_linear`
+- `bc3_srgb`
 - `bc6h_uf16`
 - `bc5_linear`
 - `bc4_linear`
@@ -291,11 +295,14 @@ Conditional fields currently emitted by implementation:
 - `emissive_scale` when emissive is enabled
 - `match_normal` when a set is configured to match vanilla normal instead of diffuse
 - `rename` when exported PBR texture base name differs from the matched vanilla base name
+- Explicit `slotN` paths when the generated path differs from what PGPatcher would infer by convention
+- `lock_diffuse`, `lock_normal`, `lock_emissive`, `lock_parallax`, `lock_rmaos`, `lock_subsurface`, `lock_cnr` when corresponding slots have no exported texture
 - Coat fields when multilayer or coat normal is enabled
 - `fuzz` object when fuzz is enabled
 - `glint` object when glint is enabled
 - `hair` when hair is enabled
 - Vertex-color override fields when they differ from defaults
+- All float values are rounded to 3 decimal places
 
 ## 8. Export Behavior
 
@@ -327,8 +334,10 @@ If the texture set name is changed, the exporter keeps the vanilla match directo
 ### 8.2 Export rules
 
 - Each assigned texture slot is exported to DDS.
-- Source DDS files are decoded and re-encoded using the selected export compression.
+- Source DDS files whose format and mipmap count already match the target compression mode are copied as-is without re-encoding (copy-through optimization).
+- Other source DDS files are decoded and re-encoded using the selected export compression.
 - Raster sources are loaded and encoded to DDS.
+- Alpha mode is detected during import and influences compression availability: BC1 is only offered when alpha is None or Opaque. If a texture with real alpha data is assigned to a BC1-configured slot, the exporter falls back to BC7.
 - If `rmaosSourceMode` is `SeparateChannels`, the assigned RMAOS slot texture is ignored and a new `_rmaos.dds` is generated from channels.
 - If required source files are missing, export continues and reports failures through logging and return status.
 
@@ -363,13 +372,14 @@ Current defaults from the code:
 
 Current UI composition:
 
-- `TextureSetPanel`: list of texture sets with add/remove actions
-- `TextureSetPanel`: list of texture sets with add/remove/rename actions
+- `TextureSetPanel`: list of texture sets with add/rename/remove actions
 - `SlotEditorWidget`: match path, match mode, slot imports, RMAOS mode, split-channel rows, compression selectors
 - `FeatureTogglePanel`: feature checkboxes
 - `ParameterPanel`: parameter editors grouped by feature
 - `TexturePreviewWidget`: basic image display with wheel zoom and drag pan
-- `ExportDialog`: mod folder picker
+- `DropZoneLabel`: custom widget for drag-and-drop with thumbnail preview, click-to-browse, and DDS thumbnail loading
+
+Note: `ExportDialog` exists in the codebase but is currently unused; `MainWindow` uses an inline export folder row instead. `ImportDialog` is a thin wrapper over `QFileDialog::getOpenFileName`.
 
 ### 9.3 Current preview behavior
 
@@ -454,7 +464,21 @@ Post-build steps currently do the following:
 | DirectXTex | DDS metadata, decode, encode, compression | directxtex |
 | stb_image | Raster image loading | stb |
 
-## 13. Conventions
+## 13. CI/CD
+
+### 13.1 GitHub Actions
+
+Two workflows are configured:
+
+- `ci.yml`: runs on PRs and pushes to `main`. Performs pre-commit checks (`prek`), then builds on `windows-latest` with MSVC and uploads `dist/TruePBR-Manager` as an artifact.
+- `release.yml`: triggers on tags matching `v*`. Builds, zips `dist/TruePBR-Manager`, and uploads to GitHub Releases with auto-generated release notes.
+
+### 13.2 Code formatting
+
+- `.clang-format` based on LLVM style with IndentWidth 4, ColumnLimit 120, Allman braces.
+- `.pre-commit-config.yaml` enforces clang-format on `src/` plus standard text hygiene hooks.
+
+## 14. Conventions
 
 - Types use PascalCase.
 - Functions and variables use camelCase.

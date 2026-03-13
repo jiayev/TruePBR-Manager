@@ -12,16 +12,20 @@ Each texture set maps to one vanilla diffuse path and stores the textures, featu
 The application currently supports:
 
 - Creating projects in memory and saving/loading them as `.tpbr` JSON files
-- Managing multiple texture sets per project
-- Importing texture slots from DDS and common raster formats such as PNG, TGA, and BMP
-- Drag-and-drop import directly onto slot and channel targets
+- Managing multiple texture sets per project (add, rename, remove)
+- Importing texture slots from DDS and common raster formats (PNG, TGA, BMP, JPG)
+- Drag-and-drop import directly onto slot and channel targets, with thumbnail preview
 - Authoring RMAOS either as a pre-packed texture or as separate Roughness/Metallic/AO/Specular inputs
 - Packing split RMAOS channels into a DDS during export
 - Editing major True PBR feature flags: emissive, parallax, subsurface, foliage, multilayer, coat options, fuzz, glint, hair
 - Editing the corresponding material parameters in the UI
-- Choosing DDS compression per export slot
+- Choosing DDS compression per export slot (BC7, BC3, BC6H, BC5, BC4, BC1, RGBA8 with sRGB/Linear variants)
+- Alpha mode detection (None, Opaque, Transparent) to gate compression options
+- Vanilla texture match modes: Auto, Match Diffuse, Match Normal
+- Copy-through optimization: source DDS files already in the target format are copied without re-encoding
 - Previewing imported textures with zoom and pan
 - Exporting DDS textures into the correct `textures/pbr/...` layout and generating a PGPatcher JSON file
+- PGPatcher JSON with `rename`, `lock_*`, `match_normal`, explicit `slotN` overrides, and conditional feature fields
 
 The application does not currently provide batch import, undo/redo, channel-isolated preview, 3D material preview, or localization.
 
@@ -187,19 +191,25 @@ src/
 - Projects are saved as JSON with the `.tpbr` extension.
 - RMAOS source mode is persisted per texture set as either packed or split-channel mode.
 - Export compression can be overridden per slot and is stored in the project file.
+- Alpha mode is detected during import and influences available compression options (BC1 requires no alpha).
+- Source DDS files already matching the target compression format and mipmap count are copied without re-encoding.
 - Preview currently shows the first available diffuse texture, otherwise the normal map.
+- PGPatcher JSON uses `rename` when the texture set name differs from the vanilla stem, and emits explicit `slotN` paths only when the generated path differs from PGPatcher's convention-based inference.
 
 ## Roadmap
 
 - [x] Project create/save/load
-- [x] Texture slot import with metadata detection
+- [x] Texture slot import with metadata and alpha detection
 - [x] Drag-and-drop import for slots and RMAOS channels
 - [x] Split-channel RMAOS packing on export
 - [x] Feature toggle editing
-- [x] Parameter editing
-- [x] DDS export with per-slot compression selection
-- [x] PGPatcher JSON export
+- [x] Parameter editing (base, emissive, parallax, subsurface, coat, fuzz, glint)
+- [x] DDS export with per-slot compression selection (10 format options)
+- [x] Copy-through DDS optimization
+- [x] PGPatcher JSON export with rename, lock, match_normal, and slotN support
+- [x] Vanilla texture match modes (Auto/Diffuse/Normal)
 - [x] Basic preview with zoom and pan
+- [x] CI/CD with GitHub Actions (build + release packaging)
 - [ ] Batch import with suffix detection
 - [ ] Channel-isolated preview tools
 - [ ] Undo/redo
