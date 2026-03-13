@@ -440,6 +440,38 @@ void SlotEditorWidget::setupUI()
         }
     }
 
+    // ── Landscape EDID Section ─────────────────────────────
+    m_landscapeSection = new QGroupBox(tr("Landscape EDIDs (optional)"), this);
+    auto* landscapeLayout = new QVBoxLayout(m_landscapeSection);
+    landscapeLayout->setContentsMargins(8, 8, 8, 8);
+
+    auto* landscapeHint = new QLabel(tr("One TXST EDID per line (e.g. LandscapeDirt02).\n"
+                                        "Leave empty if this texture set is not used for landscape."),
+                                     m_landscapeSection);
+    landscapeHint->setWordWrap(true);
+    landscapeHint->setStyleSheet("QLabel { color: #999; font-size: 11px; }");
+    landscapeLayout->addWidget(landscapeHint);
+
+    m_landscapeEdidEdit = new QPlainTextEdit(m_landscapeSection);
+    m_landscapeEdidEdit->setMaximumHeight(80);
+    m_landscapeEdidEdit->setPlaceholderText(tr("LandscapeDirt02\nLandscapeGrass01"));
+    landscapeLayout->addWidget(m_landscapeEdidEdit);
+
+    connect(m_landscapeEdidEdit, &QPlainTextEdit::textChanged, this,
+            [this]()
+            {
+                QStringList edids;
+                for (const auto& line : m_landscapeEdidEdit->toPlainText().split('\n'))
+                {
+                    auto trimmed = line.trimmed();
+                    if (!trimmed.isEmpty())
+                        edids.append(trimmed);
+                }
+                emit landscapeEdidsChanged(edids);
+            });
+
+    mainLayout->addWidget(m_landscapeSection);
+
     mainLayout->addStretch();
 
     updateRmaosModeUI(RMAOSSourceMode::PackedTexture);
@@ -634,6 +666,18 @@ void SlotEditorWidget::setTextureSet(const PBRTextureSet& ts)
         {
             row.dropZone->clear();
         }
+    }
+
+    // Update landscape EDIDs
+    {
+        m_landscapeEdidEdit->blockSignals(true);
+        QStringList edids;
+        for (const auto& edid : ts.landscapeEdids)
+        {
+            edids.append(QString::fromStdString(edid));
+        }
+        m_landscapeEdidEdit->setPlainText(edids.join('\n'));
+        m_landscapeEdidEdit->blockSignals(false);
     }
 
     updateSlots(ts.features);

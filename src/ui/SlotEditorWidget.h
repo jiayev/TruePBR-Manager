@@ -5,6 +5,7 @@
 #include <QComboBox>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QRadioButton>
 #include <QWidget>
@@ -83,6 +84,9 @@ class SlotEditorWidget : public QWidget
     /// Emitted when a slot's drop zone is clicked (for preview)
     void slotPreviewRequested(PBRTextureSlot slot);
 
+    /// Emitted when the landscape EDID list changes
+    void landscapeEdidsChanged(const QStringList& edids);
+
   private:
     void setupUI();
     void addSlotRow(PBRTextureSlot slot, const QString& label, bool visible);
@@ -115,6 +119,8 @@ class SlotEditorWidget : public QWidget
     std::map<ChannelMap, ChannelRowData> m_channelRows;
     QWidget* m_rmaosModeContainer = nullptr;
     QWidget* m_channelSection = nullptr;
+    QPlainTextEdit* m_landscapeEdidEdit = nullptr;
+    QWidget* m_landscapeSection = nullptr;
 };
 
 } // namespace tpbr

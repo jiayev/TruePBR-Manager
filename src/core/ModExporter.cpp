@@ -1,6 +1,7 @@
 #include "ModExporter.h"
 #include "ChannelPacker.h"
 #include "JsonExporter.h"
+#include "LandscapeExporter.h"
 #include "utils/DDSUtils.h"
 #include "utils/FileUtils.h"
 #include "utils/ImageUtils.h"
@@ -357,6 +358,12 @@ bool ModExporter::exportMod(const Project& project)
 
     // Export PGPatcher JSON
     if (!JsonExporter::exportPGPatcherJson(project, project.outputModFolder))
+    {
+        allOk = false;
+    }
+
+    // Export Landscape PBRTextureSets JSONs (for sets that have landscapeEdids)
+    if (!LandscapeExporter::exportLandscapeJsons(project))
     {
         allOk = false;
     }

@@ -54,7 +54,12 @@ void TextureSetPanel::setTextureSets(const std::vector<PBRTextureSet>& sets)
     m_listWidget->clear();
     for (const auto& ts : sets)
     {
-        m_listWidget->addItem(QString::fromStdString(ts.name));
+        QString label = QString::fromStdString(ts.name);
+        if (!ts.landscapeEdids.empty())
+        {
+            label += tr(" [+Landscape]");
+        }
+        m_listWidget->addItem(label);
     }
 
     const bool hasSets = !sets.empty();

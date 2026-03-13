@@ -51,6 +51,7 @@ class MainWindow : public QMainWindow
     void onExportCompressionChanged(PBRTextureSlot slot, DDSCompressionMode mode);
     void onFeaturesChanged(const PBRFeatureFlags& flags);
     void onParametersChanged(const PBRParameters& params);
+    void onLandscapeEdidsChanged(const QStringList& edids);
 
   private:
     void setupMenuBar();

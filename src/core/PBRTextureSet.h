@@ -200,6 +200,11 @@ struct PBRTextureSet
     PBRFeatureFlags features;
     PBRParameters params;
 
+    /// Optional: Landscape TXST EDIDs this texture set also applies to.
+    /// If non-empty, exporter generates PBRTextureSets/<edid>.json for each.
+    /// The textures are shared with NIF export — no separate landscape texture output.
+    std::vector<std::string> landscapeEdids;
+
     std::string tags;
     std::string notes;
 };

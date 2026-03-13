@@ -294,6 +294,13 @@ static json textureSetToJson(const PBRTextureSet& ts)
     j["match_texture_mode"] = textureMatchModeKey(ts.matchMode);
     j["tags"] = ts.tags;
     j["notes"] = ts.notes;
+
+    // Landscape EDIDs
+    if (!ts.landscapeEdids.empty())
+    {
+        j["landscape_edids"] = ts.landscapeEdids;
+    }
+
     j["features"] = featuresToJson(ts.features);
     j["params"] = paramsToJson(ts.params);
     j["rmaos_source_mode"] = rmaosSourceModeKey(ts.rmaosSourceMode);
@@ -351,6 +358,13 @@ static PBRTextureSet textureSetFromJson(const json& j)
         ts.tags = j["tags"];
     if (j.contains("notes"))
         ts.notes = j["notes"];
+    if (j.contains("landscape_edids") && j["landscape_edids"].is_array())
+    {
+        for (const auto& edid : j["landscape_edids"])
+        {
+            ts.landscapeEdids.push_back(edid.get<std::string>());
+        }
+    }
     if (j.contains("features"))
         ts.features = featuresFromJson(j["features"]);
     if (j.contains("params"))

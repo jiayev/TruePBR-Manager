@@ -212,6 +212,7 @@ void MainWindow::setupCentralWidget()
     connect(m_slotEditor, &SlotEditorWidget::exportCompressionChanged, this, &MainWindow::onExportCompressionChanged);
     connect(m_featurePanel, &FeatureTogglePanel::featuresChanged, this, &MainWindow::onFeaturesChanged);
     connect(m_paramPanel, &ParameterPanel::parametersChanged, this, &MainWindow::onParametersChanged);
+    connect(m_slotEditor, &SlotEditorWidget::landscapeEdidsChanged, this, &MainWindow::onLandscapeEdidsChanged);
 }
 
 void MainWindow::setupStatusBar()
@@ -362,16 +363,14 @@ void MainWindow::onExportMod()
         auto issues = TextureSetValidator::validate(m_project.textureSets[i]);
         if (!issues.empty())
         {
-            validationReport +=
-                tr("Texture Set \"%1\":\n").arg(QString::fromStdString(m_project.textureSets[i].name));
+            validationReport += tr("Texture Set \"%1\":\n").arg(QString::fromStdString(m_project.textureSets[i].name));
             for (const auto& issue : issues)
             {
                 bool isError = (issue.severity == ValidationSeverity::Error);
                 if (isError)
                     hasErrors = true;
-                validationReport += tr("  %1 %2\n")
-                                        .arg(isError ? "[ERROR]" : "[WARNING]")
-                                        .arg(QString::fromStdString(issue.message));
+                validationReport +=
+                    tr("  %1 %2\n").arg(isError ? "[ERROR]" : "[WARNING]").arg(QString::fromStdString(issue.message));
             }
             validationReport += "\n";
         }
@@ -588,8 +587,7 @@ void MainWindow::onBatchImport()
 {
     if (m_currentSetIndex < 0)
     {
-        QMessageBox::information(this, tr("Batch Import"),
-                                 tr("Select or create a Texture Set first."));
+        QMessageBox::information(this, tr("Batch Import"), tr("Select or create a Texture Set first."));
         return;
     }
 
@@ -707,9 +705,9 @@ void MainWindow::onSlotPreviewRequested(PBRTextureSlot slot)
 
     m_previewWidget->setImage(image);
     // Show channel selector for multi-channel data textures (RMAOS, CoatNormalRoughness, Fuzz, Subsurface)
-    bool showChannels = (slot == PBRTextureSlot::RMAOS || slot == PBRTextureSlot::CoatNormalRoughness
-                         || slot == PBRTextureSlot::Fuzz || slot == PBRTextureSlot::Subsurface
-                         || slot == PBRTextureSlot::Diffuse);
+    bool showChannels =
+        (slot == PBRTextureSlot::RMAOS || slot == PBRTextureSlot::CoatNormalRoughness || slot == PBRTextureSlot::Fuzz ||
+         slot == PBRTextureSlot::Subsurface || slot == PBRTextureSlot::Diffuse);
     m_previewWidget->setChannelSelectorVisible(showChannels);
 
     if (m_previewStack != nullptr)
@@ -769,6 +767,20 @@ void MainWindow::onParametersChanged(const PBRParameters& params)
     if (m_currentSetIndex < 0)
         return;
     m_project.textureSets[m_currentSetIndex].params = params;
+}
+
+void MainWindow::onLandscapeEdidsChanged(const QStringList& edids)
+{
+    if (m_currentSetIndex < 0)
+        return;
+
+    auto& ts = m_project.textureSets[m_currentSetIndex];
+    ts.landscapeEdids.clear();
+    for (const auto& edid : edids)
+    {
+        ts.landscapeEdids.push_back(edid.toStdString());
+    }
+    spdlog::debug("Landscape EDIDs updated: {} entries", ts.landscapeEdids.size());
 }
 
 // ─── Refresh ───────────────────────────────────────────────

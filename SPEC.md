@@ -85,12 +85,19 @@ Primary references:
   - Empty vanilla match texture path
 - Errors block export; warnings allow continue with user confirmation
 
-### 3.5 Known current limitations
+### 3.7 Landscape support
+
+- Any texture set can optionally have one or more Landscape TXST EDIDs
+- When EDIDs are present, the exporter generates `PBRTextureSets/<edid>.json` per EDID
+- The JSON contains only material parameters (roughnessScale, displacementScale, specularLevel, subsurfaceColor, subsurfaceOpacity)
+- Textures are shared with NIF export — no separate landscape texture output
+- This is an additive option, not a separate type: the same set can serve both NIF and Landscape
+
+### 3.8 Known current limitations
 
 - No undo/redo
 - No 3D shaded material preview
 - No localization support
-- No Landscape texture set support (PBRTextureSets JSON)
 - Vertex-color tuning fields exist in the data/export layer but are not exposed in the current UI
 
 ## 4. Texture Slot Model

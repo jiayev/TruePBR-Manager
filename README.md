@@ -215,8 +215,8 @@ src/
 - [x] Per-channel preview (R/G/B/A isolation) for RMAOS and other textures
 - [x] Batch import with suffix auto-detection
 - [x] Pre-export validation with error/warning reporting
+- [x] Landscape support (optional PBRTextureSets JSON per EDID)
 - [x] CI/CD with GitHub Actions (build + release packaging)
-- [ ] Landscape texture set support (PBRTextureSets JSON)
 - [ ] Undo/redo
 - [ ] 3D material preview
 - [ ] Localization
