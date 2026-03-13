@@ -72,6 +72,7 @@ set(ALL_SOURCES
     ${UTIL_SOURCES}
     ${RENDERER_SOURCES}
     third_party/tinyexr_impl.cpp
+    third_party/stb_image_write_impl.cpp
 )
 
 # Qt resources
