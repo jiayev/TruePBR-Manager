@@ -1,5 +1,6 @@
 #include "MeshGenerator.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace tpbr

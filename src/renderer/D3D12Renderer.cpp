@@ -85,8 +85,10 @@ bool D3D12Renderer::createDevice()
 
         if (SUCCEEDED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&m_device))))
         {
-            spdlog::info("D3D12 device created on adapter: {}",
-                         std::string(desc.Description, desc.Description + wcslen(desc.Description)));
+            // Convert WCHAR adapter description to narrow string for logging
+            char adapterName[256] = {};
+            WideCharToMultiByte(CP_UTF8, 0, desc.Description, -1, adapterName, sizeof(adapterName), nullptr, nullptr);
+            spdlog::info("D3D12 device created on adapter: {}", adapterName);
             break;
         }
     }
