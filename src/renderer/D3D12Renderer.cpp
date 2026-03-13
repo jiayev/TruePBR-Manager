@@ -783,7 +783,7 @@ void D3D12Renderer::uploadCubemap(int srvIndex, ComPtr<ID3D12Resource>& resource
 
     for (int f = 0; f < 6; ++f)
     {
-        UINT subresource = D3D12CalcSubresource(0, f, 0, mipLevels, 6);
+        UINT subresource = 0 + static_cast<UINT>(f) * static_cast<UINT>(mipLevels); // mip 0, array slice f
 
         D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint;
         UINT64 requiredSize = 0;
