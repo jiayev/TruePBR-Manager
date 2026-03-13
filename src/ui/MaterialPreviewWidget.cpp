@@ -62,7 +62,7 @@ void MaterialPreviewWidget::initRenderer()
     if (m_renderer->init(hwnd, static_cast<uint32_t>(width()), static_cast<uint32_t>(height())))
     {
         m_renderer->setCamera(m_azimuth, m_elevation, m_distance);
-        m_renderer->setLightDirection(0.5f, 0.7f, 0.5f);
+        m_renderer->setLightDirection(0.4f, 0.7f, -0.5f);
         m_renderTimer->start();
     }
 }

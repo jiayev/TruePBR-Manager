@@ -323,7 +323,7 @@ bool D3D12Renderer::createRootSignatureAndPSO()
     psoDesc.InputLayout = {inputLayout, _countof(inputLayout)};
     psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
     psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
-    psoDesc.RasterizerState.FrontCounterClockwise = FALSE;
+    psoDesc.RasterizerState.FrontCounterClockwise = TRUE;
     psoDesc.RasterizerState.DepthClipEnable = TRUE;
     psoDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
     psoDesc.DepthStencilState.DepthEnable = TRUE;

@@ -29,37 +29,43 @@ PreviewMesh MeshGenerator::generatePlane()
 {
     PreviewMesh mesh;
 
-    // 2x2 quad centered at origin, facing +Y
-    PreviewVertex v;
+    // 2x2 quad centered at origin, facing +Z (towards camera in default view)
+    PreviewVertex v{};
     v.normal[0] = 0;
-    v.normal[1] = 1;
-    v.normal[2] = 0;
+    v.normal[1] = 0;
+    v.normal[2] = 1;
     v.tangent[0] = 1;
     v.tangent[1] = 0;
     v.tangent[2] = 0;
     v.tangent[3] = 1;
 
-    // v0: (-1, 0, -1) uv(0, 0)
+    // v0: (-1, -1, 0) uv(0, 1)
     v.position[0] = -1;
-    v.position[1] = 0;
-    v.position[2] = -1;
+    v.position[1] = -1;
+    v.position[2] = 0;
     v.uv[0] = 0;
-    v.uv[1] = 0;
-    mesh.vertices.push_back(v);
-
-    // v1: (1, 0, -1) uv(1, 0)
-    v.position[0] = 1;
-    v.uv[0] = 1;
-    mesh.vertices.push_back(v);
-
-    // v2: (1, 0, 1) uv(1, 1)
-    v.position[2] = 1;
     v.uv[1] = 1;
     mesh.vertices.push_back(v);
 
-    // v3: (-1, 0, 1) uv(0, 1)
+    // v1: (1, -1, 0) uv(1, 1)
+    v.position[0] = 1;
+    v.position[1] = -1;
+    v.uv[0] = 1;
+    v.uv[1] = 1;
+    mesh.vertices.push_back(v);
+
+    // v2: (1, 1, 0) uv(1, 0)
+    v.position[0] = 1;
+    v.position[1] = 1;
+    v.uv[0] = 1;
+    v.uv[1] = 0;
+    mesh.vertices.push_back(v);
+
+    // v3: (-1, 1, 0) uv(0, 0)
     v.position[0] = -1;
+    v.position[1] = 1;
     v.uv[0] = 0;
+    v.uv[1] = 0;
     mesh.vertices.push_back(v);
 
     mesh.indices = {0, 1, 2, 0, 2, 3};

@@ -145,13 +145,13 @@ class D3D12Renderer
     uint64_t m_fenceValue = 0;
     HANDLE m_fenceEvent = nullptr;
 
-    // Camera
-    float m_azimuth = 0.0f;
-    float m_elevation = 0.3f;
+    // Camera — start slightly elevated, looking at front face
+    float m_azimuth = 0.8f;
+    float m_elevation = 0.4f;
     float m_distance = 3.0f;
 
-    // Light
-    DirectX::XMFLOAT3 m_lightDir = {0.577f, 0.577f, 0.577f};
+    // Light — from upper-front-left, toward the visible face
+    DirectX::XMFLOAT3 m_lightDir = {0.4f, 0.7f, -0.5f};
 
     // Material
     float m_specularLevel = 0.04f;
