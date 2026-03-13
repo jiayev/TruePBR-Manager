@@ -111,14 +111,15 @@ bool D3D12Renderer::init(HWND hwnd, uint32_t width, uint32_t height)
 bool D3D12Renderer::createDevice()
 {
     UINT dxgiFlags = 0;
-#ifdef _DEBUG
+
+    // Always enable debug layer for now (to diagnose GPU hangs)
     ComPtr<ID3D12Debug> debug;
     if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug))))
     {
         debug->EnableDebugLayer();
         dxgiFlags |= DXGI_CREATE_FACTORY_DEBUG;
+        spdlog::info("D3D12 debug layer enabled");
     }
-#endif
 
     if (FAILED(CreateDXGIFactory2(dxgiFlags, IID_PPV_ARGS(&m_factory))))
     {
@@ -172,14 +173,6 @@ bool D3D12Renderer::createCommandQueue()
     m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocator.Get(), nullptr,
                                 IID_PPV_ARGS(&m_commandList));
     m_commandList->Close();
-
-    // Submit an empty command list to prime the queue and fence
-    ID3D12CommandList* lists[] = {m_commandList.Get()};
-    m_commandQueue->ExecuteCommandLists(1, lists);
-    m_commandQueue->Signal(m_fence.Get(), m_fenceValue);
-    m_fence->SetEventOnCompletion(m_fenceValue, m_fenceEvent);
-    WaitForSingleObject(m_fenceEvent, 5000); // 5 second timeout instead of INFINITE
-    ++m_fenceValue;
 
     return true;
 }
@@ -549,8 +542,15 @@ void D3D12Renderer::uploadTexture(int srvIndex, const uint8_t* rgba, int w, int 
     // Record copy command
     spdlog::debug("D3D12Renderer::uploadTexture: resetting command list...");
     spdlog::default_logger()->flush();
-    m_commandAllocator->Reset();
-    m_commandList->Reset(m_commandAllocator.Get(), nullptr);
+    HRESULT hrAllocReset = m_commandAllocator->Reset();
+    HRESULT hrListReset = m_commandList->Reset(m_commandAllocator.Get(), nullptr);
+    if (FAILED(hrAllocReset) || FAILED(hrListReset))
+    {
+        spdlog::error("uploadTexture: Reset failed (alloc=0x{:08X}, list=0x{:08X})",
+                      static_cast<unsigned>(hrAllocReset), static_cast<unsigned>(hrListReset));
+        spdlog::default_logger()->flush();
+        return;
+    }
 
     D3D12_TEXTURE_COPY_LOCATION dst{};
     dst.pResource = m_textures[srvIndex].Get();
