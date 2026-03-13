@@ -41,7 +41,7 @@ class MeshGenerator
     static PreviewMesh generatePlane();
     static PreviewMesh generateSphere(int slices = 64, int stacks = 32);
     static PreviewMesh generateCube();
-    static PreviewMesh generateRoundedCube(float radius = 0.15f, int segments = 8);
+    static PreviewMesh generateRoundedCube(float radius = 0.35f, int segments = 16);
 };
 
 } // namespace tpbr

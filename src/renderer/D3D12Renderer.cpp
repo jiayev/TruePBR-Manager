@@ -572,6 +572,16 @@ void D3D12Renderer::setLightDirection(float x, float y, float z)
     }
 }
 
+void D3D12Renderer::setLightColor(float r, float g, float b)
+{
+    m_lightColor = {r, g, b};
+}
+
+void D3D12Renderer::setLightIntensity(float intensity)
+{
+    m_lightIntensity = intensity;
+}
+
 void D3D12Renderer::resize(uint32_t width, uint32_t height)
 {
     if (!m_initialized || width == 0 || height == 0)
@@ -625,8 +635,8 @@ void D3D12Renderer::render()
     XMStoreFloat4x4(&m_sceneCBMapped->worldInvTranspose, worldInvTranspose);
     m_sceneCBMapped->cameraPos = {camX, camY, camZ};
     m_sceneCBMapped->lightDir = m_lightDir;
-    m_sceneCBMapped->lightColor = {1.0f, 1.0f, 1.0f};
-    m_sceneCBMapped->lightIntensity = 3.0f;
+    m_sceneCBMapped->lightColor = m_lightColor;
+    m_sceneCBMapped->lightIntensity = m_lightIntensity;
 
     m_materialCBMapped->specularLevel = m_specularLevel;
     m_materialCBMapped->roughnessScale = m_roughnessScale;

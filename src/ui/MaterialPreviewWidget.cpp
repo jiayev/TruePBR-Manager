@@ -102,6 +102,18 @@ void MaterialPreviewWidget::setMaterialParams(float specularLevel, float roughne
         m_renderer->setMaterialParams(specularLevel, roughnessScale);
 }
 
+void MaterialPreviewWidget::setLightColor(float r, float g, float b)
+{
+    if (m_renderer)
+        m_renderer->setLightColor(r, g, b);
+}
+
+void MaterialPreviewWidget::setLightIntensity(float intensity)
+{
+    if (m_renderer)
+        m_renderer->setLightIntensity(intensity);
+}
+
 void MaterialPreviewWidget::resizeEvent(QResizeEvent* event)
 {
     QWidget::resizeEvent(event);

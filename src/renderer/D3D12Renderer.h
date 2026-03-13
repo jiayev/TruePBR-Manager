@@ -71,6 +71,12 @@ class D3D12Renderer
     /// Set light direction (normalized).
     void setLightDirection(float x, float y, float z);
 
+    /// Set light color (linear RGB, default 1,1,1).
+    void setLightColor(float r, float g, float b);
+
+    /// Set light intensity (default 3.0).
+    void setLightIntensity(float intensity);
+
     /// Render one frame.
     void render();
 
@@ -152,6 +158,8 @@ class D3D12Renderer
 
     // Light — from upper-front-left, toward the visible face
     DirectX::XMFLOAT3 m_lightDir = {0.4f, 0.7f, -0.5f};
+    DirectX::XMFLOAT3 m_lightColor = {1.0f, 1.0f, 1.0f};
+    float m_lightIntensity = 3.0f;
 
     // Material
     float m_specularLevel = 0.04f;

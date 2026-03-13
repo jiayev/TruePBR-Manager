@@ -26,6 +26,8 @@ class MaterialPreviewWidget : public QWidget
     void setTextures(const uint8_t* diffuseRGBA, int dw, int dh, const uint8_t* normalRGBA, int nw, int nh,
                      const uint8_t* rmaosRGBA, int rw, int rh);
     void setMaterialParams(float specularLevel, float roughnessScale);
+    void setLightColor(float r, float g, float b);
+    void setLightIntensity(float intensity);
 
     QComboBox* shapeCombo() const
     {

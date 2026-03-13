@@ -253,101 +253,129 @@ PreviewMesh MeshGenerator::generateCube()
 
 PreviewMesh MeshGenerator::generateRoundedCube(float radius, int segments)
 {
-    // Generate a rounded cube by deforming a sphere: clamp each axis to the
-    // inner cube extent, then push outward by radius along the offset normal.
+    // Build a cube with beveled edges. Each of the 6 faces is a grid that
+    // extends past the flat region into the rounded edges/corners. UV covers
+    // the full [0,1] range per face including the bevel portion.
+    //
+    // Strategy: for each face, generate an (N+1)x(N+1) grid of vertices.
+    // The flat center occupies most of the grid; the outer ring curves around
+    // the bevel. The position is computed by offsetting from the inner cube
+    // surface outward along the rounded normal.
 
-    float extent = 1.0f - radius;
-    PreviewMesh sphere = generateSphere(segments * 4, segments * 2);
+    const int N = std::max(segments, 2); // grid subdivisions per face edge
+    const float halfExtent = 1.0f;       // half-size of the outer cube
+    const float inner = halfExtent - radius;
+
     PreviewMesh mesh;
-    mesh.indices = sphere.indices;
 
-    for (const auto& sv : sphere.vertices)
+    // Face definition: axis (0=X,1=Y,2=Z), sign (+1/-1), and the two tangent axes
+    struct FaceDef
     {
-        PreviewVertex v = sv;
+        int axis;    // which axis is the face normal
+        float sign;  // +1 or -1
+        int uAxis;   // which axis maps to U
+        float uSign; // U direction sign
+        int vAxis;   // which axis maps to V
+        float vSign; // V direction sign
+    };
 
-        float nx = sv.normal[0];
-        float ny = sv.normal[1];
-        float nz = sv.normal[2];
+    // 6 faces: ordered to match Cube face definitions
+    FaceDef faceDefs[] = {
+        {2, +1, 0, +1, 1, +1}, // +Z: U=+X, V=+Y
+        {2, -1, 0, -1, 1, +1}, // -Z: U=-X, V=+Y
+        {0, +1, 2, -1, 1, +1}, // +X: U=-Z, V=+Y
+        {0, -1, 2, +1, 1, +1}, // -X: U=+Z, V=+Y
+        {1, +1, 0, +1, 2, -1}, // +Y: U=+X, V=-Z
+        {1, -1, 0, +1, 2, +1}, // -Y: U=+X, V=+Z
+    };
 
-        // Nearest point on the shrunken inner cube
-        float px = std::clamp(nx * 2.0f, -extent, extent);
-        float py = std::clamp(ny * 2.0f, -extent, extent);
-        float pz = std::clamp(nz * 2.0f, -extent, extent);
+    for (const auto& face : faceDefs)
+    {
+        uint32_t baseVertex = static_cast<uint32_t>(mesh.vertices.size());
 
-        // Offset direction from inner cube surface to rounded surface
-        float dx = nx - px / (extent > 0.0f ? extent : 1.0f) * 0.5f;
-        float dy = ny - py / (extent > 0.0f ? extent : 1.0f) * 0.5f;
-        float dz = nz - pz / (extent > 0.0f ? extent : 1.0f) * 0.5f;
-        float dlen = std::sqrt(dx * dx + dy * dy + dz * dz);
-        if (dlen > 0.0001f)
+        for (int j = 0; j <= N; ++j)
         {
-            dx /= dlen;
-            dy /= dlen;
-            dz /= dlen;
+            for (int i = 0; i <= N; ++i)
+            {
+                // UV in [0, 1]
+                float u = static_cast<float>(i) / static_cast<float>(N);
+                float v = static_cast<float>(j) / static_cast<float>(N);
+
+                // Map UV to [-1, 1] range on the face plane
+                float su = (u * 2.0f - 1.0f) * halfExtent;
+                float sv = (v * 2.0f - 1.0f) * halfExtent;
+
+                // Nearest point on the inner cube face
+                float cu = std::clamp(su, -inner, inner);
+                float cv = std::clamp(sv, -inner, inner);
+
+                // Offset direction (from inner cube point toward the actual surface point)
+                float du = su - cu;
+                float dv = sv - cv;
+                float dn = face.sign * radius; // always push outward along face normal
+
+                // Compute the actual normal direction
+                float normU = du;
+                float normV = dv;
+                float normN = face.sign * radius;
+                float normLen = std::sqrt(normU * normU + normV * normV + normN * normN);
+                if (normLen > 0.0001f)
+                {
+                    normU /= normLen;
+                    normV /= normLen;
+                    normN /= normLen;
+                }
+
+                // Final position = inner cube point + radius * normalized offset
+                float posU = cu + normU * radius;
+                float posV = cv + normV * radius;
+                float posN = face.sign * inner + normN * radius;
+
+                // Map back to XYZ
+                PreviewVertex vert{};
+                vert.position[face.uAxis] = posU * face.uSign;
+                vert.position[face.vAxis] = posV * face.vSign;
+                vert.position[face.axis] = posN;
+
+                vert.normal[face.uAxis] = normU * face.uSign;
+                vert.normal[face.vAxis] = normV * face.vSign;
+                vert.normal[face.axis] = normN;
+
+                // Tangent aligned to U direction
+                vert.tangent[face.uAxis] = face.uSign;
+                vert.tangent[face.vAxis] = 0;
+                vert.tangent[face.axis] = 0;
+                vert.tangent[3] = 1.0f;
+
+                // UV: flip V so texture top is at geometric top
+                vert.uv[0] = u;
+                vert.uv[1] = 1.0f - v;
+
+                mesh.vertices.push_back(vert);
+            }
         }
 
-        v.position[0] = px + dx * radius;
-        v.position[1] = py + dy * radius;
-        v.position[2] = pz + dz * radius;
-
-        v.normal[0] = dx;
-        v.normal[1] = dy;
-        v.normal[2] = dz;
-
-        // Cube-projected UV: pick the dominant axis of the normal, then
-        // project the position onto the other two axes as UV.
-        float anx = std::abs(dx);
-        float any = std::abs(dy);
-        float anz = std::abs(dz);
-
-        float u, vv;
-        if (anx >= any && anx >= anz)
+        // Generate indices for this face grid
+        // Use same winding as Cube (reversed: 0,2,1 / 0,3,2)
+        for (int j = 0; j < N; ++j)
         {
-            // X-dominant face: project onto YZ
-            u = v.position[2] * (dx > 0 ? -1.0f : 1.0f);
-            vv = v.position[1];
-        }
-        else if (any >= anx && any >= anz)
-        {
-            // Y-dominant face: project onto XZ
-            u = v.position[0];
-            vv = v.position[2] * (dy > 0 ? -1.0f : 1.0f);
-        }
-        else
-        {
-            // Z-dominant face: project onto XY
-            u = v.position[0] * (dz > 0 ? 1.0f : -1.0f);
-            vv = v.position[1];
-        }
+            for (int i = 0; i < N; ++i)
+            {
+                uint32_t a = baseVertex + j * (N + 1) + i;
+                uint32_t b = a + 1;
+                uint32_t c = a + (N + 1);
+                uint32_t d = c + 1;
 
-        // Map from [-1, 1] to [0, 1]
-        v.uv[0] = u * 0.5f + 0.5f;
-        v.uv[1] = -vv * 0.5f + 0.5f; // flip V so top of texture is at top of face
+                // Two triangles per quad, reversed winding to match Cube
+                mesh.indices.push_back(a);
+                mesh.indices.push_back(c);
+                mesh.indices.push_back(b);
 
-        // Tangent: aligned to UV U-axis direction
-        if (anx >= any && anx >= anz)
-        {
-            v.tangent[0] = 0;
-            v.tangent[1] = 0;
-            v.tangent[2] = dx > 0 ? -1.0f : 1.0f;
-            v.tangent[3] = 1.0f;
+                mesh.indices.push_back(b);
+                mesh.indices.push_back(c);
+                mesh.indices.push_back(d);
+            }
         }
-        else if (any >= anx && any >= anz)
-        {
-            v.tangent[0] = 1;
-            v.tangent[1] = 0;
-            v.tangent[2] = 0;
-            v.tangent[3] = 1.0f;
-        }
-        else
-        {
-            v.tangent[0] = dz > 0 ? 1.0f : -1.0f;
-            v.tangent[1] = 0;
-            v.tangent[2] = 0;
-            v.tangent[3] = 1.0f;
-        }
-
-        mesh.vertices.push_back(v);
     }
 
     return mesh;
