@@ -416,6 +416,9 @@ void MainWindow::setupCentralWidget()
     connect(m_slotEditor, &SlotEditorWidget::fileDroppedOnSlot, this, &MainWindow::onDroppedOnSlot);
     connect(m_slotEditor, &SlotEditorWidget::fileDroppedOnChannel, this, &MainWindow::onDroppedOnChannel);
     connect(m_slotEditor, &SlotEditorWidget::slotPreviewRequested, this, &MainWindow::onSlotPreviewRequested);
+    connect(m_slotEditor, &SlotEditorWidget::channelPreviewRequested, this, &MainWindow::onChannelPreviewRequested);
+    connect(m_slotEditor, &SlotEditorWidget::slotCleared, this, &MainWindow::onSlotCleared);
+    connect(m_slotEditor, &SlotEditorWidget::channelCleared, this, &MainWindow::onChannelCleared);
     connect(m_slotEditor, &SlotEditorWidget::rmaosSourceModeChanged, this, &MainWindow::onRmaosSourceModeChanged);
     connect(m_slotEditor, &SlotEditorWidget::matchTextureChanged, this, &MainWindow::onMatchTextureChanged);
     connect(m_slotEditor, &SlotEditorWidget::matchTextureModeChanged, this, &MainWindow::onMatchTextureModeChanged);
@@ -929,6 +932,64 @@ void MainWindow::onSlotPreviewRequested(PBRTextureSlot slot)
                                  .arg(QString::fromStdString(it->second.sourcePath.filename().string())));
 }
 
+void MainWindow::onChannelPreviewRequested(ChannelMap channel)
+{
+    if (m_currentSetIndex < 0 || m_currentSetIndex >= static_cast<int>(m_project.textureSets.size()))
+        return;
+
+    const auto& ts = m_project.textureSets[m_currentSetIndex];
+    auto it = ts.channelMaps.find(channel);
+    if (it == ts.channelMaps.end() || it->second.sourcePath.empty())
+    {
+        statusBar()->showMessage(tr("No image assigned to %1 channel").arg(channelDisplayName(channel)));
+        return;
+    }
+
+    const QImage image = loadPreviewImage(it->second.sourcePath);
+    if (image.isNull())
+    {
+        statusBar()->showMessage(tr("Failed to load preview for %1 channel").arg(channelDisplayName(channel)));
+        return;
+    }
+
+    m_previewWidget->setImage(image);
+    m_previewWidget->setChannelSelectorVisible(true);
+
+    if (m_previewStack != nullptr)
+    {
+        m_previewStack->setCurrentWidget(m_previewWidget);
+    }
+    statusBar()->showMessage(tr("Previewing: %1 (%2)")
+                                 .arg(channelDisplayName(channel))
+                                 .arg(QString::fromStdString(it->second.sourcePath.filename().string())));
+}
+
+void MainWindow::onSlotCleared(PBRTextureSlot slot)
+{
+    if (m_currentSetIndex < 0)
+        return;
+
+    auto& ts = m_project.textureSets[m_currentSetIndex];
+    ts.textures.erase(slot);
+
+    m_slotEditor->setTextureSet(ts);
+    refreshPreview();
+    statusBar()->showMessage(tr("Cleared %1 texture").arg(slotDisplayName(slot)));
+}
+
+void MainWindow::onChannelCleared(ChannelMap channel)
+{
+    if (m_currentSetIndex < 0)
+        return;
+
+    auto& ts = m_project.textureSets[m_currentSetIndex];
+    ts.channelMaps.erase(channel);
+
+    m_slotEditor->setTextureSet(ts);
+    refreshPreview();
+    statusBar()->showMessage(tr("Cleared %1 channel").arg(channelDisplayName(channel)));
+}
+
 void MainWindow::onRmaosSourceModeChanged(RMAOSSourceMode mode)
 {
     if (m_currentSetIndex < 0)
@@ -1169,7 +1230,99 @@ void MainWindow::refresh3DPreview()
 
     loadPixels(ts, PBRTextureSlot::Diffuse, diffusePixels, dw, dh);
     loadPixels(ts, PBRTextureSlot::Normal, normalPixels, nw, nh);
-    loadPixels(ts, PBRTextureSlot::RMAOS, rmaosPixels, rw, rh);
+
+    // RMAOS: respect the authoring mode
+    if (ts.rmaosSourceMode == RMAOSSourceMode::SeparateChannels && !ts.channelMaps.empty())
+    {
+        // Compose RMAOS from individual channel maps on the fly
+        auto loadChannel = [&](ChannelMap ch, int targetW, int targetH, std::vector<uint8_t>& outChannel,
+                               uint8_t defaultVal) -> bool
+        {
+            auto it = ts.channelMaps.find(ch);
+            if (it == ts.channelMaps.end() || it->second.sourcePath.empty())
+                return false;
+
+            std::vector<uint8_t> rgba;
+            int cw = 0, ch2 = 0;
+            const auto ext = FileUtils::getExtensionLower(it->second.sourcePath);
+            if (ext == ".dds")
+            {
+                if (!DDSUtils::loadDDS(it->second.sourcePath, cw, ch2, rgba))
+                    return false;
+            }
+            else
+            {
+                auto img = ImageUtils::loadImage(it->second.sourcePath);
+                if (img.pixels.empty())
+                    return false;
+                cw = img.width;
+                ch2 = img.height;
+                rgba = std::move(img.pixels);
+            }
+
+            // Extract R channel and resize if needed
+            const size_t srcCount = static_cast<size_t>(cw) * ch2;
+            outChannel.resize(static_cast<size_t>(targetW) * targetH);
+            if (cw == targetW && ch2 == targetH)
+            {
+                for (size_t i = 0; i < srcCount; ++i)
+                    outChannel[i] = rgba[i * 4];
+            }
+            else
+            {
+                for (int y = 0; y < targetH; ++y)
+                {
+                    int srcY = y * ch2 / targetH;
+                    for (int x = 0; x < targetW; ++x)
+                    {
+                        int srcX = x * cw / targetW;
+                        outChannel[y * targetW + x] = rgba[(srcY * cw + srcX) * 4];
+                    }
+                }
+            }
+            return true;
+        };
+
+        // Determine resolution from the first available channel
+        rw = 0;
+        rh = 0;
+        for (const auto& [ch, entry] : ts.channelMaps)
+        {
+            if (!entry.sourcePath.empty() && entry.width > 0 && entry.height > 0)
+            {
+                rw = entry.width;
+                rh = entry.height;
+                break;
+            }
+        }
+
+        if (rw > 0 && rh > 0)
+        {
+            const size_t pixelCount = static_cast<size_t>(rw) * rh;
+            std::vector<uint8_t> roughness(pixelCount, 255);
+            std::vector<uint8_t> metallic(pixelCount, 0);
+            std::vector<uint8_t> ao(pixelCount, 255);
+            std::vector<uint8_t> specular(pixelCount, 255);
+
+            loadChannel(ChannelMap::Roughness, rw, rh, roughness, 255);
+            loadChannel(ChannelMap::Metallic, rw, rh, metallic, 0);
+            loadChannel(ChannelMap::AO, rw, rh, ao, 255);
+            loadChannel(ChannelMap::Specular, rw, rh, specular, 255);
+
+            rmaosPixels.resize(pixelCount * 4);
+            for (size_t i = 0; i < pixelCount; ++i)
+            {
+                rmaosPixels[i * 4 + 0] = roughness[i];
+                rmaosPixels[i * 4 + 1] = metallic[i];
+                rmaosPixels[i * 4 + 2] = ao[i];
+                rmaosPixels[i * 4 + 3] = specular[i];
+            }
+        }
+    }
+    else
+    {
+        loadPixels(ts, PBRTextureSlot::RMAOS, rmaosPixels, rw, rh);
+    }
 
     m_materialPreview->setTextures(diffusePixels.empty() ? nullptr : diffusePixels.data(), dw, dh,
                                    normalPixels.empty() ? nullptr : normalPixels.data(), nw, nh,

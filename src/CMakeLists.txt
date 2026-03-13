@@ -58,6 +58,12 @@ set(UTIL_SOURCES
 set(RENDERER_SOURCES
     renderer/D3D12Renderer.h
     renderer/D3D12Renderer.cpp
+    renderer/D3D12UploadQueue.h
+    renderer/D3D12UploadQueue.cpp
+    renderer/DescriptorHeap.h
+    renderer/DescriptorHeap.cpp
+    renderer/IBLPipeline.h
+    renderer/IBLPipeline.cpp
     renderer/MeshGenerator.h
     renderer/MeshGenerator.cpp
     renderer/IBLProcessor.h
@@ -177,13 +183,25 @@ add_custom_command(TARGET TruePBR-Manager POST_BUILD
     COMMENT "Copying LICENSE to dist/..."
 )
 
-# Copy HLSL shader
+# Copy HLSL shaders
 add_custom_command(TARGET TruePBR-Manager POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory "${DIST_DIR}/shaders"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/renderer/PBRShader.hlsl"
         "${DIST_DIR}/shaders/PBRShader.hlsl"
-    COMMENT "Copying PBR shader to dist/..."
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/renderer/IBLEquirectToCube.hlsl"
+        "${DIST_DIR}/shaders/IBLEquirectToCube.hlsl"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/renderer/IBLIrradiance.hlsl"
+        "${DIST_DIR}/shaders/IBLIrradiance.hlsl"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/renderer/IBLPrefilter.hlsl"
+        "${DIST_DIR}/shaders/IBLPrefilter.hlsl"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/renderer/IBLBrdfLut.hlsl"
+        "${DIST_DIR}/shaders/IBLBrdfLut.hlsl"
+    COMMENT "Copying shaders to dist/..."
 )
 
 # Create hdris directory in dist (user places HDRI files here)

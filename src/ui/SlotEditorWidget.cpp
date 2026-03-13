@@ -491,6 +491,9 @@ void SlotEditorWidget::addSlotRow(PBRTextureSlot slot, const QString& label, boo
     row.dropZone = new DropZoneLabel(row.container);
     row.importButton = new QPushButton(tr("Import"), row.container);
     row.importButton->setFixedWidth(60);
+    row.clearButton = new QPushButton(tr("Clear"), row.container);
+    row.clearButton->setFixedWidth(50);
+    row.clearButton->setToolTip(tr("Remove this texture (revert to default)"));
     row.compressionCombo = new QComboBox(row.container);
     row.compressionCombo->setMinimumWidth(130);
     row.compressionCombo->setToolTip(tr("Select the DDS compression used during export"));
@@ -499,11 +502,14 @@ void SlotEditorWidget::addSlotRow(PBRTextureSlot slot, const QString& label, boo
     layout->addWidget(row.labelWidget);
     layout->addWidget(row.dropZone, 1);
     layout->addWidget(row.importButton);
+    layout->addWidget(row.clearButton);
     layout->addWidget(row.compressionCombo);
 
     row.container->setVisible(visible);
 
     connect(row.importButton, &QPushButton::clicked, this, [this, slot]() { emit importRequested(slot); });
+
+    connect(row.clearButton, &QPushButton::clicked, this, [this, slot]() { emit slotCleared(slot); });
 
     connect(row.dropZone, &DropZoneLabel::clicked, this, [this, slot]() { emit slotPreviewRequested(slot); });
 
@@ -538,14 +544,20 @@ void SlotEditorWidget::addChannelRow(ChannelMap channel, const QString& label)
     row.dropZone = new DropZoneLabel(row.container);
     row.importButton = new QPushButton(tr("Import"), row.container);
     row.importButton->setFixedWidth(60);
+    row.clearButton = new QPushButton(tr("Clear"), row.container);
+    row.clearButton->setFixedWidth(50);
+    row.clearButton->setToolTip(tr("Remove this channel map"));
 
     layout->addWidget(row.labelWidget);
     layout->addWidget(row.dropZone, 1);
     layout->addWidget(row.importButton);
+    layout->addWidget(row.clearButton);
 
     connect(row.importButton, &QPushButton::clicked, this, [this, channel]() { emit importChannelRequested(channel); });
 
-    connect(row.dropZone, &DropZoneLabel::clicked, this, [this, channel]() { emit importChannelRequested(channel); });
+    connect(row.dropZone, &DropZoneLabel::clicked, this, [this, channel]() { emit channelPreviewRequested(channel); });
+
+    connect(row.clearButton, &QPushButton::clicked, this, [this, channel]() { emit channelCleared(channel); });
 
     connect(row.dropZone, &DropZoneLabel::fileDropped, this,
             [this, channel](const QString& path) { emit fileDroppedOnChannel(channel, path); });

@@ -60,10 +60,11 @@ class IBLProcessor
     /// List available HDRI files in a directory (*.exr, *.hdr, *.dds).
     static std::vector<std::filesystem::path> listHDRIs(const std::filesystem::path& directory);
 
-  private:
     /// Load HDRI to equirectangular float RGBA.
+    /// Public so the GPU IBL pipeline can use it for file loading only.
     static bool loadHDRI(const std::filesystem::path& path, int& width, int& height, std::vector<float>& rgbaPixels);
 
+  private:
     /// Convert equirectangular map to cubemap faces.
     static void equirectToCubemap(const float* equirect, int eqW, int eqH, int faceSize, std::vector<float> faces[6]);
 

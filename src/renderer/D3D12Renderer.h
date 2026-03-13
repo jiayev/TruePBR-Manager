@@ -1,5 +1,7 @@
 #pragma once
 
+#include "D3D12UploadQueue.h"
+#include "DescriptorHeap.h"
 #include "MeshGenerator.h"
 
 #include <DirectXMath.h>
@@ -10,6 +12,7 @@
 #include <array>
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <vector>
 
 namespace tpbr
@@ -17,25 +20,28 @@ namespace tpbr
 
 using Microsoft::WRL::ComPtr;
 
-/// Scene constant buffer data (matches cbuffer SceneCB in shader)
+class IBLPipeline;
+
+/// Scene constant buffer data (matches cbuffer SceneCB in shader) — 256-byte aligned.
 struct SceneCBData
 {
-    DirectX::XMFLOAT4X4 worldViewProj;
-    DirectX::XMFLOAT4X4 world;
-    DirectX::XMFLOAT4X4 worldInvTranspose;
-    DirectX::XMFLOAT3 cameraPos;
-    float _pad0;
-    DirectX::XMFLOAT3 lightDir;
-    float _pad1;
-    DirectX::XMFLOAT3 lightColor;
-    float lightIntensity;
-    float iblIntensity;
-    float maxPrefilteredMip;
-    float _pad2;
+    DirectX::XMFLOAT4X4 worldViewProj;     // 64 bytes
+    DirectX::XMFLOAT4X4 world;             // 64 bytes
+    DirectX::XMFLOAT4X4 worldInvTranspose; // 64 bytes
+    DirectX::XMFLOAT3 cameraPos;           // 12 bytes
+    float _pad0;                           // 4 bytes
+    DirectX::XMFLOAT3 lightDir;            // 12 bytes
+    float _pad1;                           // 4 bytes
+    DirectX::XMFLOAT3 lightColor;          // 12 bytes
+    float lightIntensity;                  // 4 bytes
+    float iblIntensity;                    // 4 bytes
+    float maxPrefilteredMip;               // 4 bytes
+    float _pad2;                           // 8 bytes
     float _pad3;
 };
+static_assert(sizeof(SceneCBData) == 256, "SceneCBData must be exactly 256 bytes");
 
-/// Material constant buffer data (matches cbuffer MaterialCB in shader)
+/// Material constant buffer data (matches cbuffer MaterialCB in shader).
 struct MaterialCBData
 {
     float specularLevel;
@@ -44,13 +50,31 @@ struct MaterialCBData
     float _pad1;
 };
 
-/// Minimal D3D12 renderer for PBR material preview.
-/// Renders a single mesh with PBR textures under directional lighting.
+/// Per-frame resources for double-buffered rendering.
+struct FrameContext
+{
+    ComPtr<ID3D12CommandAllocator> commandAllocator;
+    uint64_t fenceValue = 0;
+
+    // Per-frame constant buffers (persistently mapped)
+    ComPtr<ID3D12Resource> sceneCB;
+    ComPtr<ID3D12Resource> materialCB;
+    SceneCBData* sceneCBMapped = nullptr;
+    MaterialCBData* materialCBMapped = nullptr;
+};
+
+/// D3D12 renderer for PBR material preview — rewritten with proper
+/// double-buffered frame management, async copy queue uploads,
+/// and GPU-based IBL processing.
 class D3D12Renderer
 {
   public:
     D3D12Renderer();
     ~D3D12Renderer();
+
+    // Non-copyable
+    D3D12Renderer(const D3D12Renderer&) = delete;
+    D3D12Renderer& operator=(const D3D12Renderer&) = delete;
 
     /// Initialize the renderer for the given window handle and size.
     bool init(HWND hwnd, uint32_t width, uint32_t height);
@@ -81,7 +105,7 @@ class D3D12Renderer
     /// Set light intensity (default 3.0).
     void setLightIntensity(float intensity);
 
-    /// Load IBL environment from file. Processes HDRI and uploads cubemaps.
+    /// Load IBL environment from file. Processes HDRI via GPU compute shaders.
     bool loadIBL(const std::filesystem::path& hdriPath);
 
     /// Set IBL intensity (0 = disabled, default 1.0 when IBL loaded).
@@ -96,54 +120,84 @@ class D3D12Renderer
         return m_initialized;
     }
 
+    /// Get the D3D12 device (needed by IBLPipeline).
+    ID3D12Device* device() const
+    {
+        return m_device.Get();
+    }
+
+    /// Get the direct command queue (needed by IBLPipeline).
+    ID3D12CommandQueue* directQueue() const
+    {
+        return m_directQueue.Get();
+    }
+
   private:
     static constexpr uint32_t FrameCount = 2;
 
+    // ── Initialization ─────────────────────────────────────
     bool createDevice();
-    bool createCommandQueue();
+    bool createCommandInfrastructure();
     bool createSwapChain(HWND hwnd, uint32_t width, uint32_t height);
-    bool createRTVHeap();
-    bool createDSV(uint32_t width, uint32_t height);
-    bool createSRVHeap();
+    bool createRenderTargets();
+    bool createDepthStencil(uint32_t width, uint32_t height);
     bool createRootSignatureAndPSO();
-    bool createConstantBuffers();
+    bool createFrameContexts();
     void createDefaultTextures();
-    void uploadMesh(const PreviewMesh& mesh);
+    void createDefaultIBL();
+
+    // ── Resource upload ────────────────────────────────────
     void uploadTexture(int srvIndex, const uint8_t* rgba, int w, int h, bool srgb);
     void uploadCubemap(int srvIndex, ComPtr<ID3D12Resource>& resource, const std::vector<float>* faces, int faceSize,
-                       int mipLevels, const std::vector<std::vector<float>>* mipFaces);
+                       int mipLevels);
     void uploadBRDFLut(int srvIndex, const float* rgPixels, int size);
-    void createDefaultIBL();
-    void waitForGPU();
+    void uploadMesh(const PreviewMesh& mesh);
 
+    // ── Synchronization ────────────────────────────────────
+    void waitForFrame(uint32_t frameIndex);
+    void flushGPU();
+
+    // ── State ──────────────────────────────────────────────
     bool m_initialized = false;
+    uint64_t m_frameNumber = 0; // Monotonically increasing frame counter
 
-    // Device
+    // Device & Factory
     ComPtr<IDXGIFactory4> m_factory;
     ComPtr<ID3D12Device> m_device;
-    ComPtr<ID3D12CommandQueue> m_commandQueue;
-    ComPtr<ID3D12CommandAllocator> m_commandAllocator;
+
+    // Direct queue (rendering + compute)
+    ComPtr<ID3D12CommandQueue> m_directQueue;
     ComPtr<ID3D12GraphicsCommandList> m_commandList;
+    ComPtr<ID3D12Fence> m_directFence;
+    HANDLE m_directFenceEvent = nullptr;
+    uint64_t m_directFenceValue = 0;
+
+    // Copy queue (async uploads)
+    std::unique_ptr<D3D12UploadQueue> m_uploadQueue;
+
+    // Double-buffered frame contexts
+    std::array<FrameContext, FrameCount> m_frames;
 
     // Swap chain
     ComPtr<IDXGISwapChain3> m_swapChain;
     std::array<ComPtr<ID3D12Resource>, FrameCount> m_renderTargets;
-    ComPtr<ID3D12DescriptorHeap> m_rtvHeap;
-    uint32_t m_rtvDescriptorSize = 0;
     uint32_t m_width = 0;
     uint32_t m_height = 0;
 
+    // Descriptor heaps
+    DescriptorHeap m_rtvHeap; // Non-visible, RTV
+    DescriptorHeap m_dsvHeap; // Non-visible, DSV
+    DescriptorHeap m_srvHeap; // Shader-visible, CBV/SRV/UAV
+
+    // SRV slot indices within m_srvHeap
+    static constexpr uint32_t SRVCount = 6; // diffuse, normal, rmaos, irradiance, prefiltered, brdfLut
+    uint32_t m_srvBaseIndex = 0;            // First SRV slot index in heap
+
     // Depth
     ComPtr<ID3D12Resource> m_depthStencilBuffer;
-    ComPtr<ID3D12DescriptorHeap> m_dsvHeap;
 
-    // SRV heap: 6 slots
-    // 0=diffuse, 1=normal, 2=rmaos, 3=irradiance cubemap, 4=prefiltered cubemap, 5=BRDF LUT
-    static constexpr uint32_t SRVCount = 6;
-    ComPtr<ID3D12DescriptorHeap> m_srvHeap;
-    uint32_t m_srvDescriptorSize = 0;
-    std::array<ComPtr<ID3D12Resource>, 3> m_textures;
-    std::array<ComPtr<ID3D12Resource>, 3> m_textureUploadHeaps;
+    // Textures (material)
+    std::array<ComPtr<ID3D12Resource>, 3> m_textures; // diffuse, normal, rmaos
 
     // IBL resources
     ComPtr<ID3D12Resource> m_irradianceCubemap;
@@ -153,7 +207,10 @@ class D3D12Renderer
     float m_iblIntensity = 1.0f;
     int m_maxPrefilteredMip = 0;
 
-    // Pipeline
+    // IBL pipeline (GPU compute)
+    std::unique_ptr<IBLPipeline> m_iblPipeline;
+
+    // Pipeline state
     ComPtr<ID3D12RootSignature> m_rootSignature;
     ComPtr<ID3D12PipelineState> m_pipelineState;
 
@@ -164,23 +221,12 @@ class D3D12Renderer
     D3D12_INDEX_BUFFER_VIEW m_indexBufferView{};
     uint32_t m_indexCount = 0;
 
-    // Constant buffers
-    ComPtr<ID3D12Resource> m_sceneCB;
-    ComPtr<ID3D12Resource> m_materialCB;
-    SceneCBData* m_sceneCBMapped = nullptr;
-    MaterialCBData* m_materialCBMapped = nullptr;
-
-    // Sync
-    ComPtr<ID3D12Fence> m_fence;
-    uint64_t m_fenceValue = 0;
-    HANDLE m_fenceEvent = nullptr;
-
     // Camera — start slightly elevated, looking at front face
     float m_azimuth = 0.8f;
     float m_elevation = 0.4f;
     float m_distance = 3.0f;
 
-    // Light — from upper-front-left, toward the visible face
+    // Light — from upper-front-left
     DirectX::XMFLOAT3 m_lightDir = {0.4f, 0.7f, -0.5f};
     DirectX::XMFLOAT3 m_lightColor = {1.0f, 1.0f, 1.0f};
     float m_lightIntensity = 3.0f;

@@ -84,6 +84,15 @@ class SlotEditorWidget : public QWidget
     /// Emitted when a slot's drop zone is clicked (for preview)
     void slotPreviewRequested(PBRTextureSlot slot);
 
+    /// Emitted when a channel's drop zone is clicked (for preview)
+    void channelPreviewRequested(ChannelMap channel);
+
+    /// Emitted when a slot texture is cleared (unloaded)
+    void slotCleared(PBRTextureSlot slot);
+
+    /// Emitted when a channel map is cleared (unloaded)
+    void channelCleared(ChannelMap channel);
+
     /// Emitted when the landscape EDID list changes
     void landscapeEdidsChanged(const QStringList& edids);
 
@@ -103,6 +112,7 @@ class SlotEditorWidget : public QWidget
         QLabel* labelWidget = nullptr;
         DropZoneLabel* dropZone = nullptr;
         QPushButton* importButton = nullptr;
+        QPushButton* clearButton = nullptr;
         QComboBox* compressionCombo = nullptr;
         QWidget* container = nullptr;
     };
@@ -112,6 +122,7 @@ class SlotEditorWidget : public QWidget
         QLabel* labelWidget = nullptr;
         DropZoneLabel* dropZone = nullptr;
         QPushButton* importButton = nullptr;
+        QPushButton* clearButton = nullptr;
         QWidget* container = nullptr;
     };
 

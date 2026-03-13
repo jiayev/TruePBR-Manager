@@ -1,11 +1,10 @@
 #include "D3D12Renderer.h"
+#include "IBLPipeline.h"
 #include "IBLProcessor.h"
 #include "utils/Log.h"
 
 #include <DirectXMath.h>
 #include <d3dcompiler.h>
-
-#include <chrono>
 
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "dxgi.lib")
@@ -22,13 +21,32 @@ D3D12Renderer::~D3D12Renderer()
 {
     if (m_initialized)
     {
-        waitForGPU();
+        flushGPU();
     }
-    if (m_fenceEvent)
+    // Unmap persistent CB mappings
+    for (auto& frame : m_frames)
     {
-        CloseHandle(m_fenceEvent);
+        if (frame.sceneCBMapped && frame.sceneCB)
+        {
+            frame.sceneCB->Unmap(0, nullptr);
+            frame.sceneCBMapped = nullptr;
+        }
+        if (frame.materialCBMapped && frame.materialCB)
+        {
+            frame.materialCB->Unmap(0, nullptr);
+            frame.materialCBMapped = nullptr;
+        }
+    }
+    if (m_directFenceEvent)
+    {
+        CloseHandle(m_directFenceEvent);
+        m_directFenceEvent = nullptr;
     }
 }
+
+// ═══════════════════════════════════════════════════════════
+// Initialization
+// ═══════════════════════════════════════════════════════════
 
 bool D3D12Renderer::init(HWND hwnd, uint32_t width, uint32_t height)
 {
@@ -38,72 +56,31 @@ bool D3D12Renderer::init(HWND hwnd, uint32_t width, uint32_t height)
     spdlog::info("D3D12Renderer::init starting ({}x{}, hwnd=0x{:X})", width, height, reinterpret_cast<uintptr_t>(hwnd));
 
     if (!createDevice())
-    {
-        spdlog::error("D3D12Renderer::init FAILED at createDevice");
         return false;
-    }
-    spdlog::debug("D3D12Renderer: createDevice OK");
-
-    if (!createCommandQueue())
-    {
-        spdlog::error("D3D12Renderer::init FAILED at createCommandQueue");
+    if (!createCommandInfrastructure())
         return false;
-    }
-    spdlog::debug("D3D12Renderer: createCommandQueue OK");
-
     if (!createSwapChain(hwnd, width, height))
-    {
-        spdlog::error("D3D12Renderer::init FAILED at createSwapChain");
         return false;
-    }
-    spdlog::debug("D3D12Renderer: createSwapChain OK");
-
-    if (!createRTVHeap())
-    {
-        spdlog::error("D3D12Renderer::init FAILED at createRTVHeap");
+    if (!createRenderTargets())
         return false;
-    }
-    spdlog::debug("D3D12Renderer: createRTVHeap OK");
-
-    if (!createDSV(width, height))
-    {
-        spdlog::error("D3D12Renderer::init FAILED at createDSV");
+    if (!createDepthStencil(width, height))
         return false;
-    }
-    spdlog::debug("D3D12Renderer: createDSV OK");
-
-    if (!createSRVHeap())
-    {
-        spdlog::error("D3D12Renderer::init FAILED at createSRVHeap");
-        return false;
-    }
-    spdlog::debug("D3D12Renderer: createSRVHeap OK");
-
     if (!createRootSignatureAndPSO())
-    {
-        spdlog::error("D3D12Renderer::init FAILED at createRootSignatureAndPSO");
         return false;
-    }
-    spdlog::debug("D3D12Renderer: createRootSignatureAndPSO OK");
-
-    if (!createConstantBuffers())
-    {
-        spdlog::error("D3D12Renderer::init FAILED at createConstantBuffers");
+    if (!createFrameContexts())
         return false;
-    }
-    spdlog::debug("D3D12Renderer: createConstantBuffers OK");
 
-    spdlog::debug("D3D12Renderer: creating default textures...");
     createDefaultTextures();
-    spdlog::debug("D3D12Renderer: default textures OK");
-
-    spdlog::debug("D3D12Renderer: creating default IBL...");
     createDefaultIBL();
-    spdlog::debug("D3D12Renderer: default IBL OK");
-
-    spdlog::debug("D3D12Renderer: uploading default mesh...");
     setMesh(PreviewShape::Sphere);
-    spdlog::debug("D3D12Renderer: default mesh OK");
+
+    // Initialize GPU IBL pipeline (non-fatal if it fails — CPU fallback exists)
+    m_iblPipeline = std::make_unique<IBLPipeline>();
+    if (!m_iblPipeline->init(m_device.Get()))
+    {
+        spdlog::warn("D3D12Renderer: GPU IBL pipeline init failed, will use CPU fallback");
+        m_iblPipeline.reset();
+    }
 
     m_initialized = true;
     spdlog::info("D3D12Renderer initialized ({}x{})", width, height);
@@ -115,7 +92,6 @@ bool D3D12Renderer::createDevice()
     UINT dxgiFlags = 0;
 
 #ifndef NDEBUG
-    // Enable D3D12 debug layer in Debug builds
     ComPtr<ID3D12Debug> debug;
     if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug))))
     {
@@ -141,7 +117,6 @@ bool D3D12Renderer::createDevice()
 
         if (SUCCEEDED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&m_device))))
         {
-            // Convert WCHAR adapter description to narrow string for logging
             char adapterName[256] = {};
             WideCharToMultiByte(CP_UTF8, 0, desc.Description, -1, adapterName, sizeof(adapterName), nullptr, nullptr);
             spdlog::info("D3D12 device created on adapter: {}", adapterName);
@@ -155,55 +130,43 @@ bool D3D12Renderer::createDevice()
         return false;
     }
 
-    // Create fence
-    m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence));
-    m_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-    m_fenceValue = 1;
-
     return true;
 }
 
-bool D3D12Renderer::createCommandQueue()
+bool D3D12Renderer::createCommandInfrastructure()
 {
-    D3D12_COMMAND_QUEUE_DESC desc{};
-    desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-    if (FAILED(m_device->CreateCommandQueue(&desc, IID_PPV_ARGS(&m_commandQueue))))
+    // Direct command queue
+    D3D12_COMMAND_QUEUE_DESC queueDesc{};
+    queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+    if (FAILED(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_directQueue))))
     {
-        spdlog::error("Failed to create command queue");
+        spdlog::error("Failed to create direct command queue");
         return false;
     }
 
-    HRESULT hr = m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_commandAllocator));
-    if (FAILED(hr))
+    // Direct queue fence
+    if (FAILED(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_directFence))))
     {
-        spdlog::error("Failed to create command allocator: 0x{:08X}", static_cast<unsigned>(hr));
+        spdlog::error("Failed to create direct fence");
+        return false;
+    }
+    m_directFenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+    m_directFenceValue = 0;
+
+    // Command list (created in closed state)
+    // We don't create a shared allocator — each FrameContext has its own.
+    // The command list will be reset with the current frame's allocator each frame.
+    // For initial uploads (before any frame), we'll temporarily use frame 0's allocator.
+
+    // Upload queue (copy queue + ring buffer)
+    m_uploadQueue = std::make_unique<D3D12UploadQueue>();
+    if (!m_uploadQueue->init(m_device.Get()))
+    {
+        spdlog::error("Failed to initialize upload queue");
         return false;
     }
 
-    // Use CreateCommandList1 (creates in closed state) to avoid the
-    // Create-in-recording → immediate Close pattern that causes timing
-    // issues on some drivers (notably RTX 5070).
-    ComPtr<ID3D12Device4> device4;
-    if (SUCCEEDED(m_device->QueryInterface(IID_PPV_ARGS(&device4))))
-    {
-        hr = device4->CreateCommandList1(0, D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_LIST_FLAG_NONE,
-                                         IID_PPV_ARGS(&m_commandList));
-    }
-    else
-    {
-        // Fallback for older D3D12 runtime: create in recording state then close
-        hr = m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocator.Get(), nullptr,
-                                         IID_PPV_ARGS(&m_commandList));
-        if (SUCCEEDED(hr))
-            m_commandList->Close();
-    }
-
-    if (FAILED(hr))
-    {
-        spdlog::error("Failed to create command list: 0x{:08X}", static_cast<unsigned>(hr));
-        return false;
-    }
-
+    spdlog::debug("D3D12Renderer: command infrastructure created");
     return true;
 }
 
@@ -219,52 +182,51 @@ bool D3D12Renderer::createSwapChain(HWND hwnd, uint32_t width, uint32_t height)
     desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
 
     ComPtr<IDXGISwapChain1> swapChain;
-    HRESULT hr = m_factory->CreateSwapChainForHwnd(m_commandQueue.Get(), hwnd, &desc, nullptr, nullptr, &swapChain);
+    HRESULT hr = m_factory->CreateSwapChainForHwnd(m_directQueue.Get(), hwnd, &desc, nullptr, nullptr, &swapChain);
     if (FAILED(hr))
     {
         spdlog::error("Failed to create swap chain: 0x{:08X}", static_cast<unsigned>(hr));
         return false;
     }
 
-    hr = swapChain.As(&m_swapChain);
-    if (FAILED(hr))
+    if (FAILED(swapChain.As(&m_swapChain)))
     {
-        spdlog::error("Failed to get IDXGISwapChain3: 0x{:08X}", static_cast<unsigned>(hr));
+        spdlog::error("Failed to get IDXGISwapChain3");
         return false;
     }
 
-    // Disable Alt+Enter fullscreen
     m_factory->MakeWindowAssociation(hwnd, DXGI_MWA_NO_ALT_ENTER);
-
-    spdlog::debug("D3D12Renderer: swap chain created ({}x{}, format=R8G8B8A8_UNORM, buffers={})", width, height,
-                  FrameCount);
     return true;
 }
 
-bool D3D12Renderer::createRTVHeap()
+bool D3D12Renderer::createRenderTargets()
 {
-    D3D12_DESCRIPTOR_HEAP_DESC desc{};
-    desc.NumDescriptors = FrameCount;
-    desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-    m_device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&m_rtvHeap));
-    m_rtvDescriptorSize = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+    // RTV heap
+    if (!m_rtvHeap.create(m_device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_RTV, FrameCount))
+    {
+        spdlog::error("Failed to create RTV heap");
+        return false;
+    }
 
-    auto handle = m_rtvHeap->GetCPUDescriptorHandleForHeapStart();
     for (UINT i = 0; i < FrameCount; ++i)
     {
         m_swapChain->GetBuffer(i, IID_PPV_ARGS(&m_renderTargets[i]));
-        m_device->CreateRenderTargetView(m_renderTargets[i].Get(), nullptr, handle);
-        handle.ptr += m_rtvDescriptorSize;
+        m_device->CreateRenderTargetView(m_renderTargets[i].Get(), nullptr, m_rtvHeap.cpuHandle(i));
     }
     return true;
 }
 
-bool D3D12Renderer::createDSV(uint32_t width, uint32_t height)
+bool D3D12Renderer::createDepthStencil(uint32_t width, uint32_t height)
 {
-    D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
-    heapDesc.NumDescriptors = 1;
-    heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
-    m_device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&m_dsvHeap));
+    // DSV heap
+    if (m_dsvHeap.capacity() == 0)
+    {
+        if (!m_dsvHeap.create(m_device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 1))
+        {
+            spdlog::error("Failed to create DSV heap");
+            return false;
+        }
+    }
 
     D3D12_RESOURCE_DESC resDesc{};
     resDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
@@ -283,31 +245,34 @@ bool D3D12Renderer::createDSV(uint32_t width, uint32_t height)
     D3D12_HEAP_PROPERTIES heapProps{};
     heapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
 
-    m_device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &resDesc, D3D12_RESOURCE_STATE_DEPTH_WRITE,
-                                      &clearValue, IID_PPV_ARGS(&m_depthStencilBuffer));
+    HRESULT hr =
+        m_device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &resDesc, D3D12_RESOURCE_STATE_DEPTH_WRITE,
+                                          &clearValue, IID_PPV_ARGS(&m_depthStencilBuffer));
+    if (FAILED(hr))
+    {
+        spdlog::error("Failed to create depth stencil buffer: 0x{:08X}", static_cast<unsigned>(hr));
+        return false;
+    }
 
     D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc{};
     dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
     dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
-    m_device->CreateDepthStencilView(m_depthStencilBuffer.Get(), &dsvDesc,
-                                     m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
-    return true;
-}
-
-bool D3D12Renderer::createSRVHeap()
-{
-    D3D12_DESCRIPTOR_HEAP_DESC desc{};
-    desc.NumDescriptors = SRVCount; // diffuse, normal, rmaos, irradiance, prefiltered, brdfLut
-    desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-    desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-    m_device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&m_srvHeap));
-    m_srvDescriptorSize = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    m_device->CreateDepthStencilView(m_depthStencilBuffer.Get(), &dsvDesc, m_dsvHeap.cpuHandle(0));
     return true;
 }
 
 bool D3D12Renderer::createRootSignatureAndPSO()
 {
-    // Root signature: 2 CBVs (b0, b1) + 1 descriptor table (3 SRVs) + 1 static sampler
+    // SRV heap: shader-visible, enough for material SRVs + IBL compute UAVs later
+    // Reserve 64 slots for flexibility (6 for PBR + extras for IBL compute)
+    if (!m_srvHeap.create(m_device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 64, true))
+    {
+        spdlog::error("Failed to create SRV heap");
+        return false;
+    }
+    m_srvBaseIndex = m_srvHeap.allocate(SRVCount);
+
+    // Root signature: 2 inline CBVs + 1 descriptor table (6 SRVs) + 2 static samplers
     D3D12_ROOT_PARAMETER rootParams[3] = {};
 
     // b0: SceneCB
@@ -320,7 +285,7 @@ bool D3D12Renderer::createRootSignatureAndPSO()
     rootParams[1].Descriptor.ShaderRegister = 1;
     rootParams[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
-    // SRV table: t0, t1, t2
+    // SRV table: t0..t5
     D3D12_DESCRIPTOR_RANGE srvRange{};
     srvRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
     srvRange.NumDescriptors = SRVCount;
@@ -367,23 +332,17 @@ bool D3D12Renderer::createRootSignatureAndPSO()
     m_device->CreateRootSignature(0, sigBlob->GetBufferPointer(), sigBlob->GetBufferSize(),
                                   IID_PPV_ARGS(&m_rootSignature));
 
-    // Compile shaders — look next to exe first, then source dir for dev builds
+    // Compile shaders
     std::filesystem::path shaderPath;
     {
-        // Try shaders/ next to executable (dist layout)
         wchar_t exePath[MAX_PATH] = {};
         GetModuleFileNameW(nullptr, exePath, MAX_PATH);
         auto exeDir = std::filesystem::path(exePath).parent_path();
         auto distPath = exeDir / "shaders" / "PBRShader.hlsl";
         if (std::filesystem::exists(distPath))
-        {
             shaderPath = distPath;
-        }
         else
-        {
-            // Fallback: source directory (for development)
             shaderPath = std::filesystem::path(__FILE__).parent_path() / "PBRShader.hlsl";
-        }
     }
     std::wstring shaderPathW = shaderPath.wstring();
 
@@ -449,7 +408,7 @@ bool D3D12Renderer::createRootSignatureAndPSO()
     return true;
 }
 
-bool D3D12Renderer::createConstantBuffers()
+bool D3D12Renderer::createFrameContexts()
 {
     auto createCB = [&](ComPtr<ID3D12Resource>& resource, void** mapped, uint32_t size) -> bool
     {
@@ -465,9 +424,10 @@ bool D3D12Renderer::createConstantBuffers()
         desc.SampleDesc.Count = 1;
         desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
 
-        if (FAILED(m_device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc,
-                                                     D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                                     IID_PPV_ARGS(&resource))))
+        HRESULT hr =
+            m_device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc,
+                                              D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&resource));
+        if (FAILED(hr))
             return false;
 
         D3D12_RANGE readRange{0, 0};
@@ -475,47 +435,111 @@ bool D3D12Renderer::createConstantBuffers()
         return true;
     };
 
-    if (!createCB(m_sceneCB, reinterpret_cast<void**>(&m_sceneCBMapped), sizeof(SceneCBData)))
+    for (uint32_t i = 0; i < FrameCount; ++i)
+    {
+        auto& frame = m_frames[i];
+
+        // Per-frame command allocator
+        HRESULT hr =
+            m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&frame.commandAllocator));
+        if (FAILED(hr))
+        {
+            spdlog::error("Failed to create command allocator for frame {}: 0x{:08X}", i, static_cast<unsigned>(hr));
+            return false;
+        }
+
+        // Per-frame constant buffers
+        if (!createCB(frame.sceneCB, reinterpret_cast<void**>(&frame.sceneCBMapped), sizeof(SceneCBData)))
+        {
+            spdlog::error("Failed to create scene CB for frame {}", i);
+            return false;
+        }
+        if (!createCB(frame.materialCB, reinterpret_cast<void**>(&frame.materialCBMapped), sizeof(MaterialCBData)))
+        {
+            spdlog::error("Failed to create material CB for frame {}", i);
+            return false;
+        }
+
+        frame.fenceValue = 0;
+    }
+
+    // Create the shared command list using frame 0's allocator
+    ComPtr<ID3D12Device4> device4;
+    HRESULT hr;
+    if (SUCCEEDED(m_device->QueryInterface(IID_PPV_ARGS(&device4))))
+    {
+        hr = device4->CreateCommandList1(0, D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_LIST_FLAG_NONE,
+                                         IID_PPV_ARGS(&m_commandList));
+    }
+    else
+    {
+        hr = m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_frames[0].commandAllocator.Get(), nullptr,
+                                         IID_PPV_ARGS(&m_commandList));
+        if (SUCCEEDED(hr))
+            m_commandList->Close();
+    }
+    if (FAILED(hr))
+    {
+        spdlog::error("Failed to create command list: 0x{:08X}", static_cast<unsigned>(hr));
         return false;
-    if (!createCB(m_materialCB, reinterpret_cast<void**>(&m_materialCBMapped), sizeof(MaterialCBData)))
-        return false;
+    }
 
     return true;
 }
 
+// ═══════════════════════════════════════════════════════════
+// Default Resources
+// ═══════════════════════════════════════════════════════════
+
 void D3D12Renderer::createDefaultTextures()
 {
     // 1x1 white diffuse
-    spdlog::debug("D3D12Renderer: uploading default diffuse...");
-    spdlog::default_logger()->flush();
     uint8_t whiteDiffuse[] = {255, 255, 255, 255};
     uploadTexture(0, whiteDiffuse, 1, 1, true);
 
     // 1x1 flat normal (128, 128, 255) = (0, 0, 1) in tangent space
-    spdlog::debug("D3D12Renderer: uploading default normal...");
-    spdlog::default_logger()->flush();
     uint8_t flatNormal[] = {128, 128, 255, 255};
     uploadTexture(1, flatNormal, 1, 1, false);
 
     // 1x1 default RMAOS: roughness=128, metallic=0, ao=255, specular=255
-    spdlog::debug("D3D12Renderer: uploading default RMAOS...");
-    spdlog::default_logger()->flush();
     uint8_t defaultRMAOS[] = {128, 0, 255, 255};
     uploadTexture(2, defaultRMAOS, 1, 1, false);
-
-    spdlog::debug("D3D12Renderer: all default textures uploaded");
-    spdlog::default_logger()->flush();
 }
+
+void D3D12Renderer::createDefaultIBL()
+{
+    // 1x1 dummy cubemaps so shader doesn't crash when IBL is not loaded
+    // Irradiance: dark grey
+    {
+        float irr[] = {0.02f, 0.02f, 0.02f, 1.0f};
+        std::vector<float> face(irr, irr + 4);
+        std::vector<float> faces[6] = {face, face, face, face, face, face};
+        uploadCubemap(3, m_irradianceCubemap, faces, 1, 1);
+    }
+    // Prefiltered: dark grey
+    {
+        float pref[] = {0.02f, 0.02f, 0.02f, 1.0f};
+        std::vector<float> face(pref, pref + 4);
+        std::vector<float> faces[6] = {face, face, face, face, face, face};
+        uploadCubemap(4, m_prefilteredCubemap, faces, 1, 1);
+    }
+    // BRDF LUT: default (0.5, 0.0)
+    {
+        float lut[] = {0.5f, 0.0f};
+        uploadBRDFLut(5, lut, 1);
+    }
+    m_maxPrefilteredMip = 0;
+}
+
+// ═══════════════════════════════════════════════════════════
+// Resource Upload (using copy queue)
+// ═══════════════════════════════════════════════════════════
 
 void D3D12Renderer::uploadTexture(int srvIndex, const uint8_t* rgba, int w, int h, bool srgb)
 {
-    spdlog::debug("D3D12Renderer::uploadTexture(slot={}, {}x{}, srgb={})", srvIndex, w, h, srgb);
-    spdlog::default_logger()->flush();
-    // sRGB textures (diffuse/albedo) use _SRGB format so the GPU automatically
-    // converts from sRGB to linear on sampling. Linear data (normal, RMAOS) uses _UNORM.
     const DXGI_FORMAT texFormat = srgb ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
 
-    // Create texture resource
+    // Create texture resource on DEFAULT heap
     D3D12_HEAP_PROPERTIES heapProps{};
     heapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
 
@@ -528,71 +552,46 @@ void D3D12Renderer::uploadTexture(int srvIndex, const uint8_t* rgba, int w, int 
     texDesc.Format = texFormat;
     texDesc.SampleDesc.Count = 1;
 
-    HRESULT hrTex =
+    HRESULT hr =
         m_device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &texDesc, D3D12_RESOURCE_STATE_COPY_DEST,
                                           nullptr, IID_PPV_ARGS(&m_textures[srvIndex]));
-    if (FAILED(hrTex))
+    if (FAILED(hr))
     {
-        spdlog::error("uploadTexture: CreateCommittedResource (texture) failed: 0x{:08X}",
-                      static_cast<unsigned>(hrTex));
-        spdlog::default_logger()->flush();
+        spdlog::error("uploadTexture: CreateCommittedResource failed: 0x{:08X}", static_cast<unsigned>(hr));
         return;
     }
 
-    // Upload heap
-    const UINT64 uploadSize = static_cast<UINT64>(w) * h * 4;
-    D3D12_HEAP_PROPERTIES uploadProps{};
-    uploadProps.Type = D3D12_HEAP_TYPE_UPLOAD;
-    D3D12_RESOURCE_DESC uploadDesc{};
-    uploadDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-    uploadDesc.Width =
-        (uploadSize + D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1) & ~(D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1);
-    uploadDesc.Width = std::max(uploadDesc.Width, static_cast<UINT64>(uploadSize));
-    // Align to upload requirements
-    UINT64 requiredSize = 0;
+    // Get upload footprint
     D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint;
+    UINT64 requiredSize = 0;
     m_device->GetCopyableFootprints(&texDesc, 0, 1, 0, &footprint, nullptr, nullptr, &requiredSize);
 
-    uploadDesc.Width = requiredSize;
-    uploadDesc.Height = 1;
-    uploadDesc.DepthOrArraySize = 1;
-    uploadDesc.MipLevels = 1;
-    uploadDesc.SampleDesc.Count = 1;
-    uploadDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-
-    HRESULT hrUpload = m_device->CreateCommittedResource(&uploadProps, D3D12_HEAP_FLAG_NONE, &uploadDesc,
-                                                         D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                                         IID_PPV_ARGS(&m_textureUploadHeaps[srvIndex]));
-    if (FAILED(hrUpload))
+    // Allocate from ring buffer
+    uint64_t ringOffset = 0;
+    uint8_t* mapped = m_uploadQueue->allocate(requiredSize, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT, ringOffset);
+    if (!mapped)
     {
-        spdlog::error("uploadTexture: CreateCommittedResource (upload) failed: 0x{:08X}",
-                      static_cast<unsigned>(hrUpload));
-        spdlog::default_logger()->flush();
-        return;
+        // Ring buffer full — flush and retry
+        m_uploadQueue->flush();
+        m_uploadQueue->resetRingBuffer();
+        mapped = m_uploadQueue->allocate(requiredSize, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT, ringOffset);
+        if (!mapped)
+        {
+            spdlog::error("uploadTexture: ring buffer allocation failed after flush");
+            return;
+        }
     }
 
-    // Copy data to upload heap
-    uint8_t* mapped = nullptr;
-    D3D12_RANGE readRange{0, 0};
-    m_textureUploadHeaps[srvIndex]->Map(0, &readRange, reinterpret_cast<void**>(&mapped));
+    // Copy data into ring buffer, respecting row pitch
+    footprint.Offset = ringOffset;
     for (int y = 0; y < h; ++y)
     {
         memcpy(mapped + y * footprint.Footprint.RowPitch, rgba + y * w * 4, w * 4);
     }
-    m_textureUploadHeaps[srvIndex]->Unmap(0, nullptr);
 
     // Record copy command
-    spdlog::debug("D3D12Renderer::uploadTexture: resetting command list...");
-    spdlog::default_logger()->flush();
-    HRESULT hrAllocReset = m_commandAllocator->Reset();
-    HRESULT hrListReset = m_commandList->Reset(m_commandAllocator.Get(), nullptr);
-    if (FAILED(hrAllocReset) || FAILED(hrListReset))
-    {
-        spdlog::error("uploadTexture: Reset failed (alloc=0x{:08X}, list=0x{:08X})",
-                      static_cast<unsigned>(hrAllocReset), static_cast<unsigned>(hrListReset));
-        spdlog::default_logger()->flush();
-        return;
-    }
+    m_uploadQueue->resetCommandList();
+    auto* copyList = m_uploadQueue->commandList();
 
     D3D12_TEXTURE_COPY_LOCATION dst{};
     dst.pResource = m_textures[srvIndex].Get();
@@ -600,13 +599,23 @@ void D3D12Renderer::uploadTexture(int srvIndex, const uint8_t* rgba, int w, int 
     dst.SubresourceIndex = 0;
 
     D3D12_TEXTURE_COPY_LOCATION src{};
-    src.pResource = m_textureUploadHeaps[srvIndex].Get();
+    src.pResource = m_uploadQueue->ringBuffer();
     src.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
     src.PlacedFootprint = footprint;
 
-    m_commandList->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+    copyList->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
 
-    // Transition to SRV
+    uint64_t copyFence = m_uploadQueue->execute();
+
+    // We need to transition the resource from COPY_DEST to PIXEL_SHADER_RESOURCE
+    // on the direct queue after the copy completes. Use a one-shot direct queue submission.
+    m_uploadQueue->directQueueWaitForCopy(m_directQueue.Get(), copyFence);
+
+    // Use frame 0's allocator for this transition (we're during init or blocking upload)
+    flushGPU(); // Ensure no pending work
+    m_frames[0].commandAllocator->Reset();
+    m_commandList->Reset(m_frames[0].commandAllocator.Get(), nullptr);
+
     D3D12_RESOURCE_BARRIER barrier{};
     barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
     barrier.Transition.pResource = m_textures[srvIndex].Get();
@@ -614,21 +623,10 @@ void D3D12Renderer::uploadTexture(int srvIndex, const uint8_t* rgba, int w, int 
     barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     m_commandList->ResourceBarrier(1, &barrier);
 
-    HRESULT hrClose = m_commandList->Close();
-    if (FAILED(hrClose))
-    {
-        spdlog::error("uploadTexture: CommandList Close failed: 0x{:08X}", static_cast<unsigned>(hrClose));
-        spdlog::default_logger()->flush();
-        return;
-    }
-
-    spdlog::debug("D3D12Renderer::uploadTexture: executing and waiting...");
-    spdlog::default_logger()->flush();
+    m_commandList->Close();
     ID3D12CommandList* lists[] = {m_commandList.Get()};
-    m_commandQueue->ExecuteCommandLists(1, lists);
-    waitForGPU();
-    spdlog::debug("D3D12Renderer::uploadTexture: complete");
-    spdlog::default_logger()->flush();
+    m_directQueue->ExecuteCommandLists(1, lists);
+    flushGPU();
 
     // Create SRV
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
@@ -637,9 +635,188 @@ void D3D12Renderer::uploadTexture(int srvIndex, const uint8_t* rgba, int w, int 
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
     srvDesc.Texture2D.MipLevels = 1;
 
-    auto handle = m_srvHeap->GetCPUDescriptorHandleForHeapStart();
-    handle.ptr += srvIndex * m_srvDescriptorSize;
-    m_device->CreateShaderResourceView(m_textures[srvIndex].Get(), &srvDesc, handle);
+    m_device->CreateShaderResourceView(m_textures[srvIndex].Get(), &srvDesc,
+                                       m_srvHeap.cpuHandle(m_srvBaseIndex + srvIndex));
+}
+
+void D3D12Renderer::uploadCubemap(int srvIndex, ComPtr<ID3D12Resource>& resource, const std::vector<float>* faces,
+                                  int faceSize, int mipLevels)
+{
+    D3D12_HEAP_PROPERTIES heapProps{};
+    heapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
+
+    D3D12_RESOURCE_DESC texDesc{};
+    texDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    texDesc.Width = faceSize;
+    texDesc.Height = faceSize;
+    texDesc.DepthOrArraySize = 6;
+    texDesc.MipLevels = static_cast<UINT16>(mipLevels);
+    texDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+    texDesc.SampleDesc.Count = 1;
+
+    m_device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &texDesc, D3D12_RESOURCE_STATE_COPY_DEST,
+                                      nullptr, IID_PPV_ARGS(&resource));
+
+    // Upload each face using copy queue
+    m_uploadQueue->flush();
+    m_uploadQueue->resetRingBuffer();
+    m_uploadQueue->resetCommandList();
+    auto* copyList = m_uploadQueue->commandList();
+
+    for (int f = 0; f < 6; ++f)
+    {
+        UINT subresource = static_cast<UINT>(f) * static_cast<UINT>(mipLevels); // mip 0, array slice f
+
+        D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint;
+        UINT64 requiredSize = 0;
+        D3D12_RESOURCE_DESC faceDesc = texDesc;
+        faceDesc.DepthOrArraySize = 1;
+        faceDesc.MipLevels = 1;
+        m_device->GetCopyableFootprints(&faceDesc, 0, 1, 0, &footprint, nullptr, nullptr, &requiredSize);
+
+        uint64_t ringOffset = 0;
+        uint8_t* mapped = m_uploadQueue->allocate(requiredSize, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT, ringOffset);
+        if (!mapped)
+        {
+            // Need more space — execute current batch and reset
+            uint64_t fence = m_uploadQueue->execute();
+            m_uploadQueue->flush();
+            m_uploadQueue->resetRingBuffer();
+            m_uploadQueue->resetCommandList();
+            copyList = m_uploadQueue->commandList();
+            mapped = m_uploadQueue->allocate(requiredSize, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT, ringOffset);
+        }
+
+        footprint.Offset = ringOffset;
+        for (int y = 0; y < faceSize; ++y)
+        {
+            memcpy(mapped + y * footprint.Footprint.RowPitch, faces[f].data() + y * faceSize * 4,
+                   faceSize * 4 * sizeof(float));
+        }
+
+        D3D12_TEXTURE_COPY_LOCATION dst{};
+        dst.pResource = resource.Get();
+        dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+        dst.SubresourceIndex = subresource;
+
+        D3D12_TEXTURE_COPY_LOCATION src{};
+        src.pResource = m_uploadQueue->ringBuffer();
+        src.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+        src.PlacedFootprint = footprint;
+
+        copyList->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+    }
+
+    uint64_t copyFence = m_uploadQueue->execute();
+    m_uploadQueue->directQueueWaitForCopy(m_directQueue.Get(), copyFence);
+
+    // Transition to SRV on direct queue
+    flushGPU();
+    m_frames[0].commandAllocator->Reset();
+    m_commandList->Reset(m_frames[0].commandAllocator.Get(), nullptr);
+
+    D3D12_RESOURCE_BARRIER barrier{};
+    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barrier.Transition.pResource = resource.Get();
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    m_commandList->ResourceBarrier(1, &barrier);
+
+    m_commandList->Close();
+    ID3D12CommandList* lists[] = {m_commandList.Get()};
+    m_directQueue->ExecuteCommandLists(1, lists);
+    flushGPU();
+
+    // Create cubemap SRV
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+    srvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
+    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srvDesc.TextureCube.MipLevels = mipLevels;
+
+    m_device->CreateShaderResourceView(resource.Get(), &srvDesc, m_srvHeap.cpuHandle(m_srvBaseIndex + srvIndex));
+}
+
+void D3D12Renderer::uploadBRDFLut(int srvIndex, const float* rgPixels, int size)
+{
+    D3D12_HEAP_PROPERTIES heapProps{};
+    heapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
+
+    D3D12_RESOURCE_DESC texDesc{};
+    texDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    texDesc.Width = size;
+    texDesc.Height = size;
+    texDesc.DepthOrArraySize = 1;
+    texDesc.MipLevels = 1;
+    texDesc.Format = DXGI_FORMAT_R32G32_FLOAT;
+    texDesc.SampleDesc.Count = 1;
+
+    m_device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &texDesc, D3D12_RESOURCE_STATE_COPY_DEST,
+                                      nullptr, IID_PPV_ARGS(&m_brdfLut));
+
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint;
+    UINT64 requiredSize = 0;
+    m_device->GetCopyableFootprints(&texDesc, 0, 1, 0, &footprint, nullptr, nullptr, &requiredSize);
+
+    m_uploadQueue->flush();
+    m_uploadQueue->resetRingBuffer();
+
+    uint64_t ringOffset = 0;
+    uint8_t* mapped = m_uploadQueue->allocate(requiredSize, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT, ringOffset);
+    if (!mapped)
+    {
+        spdlog::error("uploadBRDFLut: ring buffer allocation failed");
+        return;
+    }
+
+    footprint.Offset = ringOffset;
+    for (int y = 0; y < size; ++y)
+    {
+        memcpy(mapped + y * footprint.Footprint.RowPitch, rgPixels + y * size * 2, size * 2 * sizeof(float));
+    }
+
+    m_uploadQueue->resetCommandList();
+    auto* copyList = m_uploadQueue->commandList();
+
+    D3D12_TEXTURE_COPY_LOCATION dst{};
+    dst.pResource = m_brdfLut.Get();
+    dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    D3D12_TEXTURE_COPY_LOCATION src{};
+    src.pResource = m_uploadQueue->ringBuffer();
+    src.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+    src.PlacedFootprint = footprint;
+
+    copyList->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+
+    uint64_t copyFence = m_uploadQueue->execute();
+    m_uploadQueue->directQueueWaitForCopy(m_directQueue.Get(), copyFence);
+
+    // Transition on direct queue
+    flushGPU();
+    m_frames[0].commandAllocator->Reset();
+    m_commandList->Reset(m_frames[0].commandAllocator.Get(), nullptr);
+
+    D3D12_RESOURCE_BARRIER barrier{};
+    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barrier.Transition.pResource = m_brdfLut.Get();
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    m_commandList->ResourceBarrier(1, &barrier);
+
+    m_commandList->Close();
+    ID3D12CommandList* lists[] = {m_commandList.Get()};
+    m_directQueue->ExecuteCommandLists(1, lists);
+    flushGPU();
+
+    // Create SRV
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+    srvDesc.Format = DXGI_FORMAT_R32G32_FLOAT;
+    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srvDesc.Texture2D.MipLevels = 1;
+
+    m_device->CreateShaderResourceView(m_brdfLut.Get(), &srvDesc, m_srvHeap.cpuHandle(m_srvBaseIndex + srvIndex));
 }
 
 void D3D12Renderer::uploadMesh(const PreviewMesh& mesh)
@@ -683,6 +860,10 @@ void D3D12Renderer::uploadMesh(const PreviewMesh& mesh)
     m_indexCount = static_cast<uint32_t>(mesh.indices.size());
 }
 
+// ═══════════════════════════════════════════════════════════
+// Public API
+// ═══════════════════════════════════════════════════════════
+
 void D3D12Renderer::setMesh(PreviewShape shape)
 {
     auto mesh = MeshGenerator::generate(shape);
@@ -717,9 +898,7 @@ void D3D12Renderer::setLightDirection(float x, float y, float z)
 {
     float len = std::sqrt(x * x + y * y + z * z);
     if (len > 0.0001f)
-    {
         m_lightDir = {x / len, y / len, z / len};
-    }
 }
 
 void D3D12Renderer::setLightColor(float r, float g, float b)
@@ -732,12 +911,21 @@ void D3D12Renderer::setLightIntensity(float intensity)
     m_lightIntensity = intensity;
 }
 
+void D3D12Renderer::setIBLIntensity(float intensity)
+{
+    m_iblIntensity = intensity;
+}
+
+// ═══════════════════════════════════════════════════════════
+// Resize
+// ═══════════════════════════════════════════════════════════
+
 void D3D12Renderer::resize(uint32_t width, uint32_t height)
 {
     if (!m_initialized || width == 0 || height == 0)
         return;
 
-    waitForGPU();
+    flushGPU();
 
     for (auto& rt : m_renderTargets)
         rt.Reset();
@@ -748,23 +936,36 @@ void D3D12Renderer::resize(uint32_t width, uint32_t height)
     m_height = height;
 
     // Recreate RTVs
-    auto handle = m_rtvHeap->GetCPUDescriptorHandleForHeapStart();
     for (UINT i = 0; i < FrameCount; ++i)
     {
         m_swapChain->GetBuffer(i, IID_PPV_ARGS(&m_renderTargets[i]));
-        m_device->CreateRenderTargetView(m_renderTargets[i].Get(), nullptr, handle);
-        handle.ptr += m_rtvDescriptorSize;
+        m_device->CreateRenderTargetView(m_renderTargets[i].Get(), nullptr, m_rtvHeap.cpuHandle(i));
     }
 
-    createDSV(width, height);
+    createDepthStencil(width, height);
 }
+
+// ═══════════════════════════════════════════════════════════
+// Render — proper double-buffered frame management
+// ═══════════════════════════════════════════════════════════
 
 void D3D12Renderer::render()
 {
     if (!m_initialized || m_width == 0 || m_height == 0)
         return;
 
-    // Update constant buffers
+    // Determine current frame context (double-buffered)
+    uint32_t frameIdx = static_cast<uint32_t>(m_frameNumber % FrameCount);
+    auto& frame = m_frames[frameIdx];
+
+    // 1. Wait for this frame context's previous work to complete
+    waitForFrame(frameIdx);
+
+    // 2. Reset this frame's command allocator (safe now that GPU is done with it)
+    frame.commandAllocator->Reset();
+    m_commandList->Reset(frame.commandAllocator.Get(), m_pipelineState.Get());
+
+    // 3. Update this frame's constant buffers
     float aspect = static_cast<float>(m_width) / static_cast<float>(m_height);
     float camX = m_distance * std::cos(m_elevation) * std::sin(m_azimuth);
     float camY = m_distance * std::sin(m_elevation);
@@ -779,39 +980,34 @@ void D3D12Renderer::render()
     XMMATRIX proj = XMMatrixPerspectiveFovLH(XM_PIDIV4, aspect, 0.01f, 100.0f);
     XMMATRIX wvp = world * view * proj;
 
-    XMStoreFloat4x4(&m_sceneCBMapped->worldViewProj, wvp);
-    XMStoreFloat4x4(&m_sceneCBMapped->world, world);
+    XMStoreFloat4x4(&frame.sceneCBMapped->worldViewProj, wvp);
+    XMStoreFloat4x4(&frame.sceneCBMapped->world, world);
     XMMATRIX worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, world));
-    XMStoreFloat4x4(&m_sceneCBMapped->worldInvTranspose, worldInvTranspose);
-    m_sceneCBMapped->cameraPos = {camX, camY, camZ};
-    m_sceneCBMapped->lightDir = m_lightDir;
-    m_sceneCBMapped->lightColor = m_lightColor;
-    m_sceneCBMapped->lightIntensity = m_lightIntensity;
-    m_sceneCBMapped->iblIntensity = m_iblLoaded ? m_iblIntensity : 0.0f;
-    m_sceneCBMapped->maxPrefilteredMip = static_cast<float>(m_maxPrefilteredMip);
+    XMStoreFloat4x4(&frame.sceneCBMapped->worldInvTranspose, worldInvTranspose);
+    frame.sceneCBMapped->cameraPos = {camX, camY, camZ};
+    frame.sceneCBMapped->lightDir = m_lightDir;
+    frame.sceneCBMapped->lightColor = m_lightColor;
+    frame.sceneCBMapped->lightIntensity = m_lightIntensity;
+    frame.sceneCBMapped->iblIntensity = m_iblLoaded ? m_iblIntensity : 0.0f;
+    frame.sceneCBMapped->maxPrefilteredMip = static_cast<float>(m_maxPrefilteredMip);
 
-    m_materialCBMapped->specularLevel = m_specularLevel;
-    m_materialCBMapped->roughnessScale = m_roughnessScale;
+    frame.materialCBMapped->specularLevel = m_specularLevel;
+    frame.materialCBMapped->roughnessScale = m_roughnessScale;
 
-    // Record commands
-    m_commandAllocator->Reset();
-    m_commandList->Reset(m_commandAllocator.Get(), m_pipelineState.Get());
-
-    UINT frameIndex = m_swapChain->GetCurrentBackBufferIndex();
+    // 4. Record commands
+    UINT backBufferIdx = m_swapChain->GetCurrentBackBufferIndex();
 
     // Transition RT to render target
     D3D12_RESOURCE_BARRIER barrier{};
     barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    barrier.Transition.pResource = m_renderTargets[frameIndex].Get();
+    barrier.Transition.pResource = m_renderTargets[backBufferIdx].Get();
     barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
     barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
     m_commandList->ResourceBarrier(1, &barrier);
 
-    auto rtvHandle = m_rtvHeap->GetCPUDescriptorHandleForHeapStart();
-    rtvHandle.ptr += frameIndex * m_rtvDescriptorSize;
-    auto dsvHandle = m_dsvHeap->GetCPUDescriptorHandleForHeapStart();
+    auto rtvHandle = m_rtvHeap.cpuHandle(backBufferIdx);
+    auto dsvHandle = m_dsvHeap.cpuHandle(0);
 
-    // Clear
     float clearColor[] = {0.15f, 0.15f, 0.15f, 1.0f};
     m_commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
     m_commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
@@ -825,15 +1021,15 @@ void D3D12Renderer::render()
 
     // Set root signature and descriptor heap
     m_commandList->SetGraphicsRootSignature(m_rootSignature.Get());
-    ID3D12DescriptorHeap* heaps[] = {m_srvHeap.Get()};
+    ID3D12DescriptorHeap* heaps[] = {m_srvHeap.heap()};
     m_commandList->SetDescriptorHeaps(1, heaps);
 
-    // Set CBVs
-    m_commandList->SetGraphicsRootConstantBufferView(0, m_sceneCB->GetGPUVirtualAddress());
-    m_commandList->SetGraphicsRootConstantBufferView(1, m_materialCB->GetGPUVirtualAddress());
+    // Set this frame's CBVs
+    m_commandList->SetGraphicsRootConstantBufferView(0, frame.sceneCB->GetGPUVirtualAddress());
+    m_commandList->SetGraphicsRootConstantBufferView(1, frame.materialCB->GetGPUVirtualAddress());
 
     // Set SRV table
-    m_commandList->SetGraphicsRootDescriptorTable(2, m_srvHeap->GetGPUDescriptorHandleForHeapStart());
+    m_commandList->SetGraphicsRootDescriptorTable(2, m_srvHeap.gpuHandle(m_srvBaseIndex));
 
     // Draw
     m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -848,272 +1044,127 @@ void D3D12Renderer::render()
 
     m_commandList->Close();
 
+    // 5. Execute
     ID3D12CommandList* lists[] = {m_commandList.Get()};
-    m_commandQueue->ExecuteCommandLists(1, lists);
+    m_directQueue->ExecuteCommandLists(1, lists);
 
+    // 6. Signal fence for this frame context
+    ++m_directFenceValue;
+    frame.fenceValue = m_directFenceValue;
+    m_directQueue->Signal(m_directFence.Get(), m_directFenceValue);
+
+    // 7. Present
     m_swapChain->Present(1, 0);
-    waitForGPU();
+
+    // Advance frame counter
+    ++m_frameNumber;
 }
 
-void D3D12Renderer::waitForGPU()
+// ═══════════════════════════════════════════════════════════
+// Synchronization
+// ═══════════════════════════════════════════════════════════
+
+void D3D12Renderer::waitForFrame(uint32_t frameIndex)
 {
-    const UINT64 targetValue = m_fenceValue;
-    HRESULT hr = m_commandQueue->Signal(m_fence.Get(), targetValue);
-    ++m_fenceValue;
+    auto& frame = m_frames[frameIndex];
+    if (frame.fenceValue == 0)
+        return; // Never been submitted
 
-    if (FAILED(hr))
+    if (m_directFence->GetCompletedValue() < frame.fenceValue)
     {
-        spdlog::error("D3D12Renderer::waitForGPU: Signal failed: 0x{:08X}", static_cast<unsigned>(hr));
-        spdlog::default_logger()->flush();
-        return;
-    }
+        m_directFence->SetEventOnCompletion(frame.fenceValue, m_directFenceEvent);
+        WaitForSingleObject(m_directFenceEvent, 5000);
 
-    // Try event-based wait first with short timeout
-    m_fence->SetEventOnCompletion(targetValue, m_fenceEvent);
-    DWORD result = WaitForSingleObject(m_fenceEvent, 100);
-
-    if (result == WAIT_OBJECT_0)
-        return; // Fast path: event fired
-
-    // If event didn't fire, try spin-wait briefly
-    for (int i = 0; i < 1000; ++i)
-    {
-        if (m_fence->GetCompletedValue() >= targetValue)
-            return;
-        Sleep(1);
-    }
-
-    // Last resort: just sleep and hope GPU finishes
-    // This handles drivers where fence signaling is delayed
-    Sleep(50);
-
-    if (m_fence->GetCompletedValue() < targetValue)
-    {
-        spdlog::warn("D3D12Renderer::waitForGPU: fence {} not reached (completed={}), proceeding anyway", targetValue,
-                     m_fence->GetCompletedValue());
-    }
-}
-
-void D3D12Renderer::setIBLIntensity(float intensity)
-{
-    m_iblIntensity = intensity;
-}
-
-void D3D12Renderer::createDefaultIBL()
-{
-    // Create 1x1 dummy cubemaps so the shader doesn't crash when IBL is not loaded
-    // Irradiance: dark grey
-    {
-        float irr[] = {0.02f, 0.02f, 0.02f, 1.0f};
-        std::vector<float> face(irr, irr + 4);
-        std::vector<float> faces[6] = {face, face, face, face, face, face};
-        uploadCubemap(3, m_irradianceCubemap, faces, 1, 1, nullptr);
-    }
-    // Prefiltered: dark grey
-    {
-        float pref[] = {0.02f, 0.02f, 0.02f, 1.0f};
-        std::vector<float> face(pref, pref + 4);
-        std::vector<float> faces[6] = {face, face, face, face, face, face};
-        uploadCubemap(4, m_prefilteredCubemap, faces, 1, 1, nullptr);
-    }
-    // BRDF LUT: default (0.5, 0.0)
-    {
-        float lut[] = {0.5f, 0.0f};
-        uploadBRDFLut(5, lut, 1);
-    }
-    m_maxPrefilteredMip = 0;
-}
-
-void D3D12Renderer::uploadCubemap(int srvIndex, ComPtr<ID3D12Resource>& resource, const std::vector<float>* faces,
-                                  int faceSize, int mipLevels, const std::vector<std::vector<float>>* /*mipFaces*/)
-{
-    // Create cubemap texture resource
-    D3D12_HEAP_PROPERTIES heapProps{};
-    heapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
-
-    D3D12_RESOURCE_DESC texDesc{};
-    texDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-    texDesc.Width = faceSize;
-    texDesc.Height = faceSize;
-    texDesc.DepthOrArraySize = 6;
-    texDesc.MipLevels = static_cast<UINT16>(mipLevels);
-    texDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
-    texDesc.SampleDesc.Count = 1;
-
-    m_device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &texDesc, D3D12_RESOURCE_STATE_COPY_DEST,
-                                      nullptr, IID_PPV_ARGS(&resource));
-
-    // Upload each face
-    m_commandAllocator->Reset();
-    m_commandList->Reset(m_commandAllocator.Get(), nullptr);
-
-    // Keep upload buffers alive until after GPU executes the copy commands
-    std::vector<ComPtr<ID3D12Resource>> uploadBuffers;
-
-    for (int f = 0; f < 6; ++f)
-    {
-        UINT subresource = 0 + static_cast<UINT>(f) * static_cast<UINT>(mipLevels); // mip 0, array slice f
-
-        D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint;
-        UINT64 requiredSize = 0;
-        D3D12_RESOURCE_DESC faceDesc = texDesc;
-        faceDesc.DepthOrArraySize = 1;
-        faceDesc.MipLevels = 1;
-        m_device->GetCopyableFootprints(&faceDesc, 0, 1, 0, &footprint, nullptr, nullptr, &requiredSize);
-
-        // Create upload buffer
-        D3D12_HEAP_PROPERTIES uploadProps{};
-        uploadProps.Type = D3D12_HEAP_TYPE_UPLOAD;
-        D3D12_RESOURCE_DESC uploadDesc{};
-        uploadDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-        uploadDesc.Width = requiredSize;
-        uploadDesc.Height = 1;
-        uploadDesc.DepthOrArraySize = 1;
-        uploadDesc.MipLevels = 1;
-        uploadDesc.SampleDesc.Count = 1;
-        uploadDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-
-        ComPtr<ID3D12Resource> uploadBuf;
-        m_device->CreateCommittedResource(&uploadProps, D3D12_HEAP_FLAG_NONE, &uploadDesc,
-                                          D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&uploadBuf));
-
-        uint8_t* mapped = nullptr;
-        D3D12_RANGE readRange{0, 0};
-        uploadBuf->Map(0, &readRange, reinterpret_cast<void**>(&mapped));
-        for (int y = 0; y < faceSize; ++y)
+        if (m_directFence->GetCompletedValue() < frame.fenceValue)
         {
-            memcpy(mapped + y * footprint.Footprint.RowPitch, faces[f].data() + y * faceSize * 4,
-                   faceSize * 4 * sizeof(float));
+            spdlog::warn("D3D12Renderer::waitForFrame: fence {} not reached (completed={})", frame.fenceValue,
+                         m_directFence->GetCompletedValue());
         }
-        uploadBuf->Unmap(0, nullptr);
-
-        D3D12_TEXTURE_COPY_LOCATION dst{};
-        dst.pResource = resource.Get();
-        dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-        dst.SubresourceIndex = subresource;
-
-        D3D12_TEXTURE_COPY_LOCATION src{};
-        src.pResource = uploadBuf.Get();
-        src.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-        src.PlacedFootprint = footprint;
-
-        m_commandList->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
-
-        uploadBuffers.push_back(std::move(uploadBuf)); // Keep alive until GPU finishes
     }
-
-    // Transition to SRV
-    D3D12_RESOURCE_BARRIER barrier{};
-    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    barrier.Transition.pResource = resource.Get();
-    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-    m_commandList->ResourceBarrier(1, &barrier);
-
-    m_commandList->Close();
-    ID3D12CommandList* lists[] = {m_commandList.Get()};
-    m_commandQueue->ExecuteCommandLists(1, lists);
-    waitForGPU();
-
-    // Create cubemap SRV
-    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
-    srvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
-    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
-    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    srvDesc.TextureCube.MipLevels = mipLevels;
-
-    auto handle = m_srvHeap->GetCPUDescriptorHandleForHeapStart();
-    handle.ptr += srvIndex * m_srvDescriptorSize;
-    m_device->CreateShaderResourceView(resource.Get(), &srvDesc, handle);
 }
 
-void D3D12Renderer::uploadBRDFLut(int srvIndex, const float* rgPixels, int size)
+void D3D12Renderer::flushGPU()
 {
-    D3D12_HEAP_PROPERTIES heapProps{};
-    heapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
+    if (!m_directFence)
+        return;
 
-    D3D12_RESOURCE_DESC texDesc{};
-    texDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-    texDesc.Width = size;
-    texDesc.Height = size;
-    texDesc.DepthOrArraySize = 1;
-    texDesc.MipLevels = 1;
-    texDesc.Format = DXGI_FORMAT_R32G32_FLOAT;
-    texDesc.SampleDesc.Count = 1;
+    ++m_directFenceValue;
+    m_directQueue->Signal(m_directFence.Get(), m_directFenceValue);
 
-    m_device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &texDesc, D3D12_RESOURCE_STATE_COPY_DEST,
-                                      nullptr, IID_PPV_ARGS(&m_brdfLut));
-
-    D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint;
-    UINT64 requiredSize = 0;
-    m_device->GetCopyableFootprints(&texDesc, 0, 1, 0, &footprint, nullptr, nullptr, &requiredSize);
-
-    D3D12_HEAP_PROPERTIES uploadProps{};
-    uploadProps.Type = D3D12_HEAP_TYPE_UPLOAD;
-    D3D12_RESOURCE_DESC uploadDesc{};
-    uploadDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-    uploadDesc.Width = requiredSize;
-    uploadDesc.Height = 1;
-    uploadDesc.DepthOrArraySize = 1;
-    uploadDesc.MipLevels = 1;
-    uploadDesc.SampleDesc.Count = 1;
-    uploadDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-
-    ComPtr<ID3D12Resource> uploadBuf;
-    m_device->CreateCommittedResource(&uploadProps, D3D12_HEAP_FLAG_NONE, &uploadDesc,
-                                      D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&uploadBuf));
-
-    uint8_t* mapped = nullptr;
-    D3D12_RANGE readRange{0, 0};
-    uploadBuf->Map(0, &readRange, reinterpret_cast<void**>(&mapped));
-    for (int y = 0; y < size; ++y)
+    if (m_directFence->GetCompletedValue() < m_directFenceValue)
     {
-        memcpy(mapped + y * footprint.Footprint.RowPitch, rgPixels + y * size * 2, size * 2 * sizeof(float));
+        m_directFence->SetEventOnCompletion(m_directFenceValue, m_directFenceEvent);
+        WaitForSingleObject(m_directFenceEvent, 5000);
     }
-    uploadBuf->Unmap(0, nullptr);
 
-    m_commandAllocator->Reset();
-    m_commandList->Reset(m_commandAllocator.Get(), nullptr);
-
-    D3D12_TEXTURE_COPY_LOCATION dst{};
-    dst.pResource = m_brdfLut.Get();
-    dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-    D3D12_TEXTURE_COPY_LOCATION src{};
-    src.pResource = uploadBuf.Get();
-    src.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-    src.PlacedFootprint = footprint;
-    m_commandList->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
-
-    D3D12_RESOURCE_BARRIER barrier{};
-    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    barrier.Transition.pResource = m_brdfLut.Get();
-    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-    m_commandList->ResourceBarrier(1, &barrier);
-
-    m_commandList->Close();
-    ID3D12CommandList* lists[] = {m_commandList.Get()};
-    m_commandQueue->ExecuteCommandLists(1, lists);
-    waitForGPU();
-
-    // Create SRV
-    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
-    srvDesc.Format = DXGI_FORMAT_R32G32_FLOAT;
-    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    srvDesc.Texture2D.MipLevels = 1;
-
-    auto handle = m_srvHeap->GetCPUDescriptorHandleForHeapStart();
-    handle.ptr += srvIndex * m_srvDescriptorSize;
-    m_device->CreateShaderResourceView(m_brdfLut.Get(), &srvDesc, handle);
+    // Also flush upload queue
+    if (m_uploadQueue)
+        m_uploadQueue->flush();
 }
+
+// ═══════════════════════════════════════════════════════════
+// IBL Loading (CPU fallback — IBLPipeline GPU compute is optional)
+// ═══════════════════════════════════════════════════════════
 
 bool D3D12Renderer::loadIBL(const std::filesystem::path& hdriPath)
 {
     if (!m_initialized)
         return false;
 
+    // Load HDRI file to CPU float RGBA pixels
+    int eqW = 0, eqH = 0;
+    std::vector<float> equirect;
+    if (!IBLProcessor::loadHDRI(hdriPath, eqW, eqH, equirect))
+    {
+        spdlog::error("D3D12Renderer: failed to load HDRI {}", hdriPath.string());
+        return false;
+    }
+
+    // Try GPU IBL pipeline
+    if (m_iblPipeline && m_iblPipeline->isInitialized())
+    {
+        flushGPU();
+        IBLResult ibl =
+            m_iblPipeline->process(m_device.Get(), m_directQueue.Get(), equirect.data(), eqW, eqH, 64, 256, 256);
+        if (ibl.valid)
+        {
+            // Transfer ownership and create SRVs
+            m_irradianceCubemap = std::move(ibl.irradianceCubemap);
+            m_prefilteredCubemap = std::move(ibl.prefilteredCubemap);
+            m_brdfLut = std::move(ibl.brdfLut);
+            m_maxPrefilteredMip = ibl.prefilteredMipLevels - 1;
+
+            // Create cubemap SRV for irradiance (slot 3)
+            D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+            srvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+            srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
+            srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            srvDesc.TextureCube.MipLevels = 1;
+            m_device->CreateShaderResourceView(m_irradianceCubemap.Get(), &srvDesc,
+                                               m_srvHeap.cpuHandle(m_srvBaseIndex + 3));
+
+            // Create cubemap SRV for prefiltered (slot 4)
+            srvDesc.TextureCube.MipLevels = ibl.prefilteredMipLevels;
+            m_device->CreateShaderResourceView(m_prefilteredCubemap.Get(), &srvDesc,
+                                               m_srvHeap.cpuHandle(m_srvBaseIndex + 4));
+
+            // Create 2D SRV for BRDF LUT (slot 5)
+            D3D12_SHADER_RESOURCE_VIEW_DESC lutSrvDesc{};
+            lutSrvDesc.Format = DXGI_FORMAT_R32G32_FLOAT;
+            lutSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+            lutSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            lutSrvDesc.Texture2D.MipLevels = 1;
+            m_device->CreateShaderResourceView(m_brdfLut.Get(), &lutSrvDesc, m_srvHeap.cpuHandle(m_srvBaseIndex + 5));
+
+            m_iblLoaded = true;
+            m_iblIntensity = 1.0f;
+            spdlog::info("D3D12Renderer: IBL loaded via GPU from {}", hdriPath.filename().string());
+            return true;
+        }
+        spdlog::warn("D3D12Renderer: GPU IBL failed, falling back to CPU");
+    }
+
+    // CPU fallback
     IBLData data = IBLProcessor::process(hdriPath, 64, 256, 256);
     if (!data.valid)
     {
@@ -1121,28 +1172,22 @@ bool D3D12Renderer::loadIBL(const std::filesystem::path& hdriPath)
         return false;
     }
 
-    // Upload irradiance cubemap (single mip)
-    uploadCubemap(3, m_irradianceCubemap, data.irradianceFaces, data.irradianceSize, 1, nullptr);
+    uploadCubemap(3, m_irradianceCubemap, data.irradianceFaces, data.irradianceSize, 1);
 
-    // Upload prefiltered cubemap (mip 0 only for now — full mip chain is complex)
-    // Use mip 0 (roughness=0) as the base
     if (data.prefilteredMipLevels > 0)
     {
         std::vector<float> mip0Faces[6];
         for (int f = 0; f < 6; ++f)
-        {
             mip0Faces[f] = data.prefilteredFaces[f][0].pixels;
-        }
-        uploadCubemap(4, m_prefilteredCubemap, mip0Faces, data.prefilteredSize, 1, nullptr);
-        m_maxPrefilteredMip = 0; // Single mip for now
+        uploadCubemap(4, m_prefilteredCubemap, mip0Faces, data.prefilteredSize, 1);
+        m_maxPrefilteredMip = 0;
     }
 
-    // Upload BRDF LUT
     uploadBRDFLut(5, data.brdfLutPixels.data(), data.brdfLutSize);
 
     m_iblLoaded = true;
     m_iblIntensity = 1.0f;
-    spdlog::info("D3D12Renderer: IBL loaded from {}", hdriPath.filename().string());
+    spdlog::info("D3D12Renderer: IBL loaded via CPU from {}", hdriPath.filename().string());
     return true;
 }
 

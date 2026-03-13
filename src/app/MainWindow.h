@@ -49,6 +49,9 @@ class MainWindow : public QMainWindow
     void onDroppedOnSlot(PBRTextureSlot slot, const QString& filePath);
     void onDroppedOnChannel(ChannelMap channel, const QString& filePath);
     void onSlotPreviewRequested(PBRTextureSlot slot);
+    void onChannelPreviewRequested(ChannelMap channel);
+    void onSlotCleared(PBRTextureSlot slot);
+    void onChannelCleared(ChannelMap channel);
     void onRmaosSourceModeChanged(RMAOSSourceMode mode);
     void onMatchTextureChanged(const QString& newPath);
     void onMatchTextureModeChanged(TextureMatchMode mode);

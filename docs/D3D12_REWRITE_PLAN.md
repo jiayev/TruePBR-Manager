@@ -1,6 +1,6 @@
 # D3D12 Renderer Rewrite Plan
 
-## Status: WIP — Planned for next session
+## Status: IN PROGRESS — Core infrastructure implemented
 
 ## Problem
 
@@ -148,13 +148,14 @@ Static Sampler s1: Linear Clamp
 
 ### Migration Checklist
 
-- [ ] Delete current D3D12Renderer.cpp (keep .h for reference)
-- [ ] Delete IBLProcessor.cpp compute logic (keep HDRI loading)
-- [ ] Write D3D12UploadQueue
-- [ ] Write DescriptorHeap helper
-- [ ] Write new D3D12Renderer with double-buffered frames
-- [ ] Write 4 IBL compute shaders
-- [ ] Write IBLPipeline orchestrator
+- [x] Delete current D3D12Renderer.cpp (keep .h for reference)
+- [x] Delete IBLProcessor.cpp compute logic (keep HDRI loading)
+- [x] Write D3D12UploadQueue
+- [x] Write DescriptorHeap helper
+- [x] Write new D3D12Renderer with double-buffered frames
+- [x] Write 4 IBL compute shaders
+- [x] Write IBLPipeline orchestrator
+- [x] Wire up GPU IBL compute passes (currently CPU fallback)
 - [ ] Update MaterialPreviewWidget if API changed
 - [ ] Update MainWindow connections if API changed
 - [ ] Test on RTX 5070
