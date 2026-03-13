@@ -1042,6 +1042,11 @@ void D3D12Renderer::setMaterialParams(float specularLevel, float roughnessScale)
     m_roughnessScale = roughnessScale;
 }
 
+void D3D12Renderer::setRenderFlags(uint32_t flags)
+{
+    m_renderFlags = flags;
+}
+
 void D3D12Renderer::setCamera(float azimuth, float elevation, float distance)
 {
     m_azimuth = azimuth;
@@ -1154,6 +1159,7 @@ void D3D12Renderer::render()
 
     frame.materialCBMapped->specularLevel = m_specularLevel;
     frame.materialCBMapped->roughnessScale = m_roughnessScale;
+    frame.materialCBMapped->renderFlags = m_renderFlags;
 
     // 4. Record commands
     UINT backBufferIdx = m_swapChain->GetCurrentBackBufferIndex();
@@ -1290,12 +1296,18 @@ bool D3D12Renderer::loadIBL(const std::filesystem::path& hdriPath)
         return false;
     }
 
+    // Cache the loaded HDRI for reprocessing with different parameters
+    m_hdriPath = hdriPath;
+    m_hdriPixels = std::move(equirect);
+    m_hdriW = eqW;
+    m_hdriH = eqH;
+
     // Try GPU IBL pipeline
     if (m_iblPipeline && m_iblPipeline->isInitialized())
     {
         flushGPU();
-        IBLResult ibl =
-            m_iblPipeline->process(m_device.Get(), m_directQueue.Get(), equirect.data(), eqW, eqH, 256, 256);
+        IBLResult ibl = m_iblPipeline->process(m_device.Get(), m_directQueue.Get(), m_hdriPixels.data(), m_hdriW,
+                                               m_hdriH, m_iblPrefilteredSize, 256, m_iblPrefilterSamples);
         if (ibl.valid)
         {
             // Transfer ownership and create SRVs
@@ -1323,14 +1335,15 @@ bool D3D12Renderer::loadIBL(const std::filesystem::path& hdriPath)
 
             m_iblLoaded = true;
             m_iblIntensity = 1.0f;
-            spdlog::info("D3D12Renderer: IBL loaded via GPU from {}", hdriPath.filename().string());
+            spdlog::info("D3D12Renderer: IBL loaded via GPU from {} (prefSize={}, samples={})",
+                         hdriPath.filename().string(), m_iblPrefilteredSize, m_iblPrefilterSamples);
             return true;
         }
         spdlog::warn("D3D12Renderer: GPU IBL failed, falling back to CPU");
     }
 
     // CPU fallback
-    IBLData data = IBLProcessor::process(hdriPath, 64, 256, 256);
+    IBLData data = IBLProcessor::process(hdriPath, 64, m_iblPrefilteredSize, 256);
     if (!data.valid)
     {
         spdlog::error("D3D12Renderer: IBL processing failed for {}", hdriPath.string());
@@ -1339,7 +1352,7 @@ bool D3D12Renderer::loadIBL(const std::filesystem::path& hdriPath)
 
     // Compute ZH3 from equirect pixels (CPU fallback)
     {
-        IBLPipeline::computeZH3CPU(equirect.data(), eqW, eqH, m_zh3Data);
+        IBLPipeline::computeZH3CPU(m_hdriPixels.data(), m_hdriW, m_hdriH, m_zh3Data);
     }
 
     if (data.prefilteredMipLevels > 0)
@@ -1355,6 +1368,70 @@ bool D3D12Renderer::loadIBL(const std::filesystem::path& hdriPath)
     m_iblIntensity = 1.0f;
     spdlog::info("D3D12Renderer: IBL loaded via CPU from {}", hdriPath.filename().string());
     return true;
+}
+
+void D3D12Renderer::setIBLParams(int prefilteredSize, int prefilterSamples)
+{
+    if (prefilteredSize == m_iblPrefilteredSize && prefilterSamples == m_iblPrefilterSamples)
+        return;
+
+    m_iblPrefilteredSize = prefilteredSize;
+    m_iblPrefilterSamples = prefilterSamples;
+
+    // Reprocess if we have cached HDRI data
+    if (!m_hdriPixels.empty() && m_iblLoaded)
+    {
+        spdlog::info("D3D12Renderer: reprocessing IBL (prefSize={}, samples={})", prefilteredSize, prefilterSamples);
+
+        if (m_iblPipeline && m_iblPipeline->isInitialized())
+        {
+            flushGPU();
+            IBLResult ibl = m_iblPipeline->process(m_device.Get(), m_directQueue.Get(), m_hdriPixels.data(), m_hdriW,
+                                                   m_hdriH, prefilteredSize, 256, prefilterSamples);
+            if (ibl.valid)
+            {
+                std::memcpy(m_zh3Data, ibl.zh3Data, sizeof(m_zh3Data));
+                m_prefilteredCubemap = std::move(ibl.prefilteredCubemap);
+                m_brdfLut = std::move(ibl.brdfLut);
+                m_maxPrefilteredMip = ibl.prefilteredMipLevels - 1;
+
+                D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+                srvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+                srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
+                srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+                srvDesc.TextureCube.MipLevels = ibl.prefilteredMipLevels;
+                m_device->CreateShaderResourceView(m_prefilteredCubemap.Get(), &srvDesc,
+                                                   m_srvHeap.cpuHandle(m_srvBaseIndex + 3));
+
+                D3D12_SHADER_RESOURCE_VIEW_DESC lutSrvDesc{};
+                lutSrvDesc.Format = DXGI_FORMAT_R32G32_FLOAT;
+                lutSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+                lutSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+                lutSrvDesc.Texture2D.MipLevels = 1;
+                m_device->CreateShaderResourceView(m_brdfLut.Get(), &lutSrvDesc,
+                                                   m_srvHeap.cpuHandle(m_srvBaseIndex + 4));
+
+                spdlog::info("D3D12Renderer: IBL reprocessed (GPU, prefSize={}, samples={})", prefilteredSize,
+                             prefilterSamples);
+                return;
+            }
+        }
+
+        // CPU fallback reprocess
+        IBLData data = IBLProcessor::process(m_hdriPath, 64, prefilteredSize, 256);
+        if (data.valid)
+        {
+            IBLPipeline::computeZH3CPU(m_hdriPixels.data(), m_hdriW, m_hdriH, m_zh3Data);
+            if (data.prefilteredMipLevels > 0)
+            {
+                uploadCubemapMipped(3, m_prefilteredCubemap, data.prefilteredFaces, data.prefilteredSize,
+                                    data.prefilteredMipLevels);
+                m_maxPrefilteredMip = data.prefilteredMipLevels - 1;
+            }
+            uploadBRDFLut(4, data.brdfLutPixels.data(), data.brdfLutSize);
+            spdlog::info("D3D12Renderer: IBL reprocessed (CPU, prefSize={})", prefilteredSize);
+        }
+    }
 }
 
 } // namespace tpbr

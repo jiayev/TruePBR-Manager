@@ -112,6 +112,12 @@ void MaterialPreviewWidget::setMaterialParams(float specularLevel, float roughne
         m_renderer->setMaterialParams(specularLevel, roughnessScale);
 }
 
+void MaterialPreviewWidget::setRenderFlags(uint32_t flags)
+{
+    if (m_renderer)
+        m_renderer->setRenderFlags(flags);
+}
+
 void MaterialPreviewWidget::setLightColor(float r, float g, float b)
 {
     if (m_renderer)
@@ -137,6 +143,14 @@ void MaterialPreviewWidget::setIBLIntensity(float intensity)
 {
     if (m_renderer)
         m_renderer->setIBLIntensity(intensity);
+}
+
+void MaterialPreviewWidget::setIBLParams(int prefilteredSize, int prefilterSamples)
+{
+    if (!m_renderer)
+        initRenderer();
+    if (m_renderer)
+        m_renderer->setIBLParams(prefilteredSize, prefilterSamples);
 }
 
 void MaterialPreviewWidget::resizeEvent(QResizeEvent* event)

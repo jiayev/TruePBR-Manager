@@ -2,6 +2,7 @@
 
 #include "core/Project.h"
 
+#include <QCheckBox>
 #include <QComboBox>
 #include <QLabel>
 #include <QMainWindow>
@@ -98,6 +99,11 @@ class MainWindow : public QMainWindow
     QComboBox* m_hdriCombo = nullptr;
     QSlider* m_iblIntensitySlider = nullptr;
     QLabel* m_iblIntensityLabel = nullptr;
+    QComboBox* m_iblResCombo = nullptr;
+    QComboBox* m_iblSamplesCombo = nullptr;
+    QCheckBox* m_horizonOcclusionCB = nullptr;
+    QCheckBox* m_multiBounceAOCB = nullptr;
+    QCheckBox* m_specularOcclusionCB = nullptr;
     float m_lightColorR = 1.0f;
     float m_lightColorG = 1.0f;
     float m_lightColorB = 1.0f;

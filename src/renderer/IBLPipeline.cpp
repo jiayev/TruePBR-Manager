@@ -295,7 +295,7 @@ static void executeAndWait(ID3D12GraphicsCommandList* cmdList, ID3D12CommandQueu
 // ═══════════════════════════════════════════════════════════
 
 IBLResult IBLPipeline::process(ID3D12Device* device, ID3D12CommandQueue* directQueue, const float* equirectPixels,
-                               int equirectW, int equirectH, int prefilteredSize, int brdfLutSize)
+                               int equirectW, int equirectH, int prefilteredSize, int brdfLutSize, int prefilterSamples)
 {
     IBLResult result;
     if (!m_initialized)
@@ -474,7 +474,7 @@ IBLResult IBLPipeline::process(ID3D12Device* device, ID3D12CommandQueue* directQ
     m_cmdAllocator->Reset();
     m_cmdList->Reset(m_cmdAllocator.Get(), nullptr);
     runPrefilter(device, m_cmdList.Get(), cubemapTex.Get(), result.prefilteredCubemap.Get(), cubemapSize,
-                 prefilteredSize, maxMips, computeHeap);
+                 prefilteredSize, maxMips, computeHeap, prefilterSamples);
 
     // Barrier: prefiltered UAV → SRV
     barrier.Transition.pResource = result.prefilteredCubemap.Get();
@@ -785,7 +785,7 @@ void IBLPipeline::computeZH3CPU(const float* pixels, int w, int h, float outZH3[
 
 void IBLPipeline::runPrefilter(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ID3D12Resource* inputCubemap,
                                ID3D12Resource* outputPrefiltered, int /*inputSize*/, int outputSize, int mipLevels,
-                               DescriptorHeap& heap)
+                               DescriptorHeap& heap, int sampleCount)
 {
     for (int mip = 0; mip < mipLevels; ++mip)
     {
@@ -800,7 +800,7 @@ void IBLPipeline::runPrefilter(ID3D12Device* device, ID3D12GraphicsCommandList* 
             PrefilterCB cbData{};
             cbData.faceIndex = face;
             cbData.outputSize = mipSize;
-            cbData.sampleCount = 256;
+            cbData.sampleCount = static_cast<uint32_t>(sampleCount);
             cbData.roughness = roughness;
 
             uint32_t srvIdx = heap.allocate(1);

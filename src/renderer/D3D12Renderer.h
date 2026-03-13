@@ -49,7 +49,7 @@ struct MaterialCBData
 {
     float specularLevel;
     float roughnessScale;
-    float _pad0;
+    uint32_t renderFlags; // bit0=HorizonOcclusion, bit1=MultiBounceAO, bit2=SpecularOcclusion
     float _pad1;
 };
 
@@ -96,6 +96,9 @@ class D3D12Renderer
     /// Set material parameters.
     void setMaterialParams(float specularLevel, float roughnessScale);
 
+    /// Set render flags (bit0=HorizonOcclusion, bit1=MultiBounceAO, bit2=SpecularOcclusion).
+    void setRenderFlags(uint32_t flags);
+
     /// Set camera orbit (spherical coordinates).
     void setCamera(float azimuth, float elevation, float distance);
 
@@ -113,6 +116,11 @@ class D3D12Renderer
 
     /// Set IBL intensity (0 = disabled, default 1.0 when IBL loaded).
     void setIBLIntensity(float intensity);
+
+    /// Set IBL specular prefilter parameters and reprocess the current HDRI.
+    /// @param prefilteredSize   Prefiltered cubemap face resolution (e.g., 64, 128, 256, 512).
+    /// @param prefilterSamples  GGX importance samples per texel (e.g., 64, 128, 256, 512, 1024).
+    void setIBLParams(int prefilteredSize, int prefilterSamples);
 
     /// Render one frame.
     void render();
@@ -212,6 +220,13 @@ class D3D12Renderer
     int m_maxPrefilteredMip = 0;
     float m_zh3Data[5][4] = {}; // Pre-convolved ZH3: SH2[0..3] + ZH3 coefficient
 
+    // IBL parameters (for reprocessing)
+    std::filesystem::path m_hdriPath; // Current loaded HDRI
+    std::vector<float> m_hdriPixels;  // Cached equirect pixels (float RGBA)
+    int m_hdriW = 0, m_hdriH = 0;
+    int m_iblPrefilteredSize = 256;  // Prefiltered cubemap resolution
+    int m_iblPrefilterSamples = 256; // GGX importance samples per texel
+
     // IBL pipeline (GPU compute)
     std::unique_ptr<IBLPipeline> m_iblPipeline;
 
@@ -240,6 +255,7 @@ class D3D12Renderer
     // Material
     float m_specularLevel = 0.04f;
     float m_roughnessScale = 1.0f;
+    uint32_t m_renderFlags = 0x7; // all on by default
 };
 
 } // namespace tpbr

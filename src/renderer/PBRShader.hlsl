@@ -27,7 +27,7 @@ cbuffer MaterialCB : register(b1)
 {
     float g_SpecularLevel;
     float g_RoughnessScale;
-    float _matPad0;
+    uint g_RenderFlags; // bit0=HorizonOcclusion, bit1=MultiBounceAO, bit2=SpecularOcclusion
     float _matPad1;
 };
 
@@ -109,6 +109,21 @@ float3 FresnelSchlickRoughness(float cosTheta, float3 F0, float roughness)
 {
     float3 oneMinusR = float3(1.0 - roughness, 1.0 - roughness, 1.0 - roughness);
     return F0 + (max(oneMinusR, F0) - F0) * pow(saturate(1.0 - cosTheta), 5.0);
+}
+
+// [Jimenez et al. 2016, "Practical Realtime Strategies for Accurate Indirect Occlusion"]
+float3 MultiBounceAO(float3 baseColor, float ao)
+{
+    float3 a = 2.0404 * baseColor - 0.3324;
+    float3 b = -4.7951 * baseColor + 0.6417;
+    float3 c = 2.7552 * baseColor + 0.6903;
+    return max(ao, ((ao * a + b) * ao + c) * ao);
+}
+
+// Specular occlusion from AO
+float SpecularOcclusion(float NdotV, float alpha, float occlusion)
+{
+    return saturate(pow(abs(NdotV + occlusion), alpha) - 1.0 + occlusion);
 }
 
 // ─── AgX Tone Mapping ──────────────────────────────────────
@@ -233,7 +248,14 @@ float4 PSMain(PSInput input) : SV_TARGET
         float zhBasis = sqrt(5.0 / (16.0 * PI)) * (3.0 * fZ * fZ - 1.0);
         irradiance += g_ZH3.xyz * zhBasis;
         irradiance = max(irradiance, float3(0, 0, 0));
-        float3 iblDiffuse = kD_ibl * albedo * irradiance;
+
+        // Apply AO to diffuse IBL
+        float3 diffuseAO;
+        if (g_RenderFlags & 2u)
+            diffuseAO = MultiBounceAO(albedo, ao);
+        else
+            diffuseAO = float3(ao, ao, ao);
+        float3 iblDiffuse = kD_ibl * albedo * irradiance * diffuseAO;
 
         // Specular IBL: sample prefiltered map + BRDF LUT
         float3 R = reflect(-V, N);
@@ -241,6 +263,23 @@ float4 PSMain(PSInput input) : SV_TARGET
         float3 prefilteredColor = g_PrefilteredMap.SampleLevel(g_Sampler, R, mipLevel).rgb;
         float2 brdfSample = g_BRDFLut.Sample(g_ClampSampler, float2(NdotV, roughness)).rg;
         float3 iblSpecular = prefilteredColor * (F_ibl * brdfSample.x + brdfSample.y);
+
+        // Horizon occlusion: attenuate specular IBL when reflection direction
+        // falls below the geometric (un-perturbed) normal's hemisphere.
+        if (g_RenderFlags & 1u)
+        {
+            float3 N_geo = normalize(input.normalWS);
+            float horizon = saturate(1.0 + dot(R, N_geo));
+            iblSpecular *= horizon * horizon;
+        }
+
+        // Specular occlusion from AO map
+        if (g_RenderFlags & 4u)
+        {
+            float alpha = roughness * roughness;
+            float specOcc = SpecularOcclusion(NdotV, alpha, ao);
+            iblSpecular *= specOcc;
+        }
 
         iblColor = (iblDiffuse + iblSpecular) * g_IBLIntensity;
     }
@@ -252,7 +291,6 @@ float4 PSMain(PSInput input) : SV_TARGET
 
     // Final color
     float3 color = directColor + iblColor;
-    color *= ao;
 
     // AgX tone mapping
     color = max(float3(0, 0, 0), color);

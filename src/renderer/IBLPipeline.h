@@ -47,8 +47,9 @@ class IBLPipeline
     /// Process equirectangular HDRI (float RGBA pixels already loaded on CPU).
     /// Uploads the equirect texture, runs GPU compute passes, returns
     /// IBL resources in PIXEL_SHADER_RESOURCE state.
+    /// @param prefilterSamples  Number of GGX importance samples per texel for specular prefiltering.
     IBLResult process(ID3D12Device* device, ID3D12CommandQueue* directQueue, const float* equirectPixels, int equirectW,
-                      int equirectH, int prefilteredSize = 256, int brdfLutSize = 256);
+                      int equirectH, int prefilteredSize = 256, int brdfLutSize = 256, int prefilterSamples = 256);
 
     /// CPU fallback: project equirect to ZH3 coefficients (for when GPU pipeline unavailable).
     static void computeZH3CPU(const float* pixels, int w, int h, float outZH3[5][4]);
@@ -79,7 +80,7 @@ class IBLPipeline
                               ID3D12Resource* outputCubemap, int faceSize, DescriptorHeap& heap);
     void runPrefilter(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ID3D12Resource* inputCubemap,
                       ID3D12Resource* outputPrefiltered, int inputSize, int outputSize, int mipLevels,
-                      DescriptorHeap& heap);
+                      DescriptorHeap& heap, int sampleCount = 256);
     void runBrdfLut(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ID3D12Resource* outputLut, int lutSize,
                     DescriptorHeap& heap);
     void runSH3Projection(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ID3D12Resource* equirectTex,

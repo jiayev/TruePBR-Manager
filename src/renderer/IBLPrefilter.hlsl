@@ -47,6 +47,18 @@ float2 hammersley(uint i, uint N)
     return float2(float(i) / float(N), radicalInverse(i));
 }
 
+// Per-texel hash for Cranley-Patterson rotation (breaks structured artifacts)
+float hashTexel(uint2 coord, uint face)
+{
+    uint h = coord.x * 1597u + coord.y * 5051u + face * 7919u;
+    h ^= h >> 16u;
+    h *= 0x45d9f3bu;
+    h ^= h >> 16u;
+    h *= 0x45d9f3bu;
+    h ^= h >> 16u;
+    return float(h) * 2.3283064365386963e-10; // [0, 1)
+}
+
 // GGX importance sampling
 float3 importanceSampleGGX(float2 xi, float roughness, float3 N)
 {
@@ -84,9 +96,13 @@ void CSMain(uint3 dispatchID : SV_DispatchThreadID)
 
     float roughness = max(g_Roughness, 0.01);
 
+    // Per-texel Cranley-Patterson rotation offset
+    float rotOffset = hashTexel(dispatchID.xy, g_FaceIndex);
+
     for (uint i = 0; i < g_SampleCount; ++i)
     {
         float2 xi = hammersley(i, g_SampleCount);
+        xi.x = frac(xi.x + rotOffset); // rotate azimuthal angle per-texel
         float3 H = importanceSampleGGX(xi, roughness, N);
 
         // Reflect V around H to get L

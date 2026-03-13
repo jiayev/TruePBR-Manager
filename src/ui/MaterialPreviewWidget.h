@@ -26,6 +26,7 @@ class MaterialPreviewWidget : public QWidget
     void setTextures(const uint8_t* diffuseRGBA, int dw, int dh, const uint8_t* normalRGBA, int nw, int nh,
                      const uint8_t* rmaosRGBA, int rw, int rh);
     void setMaterialParams(float specularLevel, float roughnessScale);
+    void setRenderFlags(uint32_t flags);
     void setLightColor(float r, float g, float b);
     void setLightIntensity(float intensity);
 
@@ -34,6 +35,9 @@ class MaterialPreviewWidget : public QWidget
 
     /// Set IBL intensity.
     void setIBLIntensity(float intensity);
+
+    /// Set IBL specular prefilter parameters (triggers reprocessing).
+    void setIBLParams(int prefilteredSize, int prefilterSamples);
 
     QComboBox* shapeCombo() const
     {

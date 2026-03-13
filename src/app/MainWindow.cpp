@@ -258,6 +258,47 @@ void MainWindow::setupCentralWidget()
     m_3dControlBar->setVisible(false);
     previewLayout->addWidget(m_3dControlBar);
 
+    // Render options row
+    auto* renderOptsRow = new QWidget(previewContainer);
+    auto* renderOptsLayout = new QHBoxLayout(renderOptsRow);
+    renderOptsLayout->setContentsMargins(4, 2, 4, 2);
+    renderOptsLayout->setSpacing(8);
+
+    m_horizonOcclusionCB = new QCheckBox(tr("Horizon Occlusion"), renderOptsRow);
+    m_horizonOcclusionCB->setChecked(true);
+    m_horizonOcclusionCB->setToolTip(tr("Attenuate specular IBL below geometric horizon"));
+    renderOptsLayout->addWidget(m_horizonOcclusionCB);
+
+    m_multiBounceAOCB = new QCheckBox(tr("MultiBounce AO"), renderOptsRow);
+    m_multiBounceAOCB->setChecked(true);
+    m_multiBounceAOCB->setToolTip(tr("Multi-bounce ambient occlusion (Jimenez 2016)"));
+    renderOptsLayout->addWidget(m_multiBounceAOCB);
+
+    m_specularOcclusionCB = new QCheckBox(tr("Specular Occlusion"), renderOptsRow);
+    m_specularOcclusionCB->setChecked(true);
+    m_specularOcclusionCB->setToolTip(tr("AO-based specular occlusion"));
+    renderOptsLayout->addWidget(m_specularOcclusionCB);
+
+    renderOptsLayout->addStretch();
+    renderOptsRow->setVisible(false);
+    previewLayout->addWidget(renderOptsRow);
+
+    auto updateRenderFlags = [this]()
+    {
+        uint32_t flags = 0;
+        if (m_horizonOcclusionCB->isChecked())
+            flags |= 1u;
+        if (m_multiBounceAOCB->isChecked())
+            flags |= 2u;
+        if (m_specularOcclusionCB->isChecked())
+            flags |= 4u;
+        m_materialPreview->setRenderFlags(flags);
+    };
+
+    connect(m_horizonOcclusionCB, &QCheckBox::toggled, this, updateRenderFlags);
+    connect(m_multiBounceAOCB, &QCheckBox::toggled, this, updateRenderFlags);
+    connect(m_specularOcclusionCB, &QCheckBox::toggled, this, updateRenderFlags);
+
     connect(m_lightIntensitySlider, &QSlider::valueChanged, this,
             [this](int value)
             {
@@ -309,6 +350,51 @@ void MainWindow::setupCentralWidget()
 
     iblRow->setVisible(false);
     previewLayout->addWidget(iblRow);
+
+    // IBL specular parameter row
+    auto* iblParamsRow = new QWidget(previewContainer);
+    auto* iblParamsLayout = new QHBoxLayout(iblParamsRow);
+    iblParamsLayout->setContentsMargins(4, 2, 4, 2);
+    iblParamsLayout->setSpacing(6);
+
+    iblParamsLayout->addWidget(new QLabel(tr("Prefilter Res:"), iblParamsRow));
+    m_iblResCombo = new QComboBox(iblParamsRow);
+    m_iblResCombo->addItem("64", 64);
+    m_iblResCombo->addItem("128", 128);
+    m_iblResCombo->addItem("256", 256);
+    m_iblResCombo->addItem("512", 512);
+    m_iblResCombo->setCurrentIndex(2); // default 256
+    m_iblResCombo->setToolTip(tr("Prefiltered cubemap face resolution"));
+    iblParamsLayout->addWidget(m_iblResCombo);
+
+    iblParamsLayout->addWidget(new QLabel(tr("Samples:"), iblParamsRow));
+    m_iblSamplesCombo = new QComboBox(iblParamsRow);
+    m_iblSamplesCombo->addItem("64", 64);
+    m_iblSamplesCombo->addItem("128", 128);
+    m_iblSamplesCombo->addItem("256", 256);
+    m_iblSamplesCombo->addItem("512", 512);
+    m_iblSamplesCombo->addItem("1024", 1024);
+    m_iblSamplesCombo->setCurrentIndex(2); // default 256
+    m_iblSamplesCombo->setToolTip(tr("GGX importance samples per texel for specular prefiltering"));
+    iblParamsLayout->addWidget(m_iblSamplesCombo);
+
+    iblParamsLayout->addStretch();
+
+    iblParamsRow->setVisible(false);
+    previewLayout->addWidget(iblParamsRow);
+
+    auto applyIBLParams = [this]()
+    {
+        int res = m_iblResCombo->currentData().toInt();
+        int samples = m_iblSamplesCombo->currentData().toInt();
+        statusBar()->showMessage(tr("Reprocessing IBL (res=%1, samples=%2)...").arg(res).arg(samples));
+        QApplication::processEvents();
+        m_materialPreview->setIBLParams(res, samples);
+        statusBar()->showMessage(tr("IBL reprocessed (res=%1, samples=%2)").arg(res).arg(samples), 3000);
+    };
+
+    connect(m_iblResCombo, &QComboBox::currentIndexChanged, this, applyIBLParams);
+    connect(m_iblSamplesCombo, &QComboBox::currentIndexChanged, this, applyIBLParams);
 
     // Populate HDRI combo from hdris/ directory
     {
@@ -374,7 +460,7 @@ void MainWindow::setupCentralWidget()
 
     // 2D/3D toggle connections
     connect(m_preview2DBtn, &QToolButton::clicked, this,
-            [this, iblRow]()
+            [this, iblRow, iblParamsRow, renderOptsRow]()
             {
                 m_preview3DMode = false;
                 m_preview2DBtn->setChecked(true);
@@ -382,10 +468,12 @@ void MainWindow::setupCentralWidget()
                 m_materialPreview->shapeCombo()->setVisible(false);
                 m_3dControlBar->setVisible(false);
                 iblRow->setVisible(false);
+                iblParamsRow->setVisible(false);
+                renderOptsRow->setVisible(false);
                 refreshPreview();
             });
     connect(m_preview3DBtn, &QToolButton::clicked, this,
-            [this, iblRow]()
+            [this, iblRow, iblParamsRow, renderOptsRow]()
             {
                 m_preview3DMode = true;
                 m_preview2DBtn->setChecked(false);
@@ -393,6 +481,8 @@ void MainWindow::setupCentralWidget()
                 m_materialPreview->shapeCombo()->setVisible(true);
                 m_3dControlBar->setVisible(true);
                 iblRow->setVisible(true);
+                iblParamsRow->setVisible(true);
+                renderOptsRow->setVisible(true);
                 refresh3DPreview();
             });
 
