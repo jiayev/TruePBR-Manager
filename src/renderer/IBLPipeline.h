@@ -64,7 +64,6 @@ class IBLPipeline
                                    ComPtr<ID3D12PipelineState>& outPSO);
 
     // ── Helpers ────────────────────────────────────────────
-    ComPtr<ID3D12Resource> createCBUpload(ID3D12Device* device, uint32_t size);
     ComPtr<ID3D12Resource> createDefaultTexture2D(ID3D12Device* device, int w, int h, DXGI_FORMAT format,
                                                   D3D12_RESOURCE_FLAGS flags, D3D12_RESOURCE_STATES initialState);
     ComPtr<ID3D12Resource> createDefaultTextureCube(ID3D12Device* device, int faceSize, int mipLevels,

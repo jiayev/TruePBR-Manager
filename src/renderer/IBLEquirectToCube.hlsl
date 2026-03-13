@@ -27,7 +27,7 @@ float3 cubemapDirection(uint face, float u, float v)
     case 3: dir = float3( u, -1,  v); break; // -Y
     case 4: dir = float3( u,  v,  1); break; // +Z
     case 5: dir = float3(-u,  v, -1); break; // -Z
-    default: dir = float3(0, 0, 0);
+    default: dir = float3(0, 0, 0); break;
     }
     return normalize(dir);
 }

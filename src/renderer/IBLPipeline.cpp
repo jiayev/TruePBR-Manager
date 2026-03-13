@@ -155,11 +155,12 @@ bool IBLPipeline::createRootSignatureAndPSO(ID3D12Device* device, const char* na
     D3D12_DESCRIPTOR_RANGE srvRange{};
     D3D12_DESCRIPTOR_RANGE uavRange{};
 
-    // [0] inline root CBV b0
+    // [0] root 32-bit constants b0 (4 DWORDs = 16 bytes, all CB structs are this size)
     {
         D3D12_ROOT_PARAMETER p{};
-        p.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-        p.Descriptor.ShaderRegister = 0;
+        p.ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+        p.Constants.ShaderRegister = 0;
+        p.Constants.Num32BitValues = 4;
         p.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
         params.push_back(p);
     }
@@ -231,25 +232,6 @@ bool IBLPipeline::createRootSignatureAndPSO(ID3D12Device* device, const char* na
 // ═══════════════════════════════════════════════════════════
 // Resource helpers
 // ═══════════════════════════════════════════════════════════
-
-ComPtr<ID3D12Resource> IBLPipeline::createCBUpload(ID3D12Device* device, uint32_t size)
-{
-    uint32_t aligned = (size + 255) & ~255;
-    D3D12_HEAP_PROPERTIES hp{};
-    hp.Type = D3D12_HEAP_TYPE_UPLOAD;
-    D3D12_RESOURCE_DESC rd{};
-    rd.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-    rd.Width = aligned;
-    rd.Height = 1;
-    rd.DepthOrArraySize = 1;
-    rd.MipLevels = 1;
-    rd.SampleDesc.Count = 1;
-    rd.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-    ComPtr<ID3D12Resource> res;
-    device->CreateCommittedResource(&hp, D3D12_HEAP_FLAG_NONE, &rd, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                    IID_PPV_ARGS(&res));
-    return res;
-}
 
 ComPtr<ID3D12Resource> IBLPipeline::createDefaultTexture2D(ID3D12Device* device, int w, int h, DXGI_FORMAT format,
                                                            D3D12_RESOURCE_FLAGS flags,
@@ -499,20 +481,13 @@ void IBLPipeline::runEquirectToCubemap(ID3D12Device* device, ID3D12GraphicsComma
                                        ID3D12Resource* equirectTex, ID3D12Resource* outputCubemap, int faceSize,
                                        DescriptorHeap& heap)
 {
-    auto cb = createCBUpload(device, sizeof(EquirectToCubeCB));
     UINT groups = (faceSize + 7) / 8;
 
     for (int face = 0; face < 6; ++face)
     {
-        // Update CB
         EquirectToCubeCB cbData{};
         cbData.faceIndex = face;
         cbData.faceSize = faceSize;
-        void* mapped = nullptr;
-        D3D12_RANGE readRange{0, 0};
-        cb->Map(0, &readRange, &mapped);
-        memcpy(mapped, &cbData, sizeof(cbData));
-        cb->Unmap(0, nullptr);
 
         // Allocate SRV + UAV descriptors
         uint32_t srvIdx = heap.allocate(1);
@@ -541,7 +516,7 @@ void IBLPipeline::runEquirectToCubemap(ID3D12Device* device, ID3D12GraphicsComma
         ID3D12DescriptorHeap* heaps[] = {heap.heap()};
         cmdList->SetDescriptorHeaps(1, heaps);
 
-        cmdList->SetComputeRootConstantBufferView(0, cb->GetGPUVirtualAddress());
+        cmdList->SetComputeRoot32BitConstants(0, 4, &cbData, 0);
         cmdList->SetComputeRootDescriptorTable(1, heap.gpuHandle(srvIdx));
         cmdList->SetComputeRootDescriptorTable(2, heap.gpuHandle(uavIdx));
 
@@ -563,7 +538,6 @@ void IBLPipeline::runIrradiance(ID3D12Device* device, ID3D12GraphicsCommandList*
                                 ID3D12Resource* outputIrradiance, int /*inputSize*/, int outputSize,
                                 DescriptorHeap& heap)
 {
-    auto cb = createCBUpload(device, sizeof(IrradianceCB));
     UINT groups = (outputSize + 7) / 8;
 
     for (int face = 0; face < 6; ++face)
@@ -572,11 +546,6 @@ void IBLPipeline::runIrradiance(ID3D12Device* device, ID3D12GraphicsCommandList*
         cbData.faceIndex = face;
         cbData.outputSize = outputSize;
         cbData.sampleCount = 512;
-        void* mapped = nullptr;
-        D3D12_RANGE readRange{0, 0};
-        cb->Map(0, &readRange, &mapped);
-        memcpy(mapped, &cbData, sizeof(cbData));
-        cb->Unmap(0, nullptr);
 
         uint32_t srvIdx = heap.allocate(1);
         uint32_t uavIdx = heap.allocate(1);
@@ -603,7 +572,7 @@ void IBLPipeline::runIrradiance(ID3D12Device* device, ID3D12GraphicsCommandList*
         ID3D12DescriptorHeap* heaps[] = {heap.heap()};
         cmdList->SetDescriptorHeaps(1, heaps);
 
-        cmdList->SetComputeRootConstantBufferView(0, cb->GetGPUVirtualAddress());
+        cmdList->SetComputeRoot32BitConstants(0, 4, &cbData, 0);
         cmdList->SetComputeRootDescriptorTable(1, heap.gpuHandle(srvIdx));
         cmdList->SetComputeRootDescriptorTable(2, heap.gpuHandle(uavIdx));
 
@@ -624,8 +593,6 @@ void IBLPipeline::runPrefilter(ID3D12Device* device, ID3D12GraphicsCommandList* 
                                ID3D12Resource* outputPrefiltered, int /*inputSize*/, int outputSize, int mipLevels,
                                DescriptorHeap& heap)
 {
-    auto cb = createCBUpload(device, sizeof(PrefilterCB));
-
     for (int mip = 0; mip < mipLevels; ++mip)
     {
         int mipSize = std::max(outputSize >> mip, 1);
@@ -641,11 +608,6 @@ void IBLPipeline::runPrefilter(ID3D12Device* device, ID3D12GraphicsCommandList* 
             cbData.outputSize = mipSize;
             cbData.sampleCount = 256;
             cbData.roughness = roughness;
-            void* mapped = nullptr;
-            D3D12_RANGE readRange{0, 0};
-            cb->Map(0, &readRange, &mapped);
-            memcpy(mapped, &cbData, sizeof(cbData));
-            cb->Unmap(0, nullptr);
 
             uint32_t srvIdx = heap.allocate(1);
             uint32_t uavIdx = heap.allocate(1);
@@ -672,7 +634,7 @@ void IBLPipeline::runPrefilter(ID3D12Device* device, ID3D12GraphicsCommandList* 
             ID3D12DescriptorHeap* heaps[] = {heap.heap()};
             cmdList->SetDescriptorHeaps(1, heaps);
 
-            cmdList->SetComputeRootConstantBufferView(0, cb->GetGPUVirtualAddress());
+            cmdList->SetComputeRoot32BitConstants(0, 4, &cbData, 0);
             cmdList->SetComputeRootDescriptorTable(1, heap.gpuHandle(srvIdx));
             cmdList->SetComputeRootDescriptorTable(2, heap.gpuHandle(uavIdx));
 
@@ -693,16 +655,9 @@ void IBLPipeline::runPrefilter(ID3D12Device* device, ID3D12GraphicsCommandList* 
 void IBLPipeline::runBrdfLut(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ID3D12Resource* outputLut,
                              int lutSize, DescriptorHeap& heap)
 {
-    auto cb = createCBUpload(device, sizeof(BrdfLutCB));
-
     BrdfLutCB cbData{};
     cbData.lutSize = lutSize;
     cbData.sampleCount = 1024;
-    void* mapped = nullptr;
-    D3D12_RANGE readRange{0, 0};
-    cb->Map(0, &readRange, &mapped);
-    memcpy(mapped, &cbData, sizeof(cbData));
-    cb->Unmap(0, nullptr);
 
     uint32_t uavIdx = heap.allocate(1);
 
@@ -719,7 +674,7 @@ void IBLPipeline::runBrdfLut(ID3D12Device* device, ID3D12GraphicsCommandList* cm
     ID3D12DescriptorHeap* heaps[] = {heap.heap()};
     cmdList->SetDescriptorHeaps(1, heaps);
 
-    cmdList->SetComputeRootConstantBufferView(0, cb->GetGPUVirtualAddress());
+    cmdList->SetComputeRoot32BitConstants(0, 4, &cbData, 0);
     cmdList->SetComputeRootDescriptorTable(1, heap.gpuHandle(uavIdx));
 
     UINT groups = (lutSize + 7) / 8;
