@@ -68,7 +68,7 @@ PreviewMesh MeshGenerator::generatePlane()
     v.uv[1] = 0;
     mesh.vertices.push_back(v);
 
-    mesh.indices = {0, 1, 2, 0, 2, 3};
+    mesh.indices = {0, 2, 1, 0, 3, 2};
     return mesh;
 }
 
@@ -181,11 +181,11 @@ PreviewMesh MeshGenerator::generateCube()
             mesh.vertices.push_back(v);
         }
         mesh.indices.push_back(base);
+        mesh.indices.push_back(base + 2);
         mesh.indices.push_back(base + 1);
-        mesh.indices.push_back(base + 2);
         mesh.indices.push_back(base);
-        mesh.indices.push_back(base + 2);
         mesh.indices.push_back(base + 3);
+        mesh.indices.push_back(base + 2);
     }
 
     return mesh;
