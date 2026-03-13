@@ -615,9 +615,10 @@ void D3D12Renderer::render()
     XMMATRIX proj = XMMatrixPerspectiveFovLH(XM_PIDIV4, aspect, 0.01f, 100.0f);
     XMMATRIX wvp = world * view * proj;
 
-    XMStoreFloat4x4(&m_sceneCBMapped->worldViewProj, XMMatrixTranspose(wvp));
-    XMStoreFloat4x4(&m_sceneCBMapped->world, XMMatrixTranspose(world));
-    XMStoreFloat4x4(&m_sceneCBMapped->worldInvTranspose, world); // Identity is self-inverse-transpose
+    XMStoreFloat4x4(&m_sceneCBMapped->worldViewProj, wvp);
+    XMStoreFloat4x4(&m_sceneCBMapped->world, world);
+    XMMATRIX worldInvTranspose = XMMatrixTranspose(XMMatrixInverse(nullptr, world));
+    XMStoreFloat4x4(&m_sceneCBMapped->worldInvTranspose, worldInvTranspose);
     m_sceneCBMapped->cameraPos = {camX, camY, camZ};
     m_sceneCBMapped->lightDir = m_lightDir;
     m_sceneCBMapped->lightColor = {1.0f, 1.0f, 1.0f};

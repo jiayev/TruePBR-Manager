@@ -5,12 +5,12 @@
 
 cbuffer SceneCB : register(b0)
 {
-    float4x4 g_WorldViewProj;
-    float4x4 g_World;
-    float4x4 g_WorldInvTranspose;
+    row_major float4x4 g_WorldViewProj;
+    row_major float4x4 g_World;
+    row_major float4x4 g_WorldInvTranspose;
     float3 g_CameraPos;
     float _pad0;
-    float3 g_LightDir;      // normalized, towards light
+    float3 g_LightDir; // normalized, towards light
     float _pad1;
     float3 g_LightColor;
     float g_LightIntensity;
@@ -26,9 +26,9 @@ cbuffer MaterialCB : register(b1)
 
 // ─── Textures & Samplers ───────────────────────────────────
 
-Texture2D g_Diffuse  : register(t0);   // sRGB base color RGB + opacity A
-Texture2D g_Normal   : register(t1);   // Normal map (DX convention)
-Texture2D g_RMAOS    : register(t2);   // R=Roughness G=Metallic B=AO A=Specular
+Texture2D g_Diffuse : register(t0);  // sRGB base color RGB + opacity A
+Texture2D g_Normal : register(t1);   // Normal map (DX convention)
+Texture2D g_RMAOS : register(t2);    // R=Roughness G=Metallic B=AO A=Specular
 
 SamplerState g_Sampler : register(s0);
 
@@ -37,19 +37,19 @@ SamplerState g_Sampler : register(s0);
 struct VSInput
 {
     float3 position : POSITION;
-    float3 normal   : NORMAL;
-    float4 tangent  : TANGENT;  // xyz = tangent, w = handedness sign
-    float2 uv       : TEXCOORD0;
+    float3 normal : NORMAL;
+    float4 tangent : TANGENT; // xyz = tangent, w = handedness sign
+    float2 uv : TEXCOORD0;
 };
 
 struct PSInput
 {
     float4 positionCS : SV_POSITION;
     float3 positionWS : TEXCOORD0;
-    float3 normalWS   : TEXCOORD1;
-    float3 tangentWS  : TEXCOORD2;
-    float3 bitangentWS: TEXCOORD3;
-    float2 uv         : TEXCOORD4;
+    float3 normalWS : TEXCOORD1;
+    float3 tangentWS : TEXCOORD2;
+    float3 bitangentWS : TEXCOORD3;
+    float2 uv : TEXCOORD4;
 };
 
 // ─── Vertex Shader ─────────────────────────────────────────
@@ -57,12 +57,12 @@ struct PSInput
 PSInput VSMain(VSInput input)
 {
     PSInput output;
-    output.positionCS  = mul(float4(input.position, 1.0), g_WorldViewProj);
-    output.positionWS  = mul(float4(input.position, 1.0), g_World).xyz;
-    output.normalWS    = normalize(mul(float4(input.normal, 0.0), g_WorldInvTranspose).xyz);
-    output.tangentWS   = normalize(mul(float4(input.tangent.xyz, 0.0), g_World).xyz);
+    output.positionCS = mul(float4(input.position, 1.0), g_WorldViewProj);
+    output.positionWS = mul(float4(input.position, 1.0), g_World).xyz;
+    output.normalWS = normalize(mul(input.normal, (float3x3)g_WorldInvTranspose));
+    output.tangentWS = normalize(mul(input.tangent.xyz, (float3x3)g_World));
     output.bitangentWS = cross(output.normalWS, output.tangentWS) * input.tangent.w;
-    output.uv          = input.uv;
+    output.uv = input.uv;
     return output;
 }
 
@@ -73,7 +73,7 @@ static const float PI = 3.14159265359;
 // GGX/Trowbridge-Reitz normal distribution
 float DistributionGGX(float NdotH, float roughness)
 {
-    float a  = roughness * roughness;
+    float a = roughness * roughness;
     float a2 = a * a;
     float denom = NdotH * NdotH * (a2 - 1.0) + 1.0;
     return a2 / (PI * denom * denom + 0.0001);
@@ -99,26 +99,79 @@ float3 FresnelSchlick(float cosTheta, float3 F0)
     return F0 + (1.0 - F0) * pow(saturate(1.0 - cosTheta), 5.0);
 }
 
+// ─── AgX Tone Mapping ──────────────────────────────────────
+// Based on the AgX tone mapper by Troy Sobotka
+// Reference: https://iolite-engine.com/blog_posts/minimal_agx_implementation
+
+// AgX log2 encoding matrix (sRGB to AgX working space)
+static const float3x3 AgXInsetMatrix = {
+    0.842479062253094,  0.0423282422610123, 0.0423756549057051,
+    0.0784335999999992, 0.878468636469772,  0.0784336,
+    0.0792237451477643, 0.0791661274605434, 0.879142973793104,
+};
+
+// AgX decode matrix (AgX working space to sRGB)
+static const float3x3 AgXOutsetMatrix = {
+     1.19687900512017,  -0.0528968517574562, -0.0529716355144438,
+    -0.0980208811401368, 1.15190312990417,   -0.0980434066481422,
+    -0.0990297440797205,-0.0989611768448433,  1.15107367264116,
+};
+
+float3 agxDefaultContrastApprox(float3 x)
+{
+    // 6th order polynomial fit
+    float3 x2 = x * x;
+    float3 x4 = x2 * x2;
+
+    return +15.5 * x4 * x2
+           - 40.14 * x4 * x
+           + 31.96 * x4
+           - 6.868 * x2 * x
+           + 0.4298 * x2
+           + 0.1191 * x
+           - 0.00232;
+}
+
+float3 agxToneMap(float3 color)
+{
+    const float minEv = -12.47393f;
+    const float maxEv = 4.026069f;
+
+    color = mul(color, AgXInsetMatrix);
+    color = clamp(log2(color), minEv, maxEv);
+    color = (color - minEv) / (maxEv - minEv);
+    color = agxDefaultContrastApprox(color);
+
+    return color;
+}
+
+float3 agxEotf(float3 color)
+{
+    color = mul(color, AgXOutsetMatrix);
+    // sRGB EOTF (linearize then re-encode)
+    color = pow(max(float3(0, 0, 0), color), 2.2);
+    color = pow(max(float3(0, 0, 0), color), 1.0 / 2.2);
+    return color;
+}
+
 // ─── Pixel Shader ──────────────────────────────────────────
 
 float4 PSMain(PSInput input) : SV_TARGET
 {
     // Sample textures
     float4 albedoSample = g_Diffuse.Sample(g_Sampler, input.uv);
-    float3 albedo       = albedoSample.rgb;
-    float  alpha        = albedoSample.a;
+    float3 albedo = albedoSample.rgb;
+    float alpha = albedoSample.a;
 
-    float3 normalTS     = g_Normal.Sample(g_Sampler, input.uv).rgb;
-    normalTS            = normalTS * 2.0 - 1.0;
-    // DX normal convention: Y is already correct (no flip needed)
+    float3 normalTS = g_Normal.Sample(g_Sampler, input.uv).rgb;
+    normalTS = normalTS * 2.0 - 1.0;
 
-    float4 rmaos        = g_RMAOS.Sample(g_Sampler, input.uv);
-    float  roughness    = rmaos.r * g_RoughnessScale;
-    float  metallic     = rmaos.g;
-    float  ao           = rmaos.b;
-    float  specularMap  = rmaos.a;
+    float4 rmaos = g_RMAOS.Sample(g_Sampler, input.uv);
+    float roughness = rmaos.r * g_RoughnessScale;
+    float metallic = rmaos.g;
+    float ao = rmaos.b;
+    float specularMap = rmaos.a;
 
-    // Clamp roughness to avoid division by zero
     roughness = clamp(roughness, 0.04, 1.0);
 
     // Build TBN matrix and transform normal to world space
@@ -139,36 +192,35 @@ float4 PSMain(PSInput input) : SV_TARGET
     float HdotV = max(dot(H, V), 0.0);
 
     // F0: reflectance at normal incidence
-    // For dielectrics: specularLevel * specularMap (from RMAOS alpha)
-    // For metals: albedo color
     float3 F0 = lerp(float3(1, 1, 1) * g_SpecularLevel * specularMap, albedo, metallic);
 
     // Cook-Torrance BRDF
-    float  D = DistributionGGX(NdotH, roughness);
-    float  G = GeometrySmith(NdotV, NdotL, roughness);
+    float D = DistributionGGX(NdotH, roughness);
+    float G = GeometrySmith(NdotV, NdotL, roughness);
     float3 F = FresnelSchlick(HdotV, F0);
 
     float3 specular = (D * G * F) / (4.0 * NdotV * NdotL + 0.0001);
 
-    // Diffuse: only for non-metallic parts
+    // Diffuse
     float3 kD = (1.0 - F) * (1.0 - metallic);
     float3 diffuse = kD * albedo / PI;
 
-    // Final color
+    // Final color (linear HDR)
     float3 radiance = g_LightColor * g_LightIntensity;
     float3 color = (diffuse + specular) * radiance * NdotL;
 
     // Apply AO
     color *= ao;
 
-    // Simple ambient (very low, just to prevent pure black shadows)
-    color += albedo * 0.03 * ao;
+    // Ambient (hemisphere approximation)
+    float3 ambient = albedo * 0.04 * ao;
+    color += ambient;
 
-    // Tone mapping (Reinhard)
-    color = color / (color + 1.0);
+    // AgX tone mapping
+    color = max(float3(0, 0, 0), color); // Ensure non-negative before log
+    color = agxToneMap(color);
+    color = agxEotf(color);
 
-    // Gamma correction (linear -> sRGB)
-    color = pow(color, 1.0 / 2.2);
-
-    return float4(color, alpha);
+    // Output is already in sRGB after AgX EOTF
+    return float4(saturate(color), alpha);
 }
