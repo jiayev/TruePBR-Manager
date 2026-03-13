@@ -18,6 +18,8 @@ cbuffer SceneCB : register(b0)
     float g_MaxPrefilteredMip;
     float _pad2;
     float _pad3;
+    float4 g_SH[4];  // Pre-convolved SH2 radiance: [0]=DC, [1]=L1y, [2]=L1z, [3]=L1x
+    float4 g_ZH3;    // Pre-convolved ZH3 zonal L2 coefficient (.xyz = RGB)
 };
 
 cbuffer MaterialCB : register(b1)
@@ -33,9 +35,8 @@ cbuffer MaterialCB : register(b1)
 Texture2D g_Diffuse : register(t0);             // sRGB base color RGB + opacity A
 Texture2D g_Normal : register(t1);              // Normal map (DX convention)
 Texture2D g_RMAOS : register(t2);               // R=Roughness G=Metallic B=AO A=Specular
-TextureCube g_IrradianceMap : register(t3);      // Diffuse IBL (irradiance cubemap)
-TextureCube g_PrefilteredMap : register(t4);     // Specular IBL (prefiltered cubemap with mips)
-Texture2D g_BRDFLut : register(t5);             // BRDF integration LUT
+TextureCube g_PrefilteredMap : register(t3);     // Specular IBL (prefiltered cubemap with mips)
+Texture2D g_BRDFLut : register(t4);             // BRDF integration LUT
 
 SamplerState g_Sampler : register(s0);           // Linear wrap
 SamplerState g_ClampSampler : register(s1);      // Linear clamp (for BRDF LUT)
@@ -209,8 +210,28 @@ float4 PSMain(PSInput input) : SV_TARGET
         float3 F_ibl = FresnelSchlickRoughness(NdotV, F0, roughness);
         float3 kD_ibl = (1.0 - F_ibl) * (1.0 - metallic);
 
-        // Diffuse IBL: sample irradiance cubemap
-        float3 irradiance = g_IrradianceMap.Sample(g_Sampler, N).rgb;
+        // Diffuse IBL: ZH3 evaluation (Roughton et al. 2024)
+        // Luminance zonal axis from pre-convolved SH2 (A_1 cancels in normalize)
+        const float3 lumCoeffs = float3(0.2126, 0.7152, 0.0722);
+        float3 l1_lum = float3(
+            dot(g_SH[3].xyz, lumCoeffs),  // x
+            dot(g_SH[1].xyz, lumCoeffs),  // y
+            dot(g_SH[2].xyz, lumCoeffs)   // z
+        );
+        float l1Len = length(l1_lum);
+        float3 zonalAxis = (l1Len > 1e-6) ? (l1_lum / l1Len) : float3(0, 1, 0);
+
+        // Linear SH irradiance (pre-convolved coefficients × basis functions)
+        float3 irradiance = g_SH[0].xyz * 0.282095
+                          + g_SH[1].xyz * (0.488603 * N.y)
+                          + g_SH[2].xyz * (0.488603 * N.z)
+                          + g_SH[3].xyz * (0.488603 * N.x);
+
+        // ZH3 quadratic zonal term
+        float fZ = dot(zonalAxis, N);
+        float zhBasis = sqrt(5.0 / (16.0 * PI)) * (3.0 * fZ * fZ - 1.0);
+        irradiance += g_ZH3.xyz * zhBasis;
+        irradiance = max(irradiance, float3(0, 0, 0));
         float3 iblDiffuse = kD_ibl * albedo * irradiance;
 
         // Specular IBL: sample prefiltered map + BRDF LUT

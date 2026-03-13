@@ -304,6 +304,7 @@ bool D3D12Renderer::createRootSignatureAndPSO()
     samplers[0].AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
     samplers[0].AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
     samplers[0].AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    samplers[0].MaxLOD = D3D12_FLOAT32_MAX;
     samplers[0].ShaderRegister = 0;
     samplers[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
@@ -312,6 +313,7 @@ bool D3D12Renderer::createRootSignatureAndPSO()
     samplers[1].AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
     samplers[1].AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
     samplers[1].AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    samplers[1].MaxLOD = D3D12_FLOAT32_MAX;
     samplers[1].ShaderRegister = 1;
     samplers[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
@@ -508,25 +510,21 @@ void D3D12Renderer::createDefaultTextures()
 
 void D3D12Renderer::createDefaultIBL()
 {
-    // 1x1 dummy cubemaps so shader doesn't crash when IBL is not loaded
-    // Irradiance: dark grey
-    {
-        float irr[] = {0.02f, 0.02f, 0.02f, 1.0f};
-        std::vector<float> face(irr, irr + 4);
-        std::vector<float> faces[6] = {face, face, face, face, face, face};
-        uploadCubemap(3, m_irradianceCubemap, faces, 1, 1);
-    }
-    // Prefiltered: dark grey
+    // Default ZH3: dark ambient
+    std::memset(m_zh3Data, 0, sizeof(m_zh3Data));
+    m_zh3Data[0][0] = m_zh3Data[0][1] = m_zh3Data[0][2] = 0.02f;
+
+    // Prefiltered: 1x1 dark grey dummy cubemap
     {
         float pref[] = {0.02f, 0.02f, 0.02f, 1.0f};
         std::vector<float> face(pref, pref + 4);
         std::vector<float> faces[6] = {face, face, face, face, face, face};
-        uploadCubemap(4, m_prefilteredCubemap, faces, 1, 1);
+        uploadCubemap(3, m_prefilteredCubemap, faces, 1, 1);
     }
     // BRDF LUT: default (0.5, 0.0)
     {
         float lut[] = {0.5f, 0.0f};
-        uploadBRDFLut(5, lut, 1);
+        uploadBRDFLut(4, lut, 1);
     }
     m_maxPrefilteredMip = 0;
 }
@@ -981,10 +979,27 @@ void D3D12Renderer::setTextures(const uint8_t* diffuseRGBA, int diffuseW, int di
 {
     if (diffuseRGBA && diffuseW > 0 && diffuseH > 0)
         uploadTexture(0, diffuseRGBA, diffuseW, diffuseH, true);
+    else
+    {
+        uint8_t whiteDiffuse[] = {255, 255, 255, 255};
+        uploadTexture(0, whiteDiffuse, 1, 1, true);
+    }
+
     if (normalRGBA && normalW > 0 && normalH > 0)
         uploadTexture(1, normalRGBA, normalW, normalH, false);
+    else
+    {
+        uint8_t flatNormal[] = {128, 128, 255, 255};
+        uploadTexture(1, flatNormal, 1, 1, false);
+    }
+
     if (rmaosRGBA && rmaosW > 0 && rmaosH > 0)
         uploadTexture(2, rmaosRGBA, rmaosW, rmaosH, false);
+    else
+    {
+        uint8_t defaultRMAOS[] = {128, 0, 255, 255};
+        uploadTexture(2, defaultRMAOS, 1, 1, false);
+    }
 }
 
 void D3D12Renderer::setMaterialParams(float specularLevel, float roughnessScale)
@@ -1096,6 +1111,10 @@ void D3D12Renderer::render()
     frame.sceneCBMapped->lightIntensity = m_lightIntensity;
     frame.sceneCBMapped->iblIntensity = m_iblLoaded ? m_iblIntensity : 0.0f;
     frame.sceneCBMapped->maxPrefilteredMip = static_cast<float>(m_maxPrefilteredMip);
+    for (int i = 0; i < 5; i++)
+    {
+        frame.sceneCBMapped->zh3Data[i] = {m_zh3Data[i][0], m_zh3Data[i][1], m_zh3Data[i][2], m_zh3Data[i][3]};
+    }
 
     frame.materialCBMapped->specularLevel = m_specularLevel;
     frame.materialCBMapped->roughnessScale = m_roughnessScale;
@@ -1231,36 +1250,31 @@ bool D3D12Renderer::loadIBL(const std::filesystem::path& hdriPath)
     {
         flushGPU();
         IBLResult ibl =
-            m_iblPipeline->process(m_device.Get(), m_directQueue.Get(), equirect.data(), eqW, eqH, 64, 256, 256);
+            m_iblPipeline->process(m_device.Get(), m_directQueue.Get(), equirect.data(), eqW, eqH, 256, 256);
         if (ibl.valid)
         {
             // Transfer ownership and create SRVs
-            m_irradianceCubemap = std::move(ibl.irradianceCubemap);
+            std::memcpy(m_zh3Data, ibl.zh3Data, sizeof(m_zh3Data));
             m_prefilteredCubemap = std::move(ibl.prefilteredCubemap);
             m_brdfLut = std::move(ibl.brdfLut);
             m_maxPrefilteredMip = ibl.prefilteredMipLevels - 1;
 
-            // Create cubemap SRV for irradiance (slot 3)
+            // Create cubemap SRV for prefiltered (slot 3)
             D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
             srvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
             srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
             srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-            srvDesc.TextureCube.MipLevels = 1;
-            m_device->CreateShaderResourceView(m_irradianceCubemap.Get(), &srvDesc,
-                                               m_srvHeap.cpuHandle(m_srvBaseIndex + 3));
-
-            // Create cubemap SRV for prefiltered (slot 4)
             srvDesc.TextureCube.MipLevels = ibl.prefilteredMipLevels;
             m_device->CreateShaderResourceView(m_prefilteredCubemap.Get(), &srvDesc,
-                                               m_srvHeap.cpuHandle(m_srvBaseIndex + 4));
+                                               m_srvHeap.cpuHandle(m_srvBaseIndex + 3));
 
-            // Create 2D SRV for BRDF LUT (slot 5)
+            // Create 2D SRV for BRDF LUT (slot 4)
             D3D12_SHADER_RESOURCE_VIEW_DESC lutSrvDesc{};
             lutSrvDesc.Format = DXGI_FORMAT_R32G32_FLOAT;
             lutSrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
             lutSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
             lutSrvDesc.Texture2D.MipLevels = 1;
-            m_device->CreateShaderResourceView(m_brdfLut.Get(), &lutSrvDesc, m_srvHeap.cpuHandle(m_srvBaseIndex + 5));
+            m_device->CreateShaderResourceView(m_brdfLut.Get(), &lutSrvDesc, m_srvHeap.cpuHandle(m_srvBaseIndex + 4));
 
             m_iblLoaded = true;
             m_iblIntensity = 1.0f;
@@ -1278,16 +1292,19 @@ bool D3D12Renderer::loadIBL(const std::filesystem::path& hdriPath)
         return false;
     }
 
-    uploadCubemap(3, m_irradianceCubemap, data.irradianceFaces, data.irradianceSize, 1);
+    // Compute ZH3 from equirect pixels (CPU fallback)
+    {
+        IBLPipeline::computeZH3CPU(equirect.data(), eqW, eqH, m_zh3Data);
+    }
 
     if (data.prefilteredMipLevels > 0)
     {
-        uploadCubemapMipped(4, m_prefilteredCubemap, data.prefilteredFaces, data.prefilteredSize,
+        uploadCubemapMipped(3, m_prefilteredCubemap, data.prefilteredFaces, data.prefilteredSize,
                             data.prefilteredMipLevels);
         m_maxPrefilteredMip = data.prefilteredMipLevels - 1;
     }
 
-    uploadBRDFLut(5, data.brdfLutPixels.data(), data.brdfLutSize);
+    uploadBRDFLut(4, data.brdfLutPixels.data(), data.brdfLutSize);
 
     m_iblLoaded = true;
     m_iblIntensity = 1.0f;

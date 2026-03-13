@@ -37,10 +37,11 @@ struct SceneCBData
     float lightIntensity;                  // 4 bytes
     float iblIntensity;                    // 4 bytes
     float maxPrefilteredMip;               // 4 bytes
-    float _pad2;                           // 8 bytes
-    float _pad3;
+    float _pad2;                           // 4 bytes
+    float _pad3;                           // 4 bytes
+    // ZH3 irradiance: pre-convolved SH2 + ZH3 zonal coefficient
+    DirectX::XMFLOAT4 zh3Data[5]; // 80 bytes  => total 336 bytes
 };
-static_assert(sizeof(SceneCBData) == 256, "SceneCBData must be exactly 256 bytes");
 
 /// Material constant buffer data (matches cbuffer MaterialCB in shader).
 struct MaterialCBData
@@ -193,7 +194,7 @@ class D3D12Renderer
     DescriptorHeap m_srvHeap; // Shader-visible, CBV/SRV/UAV
 
     // SRV slot indices within m_srvHeap
-    static constexpr uint32_t SRVCount = 6; // diffuse, normal, rmaos, irradiance, prefiltered, brdfLut
+    static constexpr uint32_t SRVCount = 5; // diffuse, normal, rmaos, prefiltered, brdfLut
     uint32_t m_srvBaseIndex = 0;            // First SRV slot index in heap
 
     // Depth
@@ -203,12 +204,12 @@ class D3D12Renderer
     std::array<ComPtr<ID3D12Resource>, 3> m_textures; // diffuse, normal, rmaos
 
     // IBL resources
-    ComPtr<ID3D12Resource> m_irradianceCubemap;
     ComPtr<ID3D12Resource> m_prefilteredCubemap;
     ComPtr<ID3D12Resource> m_brdfLut;
     bool m_iblLoaded = false;
     float m_iblIntensity = 1.0f;
     int m_maxPrefilteredMip = 0;
+    float m_zh3Data[5][4] = {}; // Pre-convolved ZH3: SH2[0..3] + ZH3 coefficient
 
     // IBL pipeline (GPU compute)
     std::unique_ptr<IBLPipeline> m_iblPipeline;

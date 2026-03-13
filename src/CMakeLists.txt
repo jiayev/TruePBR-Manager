@@ -193,8 +193,11 @@ add_custom_command(TARGET TruePBR-Manager POST_BUILD
         "${CMAKE_CURRENT_SOURCE_DIR}/renderer/IBLEquirectToCube.hlsl"
         "${DIST_DIR}/shaders/IBLEquirectToCube.hlsl"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "${CMAKE_CURRENT_SOURCE_DIR}/renderer/IBLIrradiance.hlsl"
-        "${DIST_DIR}/shaders/IBLIrradiance.hlsl"
+        "${CMAKE_CURRENT_SOURCE_DIR}/renderer/IBLProjectSH.hlsl"
+        "${DIST_DIR}/shaders/IBLProjectSH.hlsl"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/renderer/IBLReduceSH.hlsl"
+        "${DIST_DIR}/shaders/IBLReduceSH.hlsl"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${CMAKE_CURRENT_SOURCE_DIR}/renderer/IBLPrefilter.hlsl"
         "${DIST_DIR}/shaders/IBLPrefilter.hlsl"

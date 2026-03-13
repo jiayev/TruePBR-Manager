@@ -17,8 +17,7 @@ using Microsoft::WRL::ComPtr;
 /// GPU IBL processing result — resources ready for rendering.
 struct IBLResult
 {
-    ComPtr<ID3D12Resource> irradianceCubemap; // 6-face cubemap, RGBA32F
-    int irradianceSize = 0;
+    float zh3Data[5][4] = {}; // Pre-convolved ZH3: SH2[0..3] + ZH3 coefficient, each float4 (.xyz=RGB)
 
     ComPtr<ID3D12Resource> prefilteredCubemap; // 6-face cubemap with mip chain, RGBA32F
     int prefilteredSize = 0;
@@ -31,8 +30,8 @@ struct IBLResult
 };
 
 /// GPU compute pipeline for IBL processing.
-/// Runs equirect-to-cubemap, irradiance convolution, specular prefiltering,
-/// and BRDF LUT generation entirely on the GPU via compute shaders.
+/// Runs equirect-to-cubemap, SH3 projection + ZH3 extraction,
+/// specular prefiltering, and BRDF LUT generation on the GPU.
 class IBLPipeline
 {
   public:
@@ -46,10 +45,13 @@ class IBLPipeline
     bool init(ID3D12Device* device);
 
     /// Process equirectangular HDRI (float RGBA pixels already loaded on CPU).
-    /// Uploads the equirect texture, runs 4 GPU compute passes, returns
+    /// Uploads the equirect texture, runs GPU compute passes, returns
     /// IBL resources in PIXEL_SHADER_RESOURCE state.
     IBLResult process(ID3D12Device* device, ID3D12CommandQueue* directQueue, const float* equirectPixels, int equirectW,
-                      int equirectH, int irradianceSize = 64, int prefilteredSize = 256, int brdfLutSize = 256);
+                      int equirectH, int prefilteredSize = 256, int brdfLutSize = 256);
+
+    /// CPU fallback: project equirect to ZH3 coefficients (for when GPU pipeline unavailable).
+    static void computeZH3CPU(const float* pixels, int w, int h, float outZH3[5][4]);
 
     bool isInitialized() const
     {
@@ -61,7 +63,7 @@ class IBLPipeline
     bool compileComputeShader(const std::filesystem::path& hlslPath, const char* entryPoint, ComPtr<ID3DBlob>& outBlob);
     bool createRootSignatureAndPSO(ID3D12Device* device, const char* name, const ComPtr<ID3DBlob>& csBlob, int numSRVs,
                                    int numUAVs, int numSamplers, ComPtr<ID3D12RootSignature>& outRS,
-                                   ComPtr<ID3D12PipelineState>& outPSO);
+                                   ComPtr<ID3D12PipelineState>& outPSO, int numRootConstants = 4);
 
     // ── Helpers ────────────────────────────────────────────
     ComPtr<ID3D12Resource> createDefaultTexture2D(ID3D12Device* device, int w, int h, DXGI_FORMAT format,
@@ -69,17 +71,22 @@ class IBLPipeline
     ComPtr<ID3D12Resource> createDefaultTextureCube(ID3D12Device* device, int faceSize, int mipLevels,
                                                     DXGI_FORMAT format, D3D12_RESOURCE_FLAGS flags,
                                                     D3D12_RESOURCE_STATES initialState);
+    ComPtr<ID3D12Resource> createDefaultBuffer(ID3D12Device* device, UINT64 size, D3D12_RESOURCE_FLAGS flags,
+                                               D3D12_RESOURCE_STATES initialState);
 
     // ── Individual compute passes ──────────────────────────
     void runEquirectToCubemap(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ID3D12Resource* equirectTex,
                               ID3D12Resource* outputCubemap, int faceSize, DescriptorHeap& heap);
-    void runIrradiance(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ID3D12Resource* inputCubemap,
-                       ID3D12Resource* outputIrradiance, int inputSize, int outputSize, DescriptorHeap& heap);
     void runPrefilter(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ID3D12Resource* inputCubemap,
                       ID3D12Resource* outputPrefiltered, int inputSize, int outputSize, int mipLevels,
                       DescriptorHeap& heap);
     void runBrdfLut(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ID3D12Resource* outputLut, int lutSize,
                     DescriptorHeap& heap);
+    void runSH3Projection(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ID3D12Resource* equirectTex,
+                          ID3D12Resource* partialSumsBuf, int equirectW, int equirectH, int numGroups,
+                          DescriptorHeap& heap);
+    void runSHReduction(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ID3D12Resource* partialSumsBuf,
+                        ID3D12Resource* zh3OutBuf, int numGroups, DescriptorHeap& heap);
 
     bool m_initialized = false;
 
@@ -87,14 +94,17 @@ class IBLPipeline
     ComPtr<ID3D12RootSignature> m_equirectRS;
     ComPtr<ID3D12PipelineState> m_equirectPSO;
 
-    ComPtr<ID3D12RootSignature> m_irradianceRS;
-    ComPtr<ID3D12PipelineState> m_irradiancePSO;
-
     ComPtr<ID3D12RootSignature> m_prefilterRS;
     ComPtr<ID3D12PipelineState> m_prefilterPSO;
 
     ComPtr<ID3D12RootSignature> m_brdfLutRS;
     ComPtr<ID3D12PipelineState> m_brdfLutPSO;
+
+    ComPtr<ID3D12RootSignature> m_shProjectRS;
+    ComPtr<ID3D12PipelineState> m_shProjectPSO;
+
+    ComPtr<ID3D12RootSignature> m_shReduceRS;
+    ComPtr<ID3D12PipelineState> m_shReducePSO;
 
     // Transient command infrastructure (created in process(), destroyed after)
     ComPtr<ID3D12CommandAllocator> m_cmdAllocator;
