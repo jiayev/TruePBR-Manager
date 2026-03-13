@@ -244,3 +244,19 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/resources/HDRIs")
         COMMENT "Copying built-in HDRIs to dist/..."
     )
 endif()
+
+# --- Optional: pack dist into a zip ---
+option(TRUEPBR_PACK "Create a zip archive of the dist folder after build" OFF)
+
+if(TRUEPBR_PACK)
+    set(PACK_DIR "${CMAKE_SOURCE_DIR}/dist/package")
+    set(PACK_NAME "TruePBR-Manager-${PROJECT_VERSION}")
+
+    add_custom_target(pack ALL
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${PACK_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E tar cf "${PACK_DIR}/${PACK_NAME}.zip" --format=zip -- "TruePBR-Manager"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/dist"
+        COMMENT "Packing dist into ${PACK_DIR}/${PACK_NAME}.zip ..."
+    )
+    add_dependencies(pack TruePBR-Manager copy_shaders)
+endif()

@@ -22,6 +22,12 @@ if not exist "%VCPKG_ROOT%\scripts\buildsystems\vcpkg.cmake" (
     exit /b 1
 )
 
+REM --- Parse arguments ---
+set "PACK_FLAG="
+for %%A in (%*) do (
+    if /I "%%A"=="--pack" set "PACK_FLAG=-DTRUEPBR_PACK=ON"
+)
+
 REM Save user's VCPKG_ROOT before vcvarsall potentially overwrites it
 set "USER_VCPKG_ROOT=%VCPKG_ROOT%"
 set "SRC_DIR=%~dp0"
@@ -90,7 +96,7 @@ echo Build:            %BUILD_DIR%
 echo.
 
 REM --- Configure ---
-cmake -S "%SRC_DIR%." -B "%BUILD_DIR%" -G "!GENERATOR!" -DCMAKE_BUILD_TYPE=Release "-DCMAKE_TOOLCHAIN_FILE=!TOOLCHAIN!" -DVCPKG_TARGET_TRIPLET=x64-windows
+cmake -S "%SRC_DIR%." -B "%BUILD_DIR%" -G "!GENERATOR!" -DCMAKE_BUILD_TYPE=Release "-DCMAKE_TOOLCHAIN_FILE=!TOOLCHAIN!" -DVCPKG_TARGET_TRIPLET=x64-windows !PACK_FLAG!
 if !errorlevel! neq 0 (
     echo CMake configure failed
     exit /b !errorlevel!
@@ -107,5 +113,6 @@ echo.
 echo ============================================================
 echo  Build succeeded!
 echo  Output: %SRC_DIR%dist\TruePBR-Manager\TruePBR-Manager.exe
+if defined PACK_FLAG echo  Package: %SRC_DIR%dist\package\
 echo ============================================================
 endlocal
