@@ -512,7 +512,8 @@ void D3D12Renderer::uploadTexture(int srvIndex, const uint8_t* rgba, int w, int 
     }
     m_textureUploadHeaps[srvIndex]->Unmap(0, nullptr);
 
-    // Copy to texture
+    // Copy to texture — wait for any previous GPU work first
+    waitForGPU();
     m_commandAllocator->Reset();
     m_commandList->Reset(m_commandAllocator.Get(), nullptr);
 
@@ -826,6 +827,9 @@ void D3D12Renderer::uploadCubemap(int srvIndex, ComPtr<ID3D12Resource>& resource
     m_device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &texDesc, D3D12_RESOURCE_STATE_COPY_DEST,
                                       nullptr, IID_PPV_ARGS(&resource));
 
+    // Ensure any previous GPU work is complete before resetting allocator
+    waitForGPU();
+
     // Upload each face
     m_commandAllocator->Reset();
     m_commandList->Reset(m_commandAllocator.Get(), nullptr);
@@ -951,6 +955,7 @@ void D3D12Renderer::uploadBRDFLut(int srvIndex, const float* rgPixels, int size)
     }
     uploadBuf->Unmap(0, nullptr);
 
+    waitForGPU();
     m_commandAllocator->Reset();
     m_commandList->Reset(m_commandAllocator.Get(), nullptr);
 
