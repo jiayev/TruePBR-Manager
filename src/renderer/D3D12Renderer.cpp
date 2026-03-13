@@ -219,13 +219,25 @@ bool D3D12Renderer::createSwapChain(HWND hwnd, uint32_t width, uint32_t height)
     desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
 
     ComPtr<IDXGISwapChain1> swapChain;
-    if (FAILED(m_factory->CreateSwapChainForHwnd(m_commandQueue.Get(), hwnd, &desc, nullptr, nullptr, &swapChain)))
+    HRESULT hr = m_factory->CreateSwapChainForHwnd(m_commandQueue.Get(), hwnd, &desc, nullptr, nullptr, &swapChain);
+    if (FAILED(hr))
     {
-        spdlog::error("Failed to create swap chain");
+        spdlog::error("Failed to create swap chain: 0x{:08X}", static_cast<unsigned>(hr));
         return false;
     }
 
-    swapChain.As(&m_swapChain);
+    hr = swapChain.As(&m_swapChain);
+    if (FAILED(hr))
+    {
+        spdlog::error("Failed to get IDXGISwapChain3: 0x{:08X}", static_cast<unsigned>(hr));
+        return false;
+    }
+
+    // Disable Alt+Enter fullscreen
+    m_factory->MakeWindowAssociation(hwnd, DXGI_MWA_NO_ALT_ENTER);
+
+    spdlog::debug("D3D12Renderer: swap chain created ({}x{}, format=R8G8B8A8_UNORM, buffers={})", width, height,
+                  FrameCount);
     return true;
 }
 
@@ -845,42 +857,40 @@ void D3D12Renderer::render()
 
 void D3D12Renderer::waitForGPU()
 {
-    // Check for device removed first
-    HRESULT deviceStatus = m_device->GetDeviceRemovedReason();
-    if (FAILED(deviceStatus))
+    const UINT64 targetValue = m_fenceValue;
+    HRESULT hr = m_commandQueue->Signal(m_fence.Get(), targetValue);
+    ++m_fenceValue;
+
+    if (FAILED(hr))
     {
-        spdlog::error("D3D12Renderer::waitForGPU: DEVICE REMOVED! Reason: 0x{:08X}",
-                      static_cast<unsigned>(deviceStatus));
+        spdlog::error("D3D12Renderer::waitForGPU: Signal failed: 0x{:08X}", static_cast<unsigned>(hr));
         spdlog::default_logger()->flush();
         return;
     }
 
-    const UINT64 targetValue = m_fenceValue;
-    m_commandQueue->Signal(m_fence.Get(), targetValue);
-    ++m_fenceValue;
+    // Try event-based wait first with short timeout
+    m_fence->SetEventOnCompletion(targetValue, m_fenceEvent);
+    DWORD result = WaitForSingleObject(m_fenceEvent, 100);
 
-    // Spin-wait with Sleep instead of event-based wait.
-    // Some drivers (notably RTX 5070 / Blackwell) have issues with
-    // SetEventOnCompletion not firing reliably for the first few fences.
+    if (result == WAIT_OBJECT_0)
+        return; // Fast path: event fired
+
+    // If event didn't fire, try spin-wait briefly
+    for (int i = 0; i < 1000; ++i)
+    {
+        if (m_fence->GetCompletedValue() >= targetValue)
+            return;
+        Sleep(1);
+    }
+
+    // Last resort: just sleep and hope GPU finishes
+    // This handles drivers where fence signaling is delayed
+    Sleep(50);
+
     if (m_fence->GetCompletedValue() < targetValue)
     {
-        const auto start = std::chrono::steady_clock::now();
-        const auto timeout = std::chrono::seconds(10);
-
-        while (m_fence->GetCompletedValue() < targetValue)
-        {
-            auto elapsed = std::chrono::steady_clock::now() - start;
-            if (elapsed > timeout)
-            {
-                spdlog::error("D3D12Renderer::waitForGPU TIMEOUT (spin) waiting for fence value {}", targetValue);
-                HRESULT reason = m_device->GetDeviceRemovedReason();
-                spdlog::error("D3D12Renderer::waitForGPU: device removed reason: 0x{:08X}",
-                              static_cast<unsigned>(reason));
-                spdlog::default_logger()->flush();
-                return;
-            }
-            Sleep(0); // Yield CPU
-        }
+        spdlog::warn("D3D12Renderer::waitForGPU: fence {} not reached (completed={}), proceeding anyway", targetValue,
+                     m_fence->GetCompletedValue());
     }
 }
 
