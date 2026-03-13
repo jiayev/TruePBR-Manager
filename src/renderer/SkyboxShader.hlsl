@@ -16,8 +16,8 @@ cbuffer SceneCB : register(b0)
     float g_LightIntensity;
     float g_IBLIntensity;
     float g_MaxPrefilteredMip;
-    float _pad2;
-    float _pad3;
+    uint g_FrameCount;
+    float g_EnvRotation; // HDRI Y-axis rotation (radians)
     float4 g_SH[4];
     float4 g_ZH3;
     row_major float4x4 g_InvViewProj;
@@ -100,6 +100,12 @@ float3 agxEotf(float3 color)
 float4 SkyboxPS(SkyboxOutput input) : SV_TARGET
 {
     float3 dir = normalize(input.viewDir);
+
+    // Rotate direction around Y axis by g_EnvRotation
+    float cs = cos(g_EnvRotation);
+    float sn = sin(g_EnvRotation);
+    dir = float3(cs * dir.x + sn * dir.z, dir.y, -sn * dir.x + cs * dir.z);
+
     float3 color = g_PrefilteredMap.SampleLevel(g_Sampler, dir, 0).rgb;
     color *= g_IBLIntensity;
 

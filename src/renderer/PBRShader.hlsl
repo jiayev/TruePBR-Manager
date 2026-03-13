@@ -19,7 +19,7 @@ cbuffer SceneCB : register(b0)
     float g_IBLIntensity; // IBL environment intensity (0 = disabled)
     float g_MaxPrefilteredMip;
     uint g_FrameCount;
-    float _pad3;
+    float g_EnvRotation; // HDRI Y-axis rotation (radians)
     float4 g_SH[4];  // Pre-convolved SH2 radiance: [0]=DC, [1]=L1y, [2]=L1z, [3]=L1x
     float4 g_ZH3;    // Pre-convolved ZH3 zonal L2 coefficient (.xyz = RGB)
     row_major float4x4 g_InvViewProj; // Inverse view-projection (used by skybox)
@@ -283,6 +283,11 @@ float4 PSMain(PSInput input) : SV_TARGET
     {
         PBR::IndirectLobeWeights lobes = PBR::GetIndirectLobeWeights(N, V, mat, g_FeatureFlags);
 
+        // Rotate directions into unrotated env space for IBL lookups
+        float envCs = cos(g_EnvRotation);
+        float envSn = sin(g_EnvRotation);
+        float3 Nr = float3(envCs * N.x + envSn * N.z, N.y, -envSn * N.x + envCs * N.z);
+
         // Diffuse IBL: ZH3 evaluation
         const float3 lumCoeffs = float3(0.2126, 0.7152, 0.0722);
         float3 l1_lum = float3(
@@ -294,11 +299,11 @@ float4 PSMain(PSInput input) : SV_TARGET
         float3 zonalAxis = (l1Len > 1e-6) ? (l1_lum / l1Len) : float3(0, 1, 0);
 
         float3 irradiance = g_SH[0].xyz * 0.282095
-                          + g_SH[1].xyz * (0.488603 * N.y)
-                          + g_SH[2].xyz * (0.488603 * N.z)
-                          + g_SH[3].xyz * (0.488603 * N.x);
+                          + g_SH[1].xyz * (0.488603 * Nr.y)
+                          + g_SH[2].xyz * (0.488603 * Nr.z)
+                          + g_SH[3].xyz * (0.488603 * Nr.x);
 
-        float fZ = dot(zonalAxis, N);
+        float fZ = dot(zonalAxis, Nr);
         float zhBasis = sqrt(5.0 / (16.0 * Math::PI)) * (3.0 * fZ * fZ - 1.0);
         irradiance += g_ZH3.xyz * zhBasis;
         irradiance = max(irradiance, float3(0, 0, 0));
@@ -313,15 +318,16 @@ float4 PSMain(PSInput input) : SV_TARGET
 
         // Specular IBL: use lobe weights from GetIndirectLobeWeights
         float3 R = reflect(-V, N);
+        float3 Rr = float3(envCs * R.x + envSn * R.z, R.y, -envSn * R.x + envCs * R.z);
         float mipLevel = roughness * g_MaxPrefilteredMip;
-        float3 prefilteredColor = g_PrefilteredMap.SampleLevel(g_Sampler, R, mipLevel).rgb;
+        float3 prefilteredColor = g_PrefilteredMap.SampleLevel(g_Sampler, Rr, mipLevel).rgb;
         float3 iblSpecular = prefilteredColor * lobes.specular;
 
         // Coat specular IBL (separate mip due to different roughness)
         [branch] if (g_FeatureFlags & PBR::Flags::TwoLayer)
         {
             float coatMip = mat.CoatRoughness * g_MaxPrefilteredMip;
-            float3 coatPref = g_PrefilteredMap.SampleLevel(g_Sampler, R, coatMip).rgb;
+            float3 coatPref = g_PrefilteredMap.SampleLevel(g_Sampler, Rr, coatMip).rgb;
             iblSpecular += coatPref * lobes.coatSpecular;
         }
 

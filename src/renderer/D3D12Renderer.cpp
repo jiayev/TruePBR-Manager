@@ -1380,6 +1380,11 @@ void D3D12Renderer::setCamera(float azimuth, float elevation, float distance)
     m_distance = distance;
 }
 
+void D3D12Renderer::setEnvRotation(float angle)
+{
+    m_envRotation = angle;
+}
+
 void D3D12Renderer::setLightDirection(float x, float y, float z)
 {
     float len = std::sqrt(x * x + y * y + z * z);
@@ -1479,6 +1484,7 @@ void D3D12Renderer::render()
     frame.sceneCBMapped->iblIntensity = m_iblLoaded ? m_iblIntensity : 0.0f;
     frame.sceneCBMapped->maxPrefilteredMip = static_cast<float>(m_maxPrefilteredMip);
     frame.sceneCBMapped->frameCount = static_cast<uint32_t>(m_frameNumber);
+    frame.sceneCBMapped->envRotation = m_envRotation;
     for (int i = 0; i < 5; i++)
     {
         frame.sceneCBMapped->zh3Data[i] = {m_zh3Data[i][0], m_zh3Data[i][1], m_zh3Data[i][2], m_zh3Data[i][3]};

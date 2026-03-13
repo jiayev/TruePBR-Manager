@@ -196,6 +196,10 @@ void MaterialPreviewWidget::mousePressEvent(QMouseEvent* event)
     {
         m_lightDragging = true;
     }
+    else if (event->button() == Qt::MiddleButton)
+    {
+        m_envDragging = true;
+    }
 }
 
 void MaterialPreviewWidget::mouseReleaseEvent(QMouseEvent* event)
@@ -207,6 +211,10 @@ void MaterialPreviewWidget::mouseReleaseEvent(QMouseEvent* event)
     else if (event->button() == Qt::RightButton)
     {
         m_lightDragging = false;
+    }
+    else if (event->button() == Qt::MiddleButton)
+    {
+        m_envDragging = false;
     }
 }
 
@@ -231,6 +239,13 @@ void MaterialPreviewWidget::mouseMoveEvent(QMouseEvent* event)
         m_lightElevation += delta.y() * 0.01f;
         m_lightElevation = std::clamp(m_lightElevation, -1.5f, 1.5f);
         updateLight();
+    }
+
+    if (m_envDragging)
+    {
+        m_envRotation += delta.x() * 0.01f;
+        if (m_renderer)
+            m_renderer->setEnvRotation(m_envRotation);
     }
 }
 

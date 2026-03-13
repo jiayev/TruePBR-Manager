@@ -13,7 +13,7 @@ namespace tpbr
 {
 
 /// Qt widget that hosts a D3D12 PBR material preview.
-/// Left-drag: orbit camera. Right-drag: rotate light. Scroll: zoom.
+/// Left-drag: orbit camera. Right-drag: rotate light. Middle-drag: rotate HDRI. Scroll: zoom.
 class MaterialPreviewWidget : public QWidget
 {
     Q_OBJECT
@@ -79,6 +79,10 @@ class MaterialPreviewWidget : public QWidget
     bool m_lightDragging = false;
     float m_lightAzimuth = 0.6f;
     float m_lightElevation = 0.8f;
+
+    // HDRI environment rotation (horizontal)
+    bool m_envDragging = false;
+    float m_envRotation = 0.0f;
 };
 
 } // namespace tpbr

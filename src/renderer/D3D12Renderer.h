@@ -40,7 +40,7 @@ struct SceneCBData
     float iblIntensity;                    // 4 bytes
     float maxPrefilteredMip;               // 4 bytes
     uint32_t frameCount;                   // 4 bytes
-    float _pad3;                           // 4 bytes
+    float envRotation;                     // 4 bytes  (HDRI Y-axis rotation in radians)
     // ZH3 irradiance: pre-convolved SH2 + ZH3 zonal coefficient
     DirectX::XMFLOAT4 zh3Data[5];    // 80 bytes
     DirectX::XMFLOAT4X4 invViewProj; // 64 bytes  => total 400 bytes
@@ -127,6 +127,9 @@ class D3D12Renderer
 
     /// Set camera orbit (spherical coordinates).
     void setCamera(float azimuth, float elevation, float distance);
+
+    /// Set HDRI environment horizontal rotation (radians).
+    void setEnvRotation(float angle);
 
     /// Set light direction (normalized).
     void setLightDirection(float x, float y, float z);
@@ -273,6 +276,9 @@ class D3D12Renderer
     float m_azimuth = 0.8f;
     float m_elevation = 0.4f;
     float m_distance = 3.0f;
+
+    // HDRI environment rotation (horizontal only)
+    float m_envRotation = 0.0f;
 
     // Light — from upper-front-left
     DirectX::XMFLOAT3 m_lightDir = {0.4f, 0.7f, -0.5f};
