@@ -23,8 +23,8 @@ Application::~Application()
 void Application::initLogging()
 {
 #ifdef NDEBUG
-    // Release: console at info, file at info
-    Log::init(spdlog::level::info, spdlog::level::info);
+    // Release: console at info, file at debug (for crash diagnosis)
+    Log::init(spdlog::level::info, spdlog::level::debug);
 #else
     // Debug: console at debug, file at debug
     Log::init(spdlog::level::debug, spdlog::level::debug);

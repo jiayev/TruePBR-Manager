@@ -33,26 +33,75 @@ bool D3D12Renderer::init(HWND hwnd, uint32_t width, uint32_t height)
     m_width = width;
     m_height = height;
 
-    if (!createDevice())
-        return false;
-    if (!createCommandQueue())
-        return false;
-    if (!createSwapChain(hwnd, width, height))
-        return false;
-    if (!createRTVHeap())
-        return false;
-    if (!createDSV(width, height))
-        return false;
-    if (!createSRVHeap())
-        return false;
-    if (!createRootSignatureAndPSO())
-        return false;
-    if (!createConstantBuffers())
-        return false;
+    spdlog::info("D3D12Renderer::init starting ({}x{}, hwnd=0x{:X})", width, height, reinterpret_cast<uintptr_t>(hwnd));
 
+    if (!createDevice())
+    {
+        spdlog::error("D3D12Renderer::init FAILED at createDevice");
+        return false;
+    }
+    spdlog::debug("D3D12Renderer: createDevice OK");
+
+    if (!createCommandQueue())
+    {
+        spdlog::error("D3D12Renderer::init FAILED at createCommandQueue");
+        return false;
+    }
+    spdlog::debug("D3D12Renderer: createCommandQueue OK");
+
+    if (!createSwapChain(hwnd, width, height))
+    {
+        spdlog::error("D3D12Renderer::init FAILED at createSwapChain");
+        return false;
+    }
+    spdlog::debug("D3D12Renderer: createSwapChain OK");
+
+    if (!createRTVHeap())
+    {
+        spdlog::error("D3D12Renderer::init FAILED at createRTVHeap");
+        return false;
+    }
+    spdlog::debug("D3D12Renderer: createRTVHeap OK");
+
+    if (!createDSV(width, height))
+    {
+        spdlog::error("D3D12Renderer::init FAILED at createDSV");
+        return false;
+    }
+    spdlog::debug("D3D12Renderer: createDSV OK");
+
+    if (!createSRVHeap())
+    {
+        spdlog::error("D3D12Renderer::init FAILED at createSRVHeap");
+        return false;
+    }
+    spdlog::debug("D3D12Renderer: createSRVHeap OK");
+
+    if (!createRootSignatureAndPSO())
+    {
+        spdlog::error("D3D12Renderer::init FAILED at createRootSignatureAndPSO");
+        return false;
+    }
+    spdlog::debug("D3D12Renderer: createRootSignatureAndPSO OK");
+
+    if (!createConstantBuffers())
+    {
+        spdlog::error("D3D12Renderer::init FAILED at createConstantBuffers");
+        return false;
+    }
+    spdlog::debug("D3D12Renderer: createConstantBuffers OK");
+
+    spdlog::debug("D3D12Renderer: creating default textures...");
     createDefaultTextures();
+    spdlog::debug("D3D12Renderer: default textures OK");
+
+    spdlog::debug("D3D12Renderer: creating default IBL...");
     createDefaultIBL();
+    spdlog::debug("D3D12Renderer: default IBL OK");
+
+    spdlog::debug("D3D12Renderer: uploading default mesh...");
     setMesh(PreviewShape::Sphere);
+    spdlog::debug("D3D12Renderer: default mesh OK");
 
     m_initialized = true;
     spdlog::info("D3D12Renderer initialized ({}x{})", width, height);

@@ -58,11 +58,20 @@ void MaterialPreviewWidget::initRenderer()
 
     m_renderer = std::make_unique<D3D12Renderer>();
     HWND hwnd = reinterpret_cast<HWND>(winId());
+    spdlog::info("MaterialPreviewWidget: initializing D3D12 renderer ({}x{})", width(), height());
+    spdlog::default_logger()->flush();
+
     if (m_renderer->init(hwnd, static_cast<uint32_t>(width()), static_cast<uint32_t>(height())))
     {
         m_renderer->setCamera(m_azimuth, m_elevation, m_distance);
         updateLight();
         m_renderTimer->start();
+        spdlog::info("MaterialPreviewWidget: renderer started");
+    }
+    else
+    {
+        spdlog::error("MaterialPreviewWidget: renderer init FAILED");
+        m_renderer.reset();
     }
 }
 
