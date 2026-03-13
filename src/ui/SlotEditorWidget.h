@@ -5,6 +5,7 @@
 #include <QComboBox>
 #include <QLabel>
 #include <QLineEdit>
+#include <QPushButton>
 #include <QRadioButton>
 #include <QWidget>
 
@@ -97,6 +98,7 @@ class SlotEditorWidget : public QWidget
     {
         QLabel* labelWidget = nullptr;
         DropZoneLabel* dropZone = nullptr;
+        QPushButton* importButton = nullptr;
         QComboBox* compressionCombo = nullptr;
         QWidget* container = nullptr;
     };
@@ -105,6 +107,7 @@ class SlotEditorWidget : public QWidget
     {
         QLabel* labelWidget = nullptr;
         DropZoneLabel* dropZone = nullptr;
+        QPushButton* importButton = nullptr;
         QWidget* container = nullptr;
     };
 

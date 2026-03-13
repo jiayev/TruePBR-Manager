@@ -457,6 +457,8 @@ void SlotEditorWidget::addSlotRow(PBRTextureSlot slot, const QString& label, boo
     row.labelWidget->setFixedWidth(100);
 
     row.dropZone = new DropZoneLabel(row.container);
+    row.importButton = new QPushButton(tr("Import"), row.container);
+    row.importButton->setFixedWidth(60);
     row.compressionCombo = new QComboBox(row.container);
     row.compressionCombo->setMinimumWidth(130);
     row.compressionCombo->setToolTip(tr("Select the DDS compression used during export"));
@@ -464,9 +466,12 @@ void SlotEditorWidget::addSlotRow(PBRTextureSlot slot, const QString& label, boo
 
     layout->addWidget(row.labelWidget);
     layout->addWidget(row.dropZone, 1);
+    layout->addWidget(row.importButton);
     layout->addWidget(row.compressionCombo);
 
     row.container->setVisible(visible);
+
+    connect(row.importButton, &QPushButton::clicked, this, [this, slot]() { emit importRequested(slot); });
 
     connect(row.dropZone, &DropZoneLabel::clicked, this, [this, slot]() { emit slotPreviewRequested(slot); });
 
@@ -499,9 +504,14 @@ void SlotEditorWidget::addChannelRow(ChannelMap channel, const QString& label)
     row.labelWidget->setFixedWidth(100);
 
     row.dropZone = new DropZoneLabel(row.container);
+    row.importButton = new QPushButton(tr("Import"), row.container);
+    row.importButton->setFixedWidth(60);
 
     layout->addWidget(row.labelWidget);
     layout->addWidget(row.dropZone, 1);
+    layout->addWidget(row.importButton);
+
+    connect(row.importButton, &QPushButton::clicked, this, [this, channel]() { emit importChannelRequested(channel); });
 
     connect(row.dropZone, &DropZoneLabel::clicked, this, [this, channel]() { emit importChannelRequested(channel); });
 
