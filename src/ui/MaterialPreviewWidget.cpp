@@ -5,18 +5,18 @@
 #include <QVBoxLayout>
 #include <QWheelEvent>
 
+#include <cmath>
+
 namespace tpbr
 {
 
 MaterialPreviewWidget::MaterialPreviewWidget(QWidget* parent) : QWidget(parent)
 {
-    // Critical: this widget paints via D3D12 directly to the HWND
     setAttribute(Qt::WA_PaintOnScreen, true);
     setAttribute(Qt::WA_NativeWindow, true);
     setAttribute(Qt::WA_NoSystemBackground, true);
     setMinimumSize(200, 200);
 
-    // Shape combo (caller can place this in their layout)
     m_shapeCombo = new QComboBox(this);
     m_shapeCombo->addItem(tr("Sphere"), static_cast<int>(PreviewShape::Sphere));
     m_shapeCombo->addItem(tr("Plane"), static_cast<int>(PreviewShape::Plane));
@@ -34,7 +34,6 @@ MaterialPreviewWidget::MaterialPreviewWidget(QWidget* parent) : QWidget(parent)
                 }
             });
 
-    // Render timer — 30 FPS
     m_renderTimer = new QTimer(this);
     m_renderTimer->setInterval(33);
     connect(m_renderTimer, &QTimer::timeout, this,
@@ -62,9 +61,20 @@ void MaterialPreviewWidget::initRenderer()
     if (m_renderer->init(hwnd, static_cast<uint32_t>(width()), static_cast<uint32_t>(height())))
     {
         m_renderer->setCamera(m_azimuth, m_elevation, m_distance);
-        m_renderer->setLightDirection(0.4f, 0.7f, -0.5f);
+        updateLight();
         m_renderTimer->start();
     }
+}
+
+void MaterialPreviewWidget::updateLight()
+{
+    if (!m_renderer)
+        return;
+
+    float lx = std::cos(m_lightElevation) * std::sin(m_lightAzimuth);
+    float ly = std::sin(m_lightElevation);
+    float lz = std::cos(m_lightElevation) * std::cos(m_lightAzimuth);
+    m_renderer->setLightDirection(lx, ly, lz);
 }
 
 void MaterialPreviewWidget::setShape(PreviewShape shape)
@@ -112,29 +122,52 @@ void MaterialPreviewWidget::paintEvent(QPaintEvent* /*event*/)
 
 void MaterialPreviewWidget::mousePressEvent(QMouseEvent* event)
 {
+    m_lastMousePos = event->pos();
+
     if (event->button() == Qt::LeftButton)
     {
-        m_dragging = true;
-        m_lastMousePos = event->pos();
+        m_cameraDragging = true;
+    }
+    else if (event->button() == Qt::RightButton)
+    {
+        m_lightDragging = true;
+    }
+}
+
+void MaterialPreviewWidget::mouseReleaseEvent(QMouseEvent* event)
+{
+    if (event->button() == Qt::LeftButton)
+    {
+        m_cameraDragging = false;
+    }
+    else if (event->button() == Qt::RightButton)
+    {
+        m_lightDragging = false;
     }
 }
 
 void MaterialPreviewWidget::mouseMoveEvent(QMouseEvent* event)
 {
-    if (!m_dragging)
-        return;
-
     QPoint delta = event->pos() - m_lastMousePos;
     m_lastMousePos = event->pos();
 
-    m_azimuth += delta.x() * 0.01f;
-    m_elevation += delta.y() * 0.01f;
+    if (m_cameraDragging)
+    {
+        m_azimuth += delta.x() * 0.01f;
+        m_elevation += delta.y() * 0.01f;
+        m_elevation = std::clamp(m_elevation, -1.5f, 1.5f);
 
-    // Clamp elevation to avoid flipping
-    m_elevation = std::clamp(m_elevation, -1.5f, 1.5f);
+        if (m_renderer)
+            m_renderer->setCamera(m_azimuth, m_elevation, m_distance);
+    }
 
-    if (m_renderer)
-        m_renderer->setCamera(m_azimuth, m_elevation, m_distance);
+    if (m_lightDragging)
+    {
+        m_lightAzimuth += delta.x() * 0.01f;
+        m_lightElevation += delta.y() * 0.01f;
+        m_lightElevation = std::clamp(m_lightElevation, -1.5f, 1.5f);
+        updateLight();
+    }
 }
 
 void MaterialPreviewWidget::wheelEvent(QWheelEvent* event)

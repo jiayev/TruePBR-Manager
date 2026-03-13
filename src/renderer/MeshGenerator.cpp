@@ -253,10 +253,8 @@ PreviewMesh MeshGenerator::generateCube()
 
 PreviewMesh MeshGenerator::generateRoundedCube(float radius, int segments)
 {
-    // Generate a cube with rounded edges by placing spherical caps at corners,
-    // cylindrical edges along edges, and flat faces.
-    // Simplified approach: generate a subdivided sphere, then remap positions
-    // to create a rounded cube shape.
+    // Generate a rounded cube by deforming a sphere: clamp each axis to the
+    // inner cube extent, then push outward by radius along the offset normal.
 
     float extent = 1.0f - radius;
     PreviewMesh sphere = generateSphere(segments * 4, segments * 2);
@@ -267,22 +265,16 @@ PreviewMesh MeshGenerator::generateRoundedCube(float radius, int segments)
     {
         PreviewVertex v = sv;
 
-        // Map sphere normal to rounded cube surface
         float nx = sv.normal[0];
         float ny = sv.normal[1];
         float nz = sv.normal[2];
 
-        // Push position outward from a shrunken cube
-        float cx = std::clamp(nx / (std::abs(nx) + 0.001f), -1.0f, 1.0f) * extent;
-        float cy = std::clamp(ny / (std::abs(ny) + 0.001f), -1.0f, 1.0f) * extent;
-        float cz = std::clamp(nz / (std::abs(nz) + 0.001f), -1.0f, 1.0f) * extent;
-
-        // Nearest point on shrunken cube
+        // Nearest point on the shrunken inner cube
         float px = std::clamp(nx * 2.0f, -extent, extent);
         float py = std::clamp(ny * 2.0f, -extent, extent);
         float pz = std::clamp(nz * 2.0f, -extent, extent);
 
-        // Offset by radius in normal direction
+        // Offset direction from inner cube surface to rounded surface
         float dx = nx - px / (extent > 0.0f ? extent : 1.0f) * 0.5f;
         float dy = ny - py / (extent > 0.0f ? extent : 1.0f) * 0.5f;
         float dz = nz - pz / (extent > 0.0f ? extent : 1.0f) * 0.5f;
@@ -298,10 +290,62 @@ PreviewMesh MeshGenerator::generateRoundedCube(float radius, int segments)
         v.position[1] = py + dy * radius;
         v.position[2] = pz + dz * radius;
 
-        // Normal is the offset direction
         v.normal[0] = dx;
         v.normal[1] = dy;
         v.normal[2] = dz;
+
+        // Cube-projected UV: pick the dominant axis of the normal, then
+        // project the position onto the other two axes as UV.
+        float anx = std::abs(dx);
+        float any = std::abs(dy);
+        float anz = std::abs(dz);
+
+        float u, vv;
+        if (anx >= any && anx >= anz)
+        {
+            // X-dominant face: project onto YZ
+            u = v.position[2] * (dx > 0 ? -1.0f : 1.0f);
+            vv = v.position[1];
+        }
+        else if (any >= anx && any >= anz)
+        {
+            // Y-dominant face: project onto XZ
+            u = v.position[0];
+            vv = v.position[2] * (dy > 0 ? -1.0f : 1.0f);
+        }
+        else
+        {
+            // Z-dominant face: project onto XY
+            u = v.position[0] * (dz > 0 ? 1.0f : -1.0f);
+            vv = v.position[1];
+        }
+
+        // Map from [-1, 1] to [0, 1]
+        v.uv[0] = u * 0.5f + 0.5f;
+        v.uv[1] = -vv * 0.5f + 0.5f; // flip V so top of texture is at top of face
+
+        // Tangent: aligned to UV U-axis direction
+        if (anx >= any && anx >= anz)
+        {
+            v.tangent[0] = 0;
+            v.tangent[1] = 0;
+            v.tangent[2] = dx > 0 ? -1.0f : 1.0f;
+            v.tangent[3] = 1.0f;
+        }
+        else if (any >= anx && any >= anz)
+        {
+            v.tangent[0] = 1;
+            v.tangent[1] = 0;
+            v.tangent[2] = 0;
+            v.tangent[3] = 1.0f;
+        }
+        else
+        {
+            v.tangent[0] = dz > 0 ? 1.0f : -1.0f;
+            v.tangent[1] = 0;
+            v.tangent[2] = 0;
+            v.tangent[3] = 1.0f;
+        }
 
         mesh.vertices.push_back(v);
     }
