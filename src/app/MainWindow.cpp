@@ -16,6 +16,7 @@
 #include "utils/ImageUtils.h"
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QColorDialog>
 #include <QHBoxLayout>
 #include <QImage>
 #include <QInputDialog>
@@ -227,6 +228,57 @@ void MainWindow::setupCentralWidget()
     shapeCombo->setVisible(false);
     previewLayout->addWidget(shapeCombo);
 
+    // 3D control bar: light intensity slider + light color button
+    m_3dControlBar = new QWidget(previewContainer);
+    auto* controlLayout = new QHBoxLayout(m_3dControlBar);
+    controlLayout->setContentsMargins(4, 2, 4, 2);
+    controlLayout->setSpacing(6);
+
+    controlLayout->addWidget(new QLabel(tr("Light:"), m_3dControlBar));
+
+    m_lightIntensitySlider = new QSlider(Qt::Horizontal, m_3dControlBar);
+    m_lightIntensitySlider->setRange(0, 100);
+    m_lightIntensitySlider->setValue(30); // default 3.0
+    m_lightIntensitySlider->setToolTip(tr("Light Intensity"));
+    controlLayout->addWidget(m_lightIntensitySlider, 1);
+
+    m_lightIntensityLabel = new QLabel("3.0", m_3dControlBar);
+    m_lightIntensityLabel->setFixedWidth(32);
+    controlLayout->addWidget(m_lightIntensityLabel);
+
+    m_lightColorBtn = new QPushButton(m_3dControlBar);
+    m_lightColorBtn->setFixedSize(28, 28);
+    m_lightColorBtn->setToolTip(tr("Light Color"));
+    m_lightColorBtn->setStyleSheet("QPushButton { background: #ffffff; border: 1px solid #888; }");
+    controlLayout->addWidget(m_lightColorBtn);
+
+    m_3dControlBar->setVisible(false);
+    previewLayout->addWidget(m_3dControlBar);
+
+    connect(m_lightIntensitySlider, &QSlider::valueChanged, this,
+            [this](int value)
+            {
+                float intensity = static_cast<float>(value) / 10.0f;
+                m_lightIntensityLabel->setText(QString::number(intensity, 'f', 1));
+                m_materialPreview->setLightIntensity(intensity);
+            });
+
+    connect(m_lightColorBtn, &QPushButton::clicked, this,
+            [this]()
+            {
+                QColor initial = QColor::fromRgbF(m_lightColorR, m_lightColorG, m_lightColorB);
+                QColor color = QColorDialog::getColor(initial, this, tr("Light Color"));
+                if (color.isValid())
+                {
+                    m_lightColorR = static_cast<float>(color.redF());
+                    m_lightColorG = static_cast<float>(color.greenF());
+                    m_lightColorB = static_cast<float>(color.blueF());
+                    m_lightColorBtn->setStyleSheet(
+                        QString("QPushButton { background: %1; border: 1px solid #888; }").arg(color.name()));
+                    m_materialPreview->setLightColor(m_lightColorR, m_lightColorG, m_lightColorB);
+                }
+            });
+
     splitter->addWidget(previewContainer);
 
     // 2D/3D toggle connections
@@ -237,6 +289,7 @@ void MainWindow::setupCentralWidget()
                 m_preview2DBtn->setChecked(true);
                 m_preview3DBtn->setChecked(false);
                 m_materialPreview->shapeCombo()->setVisible(false);
+                m_3dControlBar->setVisible(false);
                 refreshPreview();
             });
     connect(m_preview3DBtn, &QToolButton::clicked, this,
@@ -246,6 +299,7 @@ void MainWindow::setupCentralWidget()
                 m_preview2DBtn->setChecked(false);
                 m_preview3DBtn->setChecked(true);
                 m_materialPreview->shapeCombo()->setVisible(true);
+                m_3dControlBar->setVisible(true);
                 refresh3DPreview();
             });
 

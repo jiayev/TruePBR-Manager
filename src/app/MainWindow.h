@@ -6,6 +6,7 @@
 #include <QMainWindow>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QSlider>
 #include <QStackedWidget>
 #include <QToolButton>
 
@@ -86,6 +87,13 @@ class MainWindow : public QMainWindow
     QToolButton* m_preview2DBtn = nullptr;
     QToolButton* m_preview3DBtn = nullptr;
     bool m_preview3DMode = false;
+    QWidget* m_3dControlBar = nullptr;
+    QSlider* m_lightIntensitySlider = nullptr;
+    QPushButton* m_lightColorBtn = nullptr;
+    QLabel* m_lightIntensityLabel = nullptr;
+    float m_lightColorR = 1.0f;
+    float m_lightColorG = 1.0f;
+    float m_lightColorB = 1.0f;
     QLabel* m_editorPlaceholder = nullptr;
     QLabel* m_previewPlaceholder = nullptr;
 };
