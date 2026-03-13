@@ -394,8 +394,12 @@ void D3D12Renderer::createDefaultTextures()
     uploadTexture(2, defaultRMAOS, 1, 1, false);
 }
 
-void D3D12Renderer::uploadTexture(int srvIndex, const uint8_t* rgba, int w, int h, bool /*srgb*/)
+void D3D12Renderer::uploadTexture(int srvIndex, const uint8_t* rgba, int w, int h, bool srgb)
 {
+    // sRGB textures (diffuse/albedo) use _SRGB format so the GPU automatically
+    // converts from sRGB to linear on sampling. Linear data (normal, RMAOS) uses _UNORM.
+    const DXGI_FORMAT texFormat = srgb ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
+
     // Create texture resource
     D3D12_HEAP_PROPERTIES heapProps{};
     heapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
@@ -406,7 +410,7 @@ void D3D12Renderer::uploadTexture(int srvIndex, const uint8_t* rgba, int w, int 
     texDesc.Height = h;
     texDesc.DepthOrArraySize = 1;
     texDesc.MipLevels = 1;
-    texDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    texDesc.Format = texFormat;
     texDesc.SampleDesc.Count = 1;
 
     m_device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &texDesc, D3D12_RESOURCE_STATE_COPY_DEST,
@@ -478,7 +482,7 @@ void D3D12Renderer::uploadTexture(int srvIndex, const uint8_t* rgba, int w, int 
 
     // Create SRV
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
-    srvDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    srvDesc.Format = texFormat;
     srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
     srvDesc.Texture2D.MipLevels = 1;
