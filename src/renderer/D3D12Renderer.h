@@ -29,6 +29,10 @@ struct SceneCBData
     float _pad1;
     DirectX::XMFLOAT3 lightColor;
     float lightIntensity;
+    float iblIntensity;
+    float maxPrefilteredMip;
+    float _pad2;
+    float _pad3;
 };
 
 /// Material constant buffer data (matches cbuffer MaterialCB in shader)
@@ -77,6 +81,12 @@ class D3D12Renderer
     /// Set light intensity (default 3.0).
     void setLightIntensity(float intensity);
 
+    /// Load IBL environment from file. Processes HDRI and uploads cubemaps.
+    bool loadIBL(const std::filesystem::path& hdriPath);
+
+    /// Set IBL intensity (0 = disabled, default 1.0 when IBL loaded).
+    void setIBLIntensity(float intensity);
+
     /// Render one frame.
     void render();
 
@@ -100,6 +110,10 @@ class D3D12Renderer
     void createDefaultTextures();
     void uploadMesh(const PreviewMesh& mesh);
     void uploadTexture(int srvIndex, const uint8_t* rgba, int w, int h, bool srgb);
+    void uploadCubemap(int srvIndex, ComPtr<ID3D12Resource>& resource, const std::vector<float>* faces, int faceSize,
+                       int mipLevels, const std::vector<std::vector<float>>* mipFaces);
+    void uploadBRDFLut(int srvIndex, const float* rgPixels, int size);
+    void createDefaultIBL();
     void waitForGPU();
 
     bool m_initialized = false;
@@ -123,11 +137,21 @@ class D3D12Renderer
     ComPtr<ID3D12Resource> m_depthStencilBuffer;
     ComPtr<ID3D12DescriptorHeap> m_dsvHeap;
 
-    // SRV heap: 3 textures (diffuse, normal, rmaos)
+    // SRV heap: 6 slots
+    // 0=diffuse, 1=normal, 2=rmaos, 3=irradiance cubemap, 4=prefiltered cubemap, 5=BRDF LUT
+    static constexpr uint32_t SRVCount = 6;
     ComPtr<ID3D12DescriptorHeap> m_srvHeap;
     uint32_t m_srvDescriptorSize = 0;
     std::array<ComPtr<ID3D12Resource>, 3> m_textures;
     std::array<ComPtr<ID3D12Resource>, 3> m_textureUploadHeaps;
+
+    // IBL resources
+    ComPtr<ID3D12Resource> m_irradianceCubemap;
+    ComPtr<ID3D12Resource> m_prefilteredCubemap;
+    ComPtr<ID3D12Resource> m_brdfLut;
+    bool m_iblLoaded = false;
+    float m_iblIntensity = 1.0f;
+    int m_maxPrefilteredMip = 0;
 
     // Pipeline
     ComPtr<ID3D12RootSignature> m_rootSignature;

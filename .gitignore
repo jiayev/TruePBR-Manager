@@ -38,3 +38,7 @@ desktop.ini
 
 # vcpkg (local installs)
 vcpkg_installed/
+
+# Large HDRI files (download separately or provide your own)
+resources/HDRIs/*.exr
+resources/HDRIs/*.hdr

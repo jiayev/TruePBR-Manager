@@ -11,9 +11,12 @@
 #include "ui/TextureSetPanel.h"
 #include "ui/MaterialPreviewWidget.h"
 
+#include "renderer/IBLProcessor.h"
+
 #include "utils/DDSUtils.h"
 #include "utils/FileUtils.h"
 #include "utils/ImageUtils.h"
+#include <QApplication>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QColorDialog>
@@ -279,27 +282,117 @@ void MainWindow::setupCentralWidget()
                 }
             });
 
+    // IBL row
+    auto* iblRow = new QWidget(previewContainer);
+    auto* iblLayout = new QHBoxLayout(iblRow);
+    iblLayout->setContentsMargins(4, 2, 4, 2);
+    iblLayout->setSpacing(6);
+
+    iblLayout->addWidget(new QLabel(tr("HDRI:"), iblRow));
+
+    m_hdriCombo = new QComboBox(iblRow);
+    m_hdriCombo->addItem(tr("(None)"), QString());
+    m_hdriCombo->setMinimumWidth(150);
+    iblLayout->addWidget(m_hdriCombo);
+
+    iblLayout->addWidget(new QLabel(tr("IBL:"), iblRow));
+
+    m_iblIntensitySlider = new QSlider(Qt::Horizontal, iblRow);
+    m_iblIntensitySlider->setRange(0, 50);
+    m_iblIntensitySlider->setValue(10); // default 1.0
+    m_iblIntensitySlider->setToolTip(tr("IBL Intensity"));
+    iblLayout->addWidget(m_iblIntensitySlider, 1);
+
+    m_iblIntensityLabel = new QLabel("1.0", iblRow);
+    m_iblIntensityLabel->setFixedWidth(32);
+    iblLayout->addWidget(m_iblIntensityLabel);
+
+    iblRow->setVisible(false);
+    previewLayout->addWidget(iblRow);
+
+    // Populate HDRI combo from hdris/ directory
+    {
+        // Look next to exe first (dist), then source tree (dev)
+        wchar_t exePath[MAX_PATH] = {};
+        GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+        auto exeDir = std::filesystem::path(exePath).parent_path();
+        auto distHdriDir = exeDir / "hdris";
+        auto srcHdriDir =
+            std::filesystem::path(__FILE__).parent_path().parent_path().parent_path() / "resources" / "HDRIs";
+
+        auto scanDir = [this](const std::filesystem::path& dir)
+        {
+            auto files = IBLProcessor::listHDRIs(dir);
+            for (const auto& f : files)
+            {
+                m_hdriCombo->addItem(QString::fromStdString(f.stem().string()), QString::fromStdString(f.string()));
+            }
+        };
+
+        scanDir(distHdriDir);
+        if (std::filesystem::exists(srcHdriDir) && srcHdriDir != distHdriDir)
+        {
+            scanDir(srcHdriDir);
+        }
+    }
+
+    connect(m_hdriCombo, &QComboBox::currentIndexChanged, this,
+            [this](int index)
+            {
+                QString path = m_hdriCombo->itemData(index).toString();
+                if (path.isEmpty())
+                {
+                    m_materialPreview->setIBLIntensity(0);
+                    statusBar()->showMessage(tr("IBL disabled"));
+                }
+                else
+                {
+                    statusBar()->showMessage(tr("Loading HDRI..."));
+                    QApplication::processEvents();
+                    if (m_materialPreview->loadIBL(path.toStdString()))
+                    {
+                        float intensity = static_cast<float>(m_iblIntensitySlider->value()) / 10.0f;
+                        m_materialPreview->setIBLIntensity(intensity);
+                        statusBar()->showMessage(tr("HDRI loaded: %1").arg(m_hdriCombo->currentText()));
+                    }
+                    else
+                    {
+                        statusBar()->showMessage(tr("Failed to load HDRI"));
+                    }
+                }
+            });
+
+    connect(m_iblIntensitySlider, &QSlider::valueChanged, this,
+            [this](int value)
+            {
+                float intensity = static_cast<float>(value) / 10.0f;
+                m_iblIntensityLabel->setText(QString::number(intensity, 'f', 1));
+                m_materialPreview->setIBLIntensity(intensity);
+            });
+
     splitter->addWidget(previewContainer);
 
     // 2D/3D toggle connections
     connect(m_preview2DBtn, &QToolButton::clicked, this,
-            [this]()
+            [this, iblRow]()
             {
                 m_preview3DMode = false;
                 m_preview2DBtn->setChecked(true);
                 m_preview3DBtn->setChecked(false);
                 m_materialPreview->shapeCombo()->setVisible(false);
                 m_3dControlBar->setVisible(false);
+                iblRow->setVisible(false);
                 refreshPreview();
             });
     connect(m_preview3DBtn, &QToolButton::clicked, this,
-            [this]()
+            [this, iblRow]()
             {
                 m_preview3DMode = true;
                 m_preview2DBtn->setChecked(false);
                 m_preview3DBtn->setChecked(true);
                 m_materialPreview->shapeCombo()->setVisible(true);
                 m_3dControlBar->setVisible(true);
+                iblRow->setVisible(true);
                 refresh3DPreview();
             });
 

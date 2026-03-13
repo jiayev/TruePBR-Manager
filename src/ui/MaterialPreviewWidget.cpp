@@ -114,6 +114,21 @@ void MaterialPreviewWidget::setLightIntensity(float intensity)
         m_renderer->setLightIntensity(intensity);
 }
 
+bool MaterialPreviewWidget::loadIBL(const std::filesystem::path& hdriPath)
+{
+    if (!m_renderer)
+        initRenderer();
+    if (m_renderer)
+        return m_renderer->loadIBL(hdriPath);
+    return false;
+}
+
+void MaterialPreviewWidget::setIBLIntensity(float intensity)
+{
+    if (m_renderer)
+        m_renderer->setIBLIntensity(intensity);
+}
+
 void MaterialPreviewWidget::resizeEvent(QResizeEvent* event)
 {
     QWidget::resizeEvent(event);

@@ -29,6 +29,12 @@ class MaterialPreviewWidget : public QWidget
     void setLightColor(float r, float g, float b);
     void setLightIntensity(float intensity);
 
+    /// Load an IBL environment from an HDRI file.
+    bool loadIBL(const std::filesystem::path& hdriPath);
+
+    /// Set IBL intensity.
+    void setIBLIntensity(float intensity);
+
     QComboBox* shapeCombo() const
     {
         return m_shapeCombo;

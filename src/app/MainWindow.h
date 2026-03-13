@@ -2,6 +2,7 @@
 
 #include "core/Project.h"
 
+#include <QComboBox>
 #include <QLabel>
 #include <QMainWindow>
 #include <QLineEdit>
@@ -91,6 +92,9 @@ class MainWindow : public QMainWindow
     QSlider* m_lightIntensitySlider = nullptr;
     QPushButton* m_lightColorBtn = nullptr;
     QLabel* m_lightIntensityLabel = nullptr;
+    QComboBox* m_hdriCombo = nullptr;
+    QSlider* m_iblIntensitySlider = nullptr;
+    QLabel* m_iblIntensityLabel = nullptr;
     float m_lightColorR = 1.0f;
     float m_lightColorG = 1.0f;
     float m_lightColorB = 1.0f;

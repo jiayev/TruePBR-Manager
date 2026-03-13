@@ -60,6 +60,8 @@ set(RENDERER_SOURCES
     renderer/D3D12Renderer.cpp
     renderer/MeshGenerator.h
     renderer/MeshGenerator.cpp
+    renderer/IBLProcessor.h
+    renderer/IBLProcessor.cpp
 )
 
 set(ALL_SOURCES
@@ -87,6 +89,7 @@ find_package(nlohmann_json CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(directxtex CONFIG REQUIRED)
 find_package(Stb REQUIRED)
+find_package(tinyexr CONFIG REQUIRED)
 
 target_include_directories(TruePBR-Manager PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -98,6 +101,7 @@ target_link_libraries(TruePBR-Manager PRIVATE
     nlohmann_json::nlohmann_json
     spdlog::spdlog
     Microsoft::DirectXTex
+    unofficial::tinyexr::tinyexr
     d3d12.lib
     dxgi.lib
     d3dcompiler.lib
@@ -181,3 +185,19 @@ add_custom_command(TARGET TruePBR-Manager POST_BUILD
         "${DIST_DIR}/shaders/PBRShader.hlsl"
     COMMENT "Copying PBR shader to dist/..."
 )
+
+# Create hdris directory in dist (user places HDRI files here)
+add_custom_command(TARGET TruePBR-Manager POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${DIST_DIR}/hdris"
+    COMMENT "Creating hdris directory in dist/..."
+)
+
+# Copy built-in HDRIs if they exist in the source tree
+if(EXISTS "${CMAKE_SOURCE_DIR}/resources/HDRIs")
+    add_custom_command(TARGET TruePBR-Manager POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/resources/HDRIs"
+            "${DIST_DIR}/hdris"
+        COMMENT "Copying built-in HDRIs to dist/..."
+    )
+endif()

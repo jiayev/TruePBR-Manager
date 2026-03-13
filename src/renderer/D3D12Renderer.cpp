@@ -1,4 +1,5 @@
 #include "D3D12Renderer.h"
+#include "IBLProcessor.h"
 #include "utils/Log.h"
 
 #include <DirectXMath.h>
@@ -50,6 +51,7 @@ bool D3D12Renderer::init(HWND hwnd, uint32_t width, uint32_t height)
         return false;
 
     createDefaultTextures();
+    createDefaultIBL();
     setMesh(PreviewShape::Sphere);
 
     m_initialized = true;
@@ -203,7 +205,7 @@ bool D3D12Renderer::createDSV(uint32_t width, uint32_t height)
 bool D3D12Renderer::createSRVHeap()
 {
     D3D12_DESCRIPTOR_HEAP_DESC desc{};
-    desc.NumDescriptors = 3; // diffuse, normal, rmaos
+    desc.NumDescriptors = SRVCount; // diffuse, normal, rmaos, irradiance, prefiltered, brdfLut
     desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     m_device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&m_srvHeap));
@@ -229,7 +231,7 @@ bool D3D12Renderer::createRootSignatureAndPSO()
     // SRV table: t0, t1, t2
     D3D12_DESCRIPTOR_RANGE srvRange{};
     srvRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-    srvRange.NumDescriptors = 3;
+    srvRange.NumDescriptors = SRVCount;
     srvRange.BaseShaderRegister = 0;
 
     rootParams[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
@@ -237,20 +239,30 @@ bool D3D12Renderer::createRootSignatureAndPSO()
     rootParams[2].DescriptorTable.pDescriptorRanges = &srvRange;
     rootParams[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
-    // Static sampler: linear wrap
-    D3D12_STATIC_SAMPLER_DESC sampler{};
-    sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-    sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-    sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-    sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-    sampler.ShaderRegister = 0;
-    sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+    // Static samplers
+    D3D12_STATIC_SAMPLER_DESC samplers[2] = {};
+
+    // s0: linear wrap (material textures + cubemaps)
+    samplers[0].Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+    samplers[0].AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    samplers[0].AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    samplers[0].AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    samplers[0].ShaderRegister = 0;
+    samplers[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+    // s1: linear clamp (BRDF LUT)
+    samplers[1].Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+    samplers[1].AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    samplers[1].AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    samplers[1].AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+    samplers[1].ShaderRegister = 1;
+    samplers[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
     D3D12_ROOT_SIGNATURE_DESC rsDesc{};
     rsDesc.NumParameters = 3;
     rsDesc.pParameters = rootParams;
-    rsDesc.NumStaticSamplers = 1;
-    rsDesc.pStaticSamplers = &sampler;
+    rsDesc.NumStaticSamplers = 2;
+    rsDesc.pStaticSamplers = samplers;
     rsDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
 
     ComPtr<ID3DBlob> sigBlob, errBlob;
@@ -637,6 +649,8 @@ void D3D12Renderer::render()
     m_sceneCBMapped->lightDir = m_lightDir;
     m_sceneCBMapped->lightColor = m_lightColor;
     m_sceneCBMapped->lightIntensity = m_lightIntensity;
+    m_sceneCBMapped->iblIntensity = m_iblLoaded ? m_iblIntensity : 0.0f;
+    m_sceneCBMapped->maxPrefilteredMip = static_cast<float>(m_maxPrefilteredMip);
 
     m_materialCBMapped->specularLevel = m_specularLevel;
     m_materialCBMapped->roughnessScale = m_roughnessScale;
@@ -712,6 +726,253 @@ void D3D12Renderer::waitForGPU()
         WaitForSingleObject(m_fenceEvent, INFINITE);
     }
     ++m_fenceValue;
+}
+
+void D3D12Renderer::setIBLIntensity(float intensity)
+{
+    m_iblIntensity = intensity;
+}
+
+void D3D12Renderer::createDefaultIBL()
+{
+    // Create 1x1 dummy cubemaps so the shader doesn't crash when IBL is not loaded
+    // Irradiance: dark grey
+    {
+        float irr[] = {0.02f, 0.02f, 0.02f, 1.0f};
+        std::vector<float> face(irr, irr + 4);
+        std::vector<float> faces[6] = {face, face, face, face, face, face};
+        uploadCubemap(3, m_irradianceCubemap, faces, 1, 1, nullptr);
+    }
+    // Prefiltered: dark grey
+    {
+        float pref[] = {0.02f, 0.02f, 0.02f, 1.0f};
+        std::vector<float> face(pref, pref + 4);
+        std::vector<float> faces[6] = {face, face, face, face, face, face};
+        uploadCubemap(4, m_prefilteredCubemap, faces, 1, 1, nullptr);
+    }
+    // BRDF LUT: default (0.5, 0.0)
+    {
+        float lut[] = {0.5f, 0.0f};
+        uploadBRDFLut(5, lut, 1);
+    }
+    m_maxPrefilteredMip = 0;
+}
+
+void D3D12Renderer::uploadCubemap(int srvIndex, ComPtr<ID3D12Resource>& resource, const std::vector<float>* faces,
+                                  int faceSize, int mipLevels, const std::vector<std::vector<float>>* /*mipFaces*/)
+{
+    // Create cubemap texture resource
+    D3D12_HEAP_PROPERTIES heapProps{};
+    heapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
+
+    D3D12_RESOURCE_DESC texDesc{};
+    texDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    texDesc.Width = faceSize;
+    texDesc.Height = faceSize;
+    texDesc.DepthOrArraySize = 6;
+    texDesc.MipLevels = static_cast<UINT16>(mipLevels);
+    texDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+    texDesc.SampleDesc.Count = 1;
+
+    m_device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &texDesc, D3D12_RESOURCE_STATE_COPY_DEST,
+                                      nullptr, IID_PPV_ARGS(&resource));
+
+    // Upload each face
+    m_commandAllocator->Reset();
+    m_commandList->Reset(m_commandAllocator.Get(), nullptr);
+
+    for (int f = 0; f < 6; ++f)
+    {
+        UINT subresource = D3D12CalcSubresource(0, f, 0, mipLevels, 6);
+
+        D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint;
+        UINT64 requiredSize = 0;
+        D3D12_RESOURCE_DESC faceDesc = texDesc;
+        faceDesc.DepthOrArraySize = 1;
+        faceDesc.MipLevels = 1;
+        m_device->GetCopyableFootprints(&faceDesc, 0, 1, 0, &footprint, nullptr, nullptr, &requiredSize);
+
+        // Create upload buffer
+        D3D12_HEAP_PROPERTIES uploadProps{};
+        uploadProps.Type = D3D12_HEAP_TYPE_UPLOAD;
+        D3D12_RESOURCE_DESC uploadDesc{};
+        uploadDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+        uploadDesc.Width = requiredSize;
+        uploadDesc.Height = 1;
+        uploadDesc.DepthOrArraySize = 1;
+        uploadDesc.MipLevels = 1;
+        uploadDesc.SampleDesc.Count = 1;
+        uploadDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+        ComPtr<ID3D12Resource> uploadBuf;
+        m_device->CreateCommittedResource(&uploadProps, D3D12_HEAP_FLAG_NONE, &uploadDesc,
+                                          D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&uploadBuf));
+
+        uint8_t* mapped = nullptr;
+        D3D12_RANGE readRange{0, 0};
+        uploadBuf->Map(0, &readRange, reinterpret_cast<void**>(&mapped));
+        for (int y = 0; y < faceSize; ++y)
+        {
+            memcpy(mapped + y * footprint.Footprint.RowPitch, faces[f].data() + y * faceSize * 4,
+                   faceSize * 4 * sizeof(float));
+        }
+        uploadBuf->Unmap(0, nullptr);
+
+        D3D12_TEXTURE_COPY_LOCATION dst{};
+        dst.pResource = resource.Get();
+        dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+        dst.SubresourceIndex = subresource;
+
+        D3D12_TEXTURE_COPY_LOCATION src{};
+        src.pResource = uploadBuf.Get();
+        src.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+        src.PlacedFootprint = footprint;
+
+        m_commandList->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+    }
+
+    // Transition to SRV
+    D3D12_RESOURCE_BARRIER barrier{};
+    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barrier.Transition.pResource = resource.Get();
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    m_commandList->ResourceBarrier(1, &barrier);
+
+    m_commandList->Close();
+    ID3D12CommandList* lists[] = {m_commandList.Get()};
+    m_commandQueue->ExecuteCommandLists(1, lists);
+    waitForGPU();
+
+    // Create cubemap SRV
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+    srvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
+    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srvDesc.TextureCube.MipLevels = mipLevels;
+
+    auto handle = m_srvHeap->GetCPUDescriptorHandleForHeapStart();
+    handle.ptr += srvIndex * m_srvDescriptorSize;
+    m_device->CreateShaderResourceView(resource.Get(), &srvDesc, handle);
+}
+
+void D3D12Renderer::uploadBRDFLut(int srvIndex, const float* rgPixels, int size)
+{
+    D3D12_HEAP_PROPERTIES heapProps{};
+    heapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
+
+    D3D12_RESOURCE_DESC texDesc{};
+    texDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    texDesc.Width = size;
+    texDesc.Height = size;
+    texDesc.DepthOrArraySize = 1;
+    texDesc.MipLevels = 1;
+    texDesc.Format = DXGI_FORMAT_R32G32_FLOAT;
+    texDesc.SampleDesc.Count = 1;
+
+    m_device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &texDesc, D3D12_RESOURCE_STATE_COPY_DEST,
+                                      nullptr, IID_PPV_ARGS(&m_brdfLut));
+
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint;
+    UINT64 requiredSize = 0;
+    m_device->GetCopyableFootprints(&texDesc, 0, 1, 0, &footprint, nullptr, nullptr, &requiredSize);
+
+    D3D12_HEAP_PROPERTIES uploadProps{};
+    uploadProps.Type = D3D12_HEAP_TYPE_UPLOAD;
+    D3D12_RESOURCE_DESC uploadDesc{};
+    uploadDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    uploadDesc.Width = requiredSize;
+    uploadDesc.Height = 1;
+    uploadDesc.DepthOrArraySize = 1;
+    uploadDesc.MipLevels = 1;
+    uploadDesc.SampleDesc.Count = 1;
+    uploadDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+    ComPtr<ID3D12Resource> uploadBuf;
+    m_device->CreateCommittedResource(&uploadProps, D3D12_HEAP_FLAG_NONE, &uploadDesc,
+                                      D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&uploadBuf));
+
+    uint8_t* mapped = nullptr;
+    D3D12_RANGE readRange{0, 0};
+    uploadBuf->Map(0, &readRange, reinterpret_cast<void**>(&mapped));
+    for (int y = 0; y < size; ++y)
+    {
+        memcpy(mapped + y * footprint.Footprint.RowPitch, rgPixels + y * size * 2, size * 2 * sizeof(float));
+    }
+    uploadBuf->Unmap(0, nullptr);
+
+    m_commandAllocator->Reset();
+    m_commandList->Reset(m_commandAllocator.Get(), nullptr);
+
+    D3D12_TEXTURE_COPY_LOCATION dst{};
+    dst.pResource = m_brdfLut.Get();
+    dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    D3D12_TEXTURE_COPY_LOCATION src{};
+    src.pResource = uploadBuf.Get();
+    src.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+    src.PlacedFootprint = footprint;
+    m_commandList->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+
+    D3D12_RESOURCE_BARRIER barrier{};
+    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+    barrier.Transition.pResource = m_brdfLut.Get();
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
+    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    m_commandList->ResourceBarrier(1, &barrier);
+
+    m_commandList->Close();
+    ID3D12CommandList* lists[] = {m_commandList.Get()};
+    m_commandQueue->ExecuteCommandLists(1, lists);
+    waitForGPU();
+
+    // Create SRV
+    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+    srvDesc.Format = DXGI_FORMAT_R32G32_FLOAT;
+    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    srvDesc.Texture2D.MipLevels = 1;
+
+    auto handle = m_srvHeap->GetCPUDescriptorHandleForHeapStart();
+    handle.ptr += srvIndex * m_srvDescriptorSize;
+    m_device->CreateShaderResourceView(m_brdfLut.Get(), &srvDesc, handle);
+}
+
+bool D3D12Renderer::loadIBL(const std::filesystem::path& hdriPath)
+{
+    if (!m_initialized)
+        return false;
+
+    IBLData data = IBLProcessor::process(hdriPath, 64, 256, 256);
+    if (!data.valid)
+    {
+        spdlog::error("D3D12Renderer: IBL processing failed for {}", hdriPath.string());
+        return false;
+    }
+
+    // Upload irradiance cubemap (single mip)
+    uploadCubemap(3, m_irradianceCubemap, data.irradianceFaces, data.irradianceSize, 1, nullptr);
+
+    // Upload prefiltered cubemap (mip 0 only for now — full mip chain is complex)
+    // Use mip 0 (roughness=0) as the base
+    if (data.prefilteredMipLevels > 0)
+    {
+        std::vector<float> mip0Faces[6];
+        for (int f = 0; f < 6; ++f)
+        {
+            mip0Faces[f] = data.prefilteredFaces[f][0].pixels;
+        }
+        uploadCubemap(4, m_prefilteredCubemap, mip0Faces, data.prefilteredSize, 1, nullptr);
+        m_maxPrefilteredMip = 0; // Single mip for now
+    }
+
+    // Upload BRDF LUT
+    uploadBRDFLut(5, data.brdfLutPixels.data(), data.brdfLutSize);
+
+    m_iblLoaded = true;
+    m_iblIntensity = 1.0f;
+    spdlog::info("D3D12Renderer: IBL loaded from {}", hdriPath.filename().string());
+    return true;
 }
 
 } // namespace tpbr
