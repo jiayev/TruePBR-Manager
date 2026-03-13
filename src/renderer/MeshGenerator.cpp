@@ -103,11 +103,11 @@ PreviewMesh MeshGenerator::generatePlane()
         }
 
         mesh.indices.push_back(base);
+        mesh.indices.push_back(base + 2);
         mesh.indices.push_back(base + 1);
-        mesh.indices.push_back(base + 2);
         mesh.indices.push_back(base);
-        mesh.indices.push_back(base + 2);
         mesh.indices.push_back(base + 3);
+        mesh.indices.push_back(base + 2);
     };
 
     addFace(+1.0f); // front
@@ -179,9 +179,9 @@ PreviewMesh MeshGenerator::generateCube()
     PreviewMesh mesh;
 
     // 6 faces, 4 vertices each
-    // Vertices ordered CCW when viewed from outside (facing normal direction)
-    // For each face: define 4 corners going counter-clockwise as seen from the normal side
-    // UV: v0=(0,0) top-left, v1=(0,1) bottom-left, v2=(1,1) bottom-right, v3=(1,0) top-right
+    // Winding: CW when viewed from outside (matching Sphere convention)
+    // Vertex order per face: BL → BR → TR → TL (CW from normal direction)
+    // UV: BL=(0,1) BR=(1,1) TR=(1,0) TL=(0,0) — texture upright
     struct FaceInfo
     {
         float normal[3];
@@ -191,44 +191,31 @@ PreviewMesh MeshGenerator::generateCube()
     };
 
     // clang-format off
-    // Looking at each face from outside (from the normal direction):
-    // v0=TL, v1=BL, v2=BR, v3=TR — CCW order
     FaceInfo faces[] = {
-        // +Z face: looking from +Z toward origin, X goes right, Y goes up
-        // TL=(-1,1,1) BL=(-1,-1,1) BR=(1,-1,1) TR=(1,1,1)
-        {{0, 0, 1}, {1, 0, 0, 1},
-         {{-1, 1, 1},{-1,-1, 1},{ 1,-1, 1},{ 1, 1, 1}},
-         {{0,0},{0,1},{1,1},{1,0}}},
-
-        // -Z face: looking from -Z toward origin, X goes left, Y goes up
-        // TL=(1,1,-1) BL=(1,-1,-1) BR=(-1,-1,-1) TR=(-1,1,-1)
-        {{0, 0,-1}, {-1, 0, 0, 1},
-         {{ 1, 1,-1},{ 1,-1,-1},{-1,-1,-1},{-1, 1,-1}},
-         {{0,0},{0,1},{1,1},{1,0}}},
-
-        // +X face: looking from +X toward origin, Z goes left, Y goes up
-        // TL=(1,1,1) BL=(1,-1,1) BR=(1,-1,-1) TR=(1,1,-1)
-        {{1, 0, 0}, {0, 0,-1, 1},
-         {{ 1, 1, 1},{ 1,-1, 1},{ 1,-1,-1},{ 1, 1,-1}},
-         {{0,0},{0,1},{1,1},{1,0}}},
-
-        // -X face: looking from -X toward origin, Z goes right, Y goes up
-        // TL=(-1,1,-1) BL=(-1,-1,-1) BR=(-1,-1,1) TR=(-1,1,1)
-        {{-1, 0, 0}, {0, 0, 1, 1},
-         {{-1, 1,-1},{-1,-1,-1},{-1,-1, 1},{-1, 1, 1}},
-         {{0,0},{0,1},{1,1},{1,0}}},
-
-        // +Y face: looking from +Y down, X goes right, Z goes down (away)
-        // TL=(-1,1,-1) BL=(-1,1,1) BR=(1,1,1) TR=(1,1,-1)
-        {{0, 1, 0}, {1, 0, 0, 1},
-         {{-1, 1,-1},{-1, 1, 1},{ 1, 1, 1},{ 1, 1,-1}},
-         {{0,0},{0,1},{1,1},{1,0}}},
-
-        // -Y face: looking from -Y up, X goes right, Z goes up (toward)
-        // TL=(-1,-1,1) BL=(-1,-1,-1) BR=(1,-1,-1) TR=(1,-1,1)
-        {{0,-1, 0}, {1, 0, 0, 1},
-         {{-1,-1, 1},{-1,-1,-1},{ 1,-1,-1},{ 1,-1, 1}},
-         {{0,0},{0,1},{1,1},{1,0}}},
+        // +Z face: from +Z, X right Y up. BL=(-1,-1,1) BR=(1,-1,1) TR=(1,1,1) TL=(-1,1,1)
+        {{ 0, 0, 1}, { 1, 0, 0, 1},
+         {{-1,-1, 1},{ 1,-1, 1},{ 1, 1, 1},{-1, 1, 1}},
+         {{0,1},{1,1},{1,0},{0,0}}},
+        // -Z face: from -Z, X left Y up. BL=(1,-1,-1) BR=(-1,-1,-1) TR=(-1,1,-1) TL=(1,1,-1)
+        {{ 0, 0,-1}, {-1, 0, 0, 1},
+         {{ 1,-1,-1},{-1,-1,-1},{-1, 1,-1},{ 1, 1,-1}},
+         {{0,1},{1,1},{1,0},{0,0}}},
+        // +X face: from +X, Z left Y up. BL=(1,-1,1) BR=(1,-1,-1) TR=(1,1,-1) TL=(1,1,1)
+        {{ 1, 0, 0}, { 0, 0,-1, 1},
+         {{ 1,-1, 1},{ 1,-1,-1},{ 1, 1,-1},{ 1, 1, 1}},
+         {{0,1},{1,1},{1,0},{0,0}}},
+        // -X face: from -X, Z right Y up. BL=(-1,-1,-1) BR=(-1,-1,1) TR=(-1,1,1) TL=(-1,1,-1)
+        {{-1, 0, 0}, { 0, 0, 1, 1},
+         {{-1,-1,-1},{-1,-1, 1},{-1, 1, 1},{-1, 1,-1}},
+         {{0,1},{1,1},{1,0},{0,0}}},
+        // +Y face: from +Y down, X right Z away. BL=(-1,1,1) BR=(1,1,1) TR=(1,1,-1) TL=(-1,1,-1)
+        {{ 0, 1, 0}, { 1, 0, 0, 1},
+         {{-1, 1, 1},{ 1, 1, 1},{ 1, 1,-1},{-1, 1,-1}},
+         {{0,1},{1,1},{1,0},{0,0}}},
+        // -Y face: from -Y up, X right Z toward. BL=(-1,-1,-1) BR=(1,-1,-1) TR=(1,-1,1) TL=(-1,-1,1)
+        {{ 0,-1, 0}, { 1, 0, 0, 1},
+         {{-1,-1,-1},{ 1,-1,-1},{ 1,-1, 1},{-1,-1, 1}},
+         {{0,1},{1,1},{1,0},{0,0}}},
     };
     // clang-format on
 
@@ -252,13 +239,13 @@ PreviewMesh MeshGenerator::generateCube()
             v.uv[1] = face.uvs[i][1];
             mesh.vertices.push_back(v);
         }
-        // CCW: 0→1→2, 0→2→3
+        // Reversed winding: 0→2→1, 0→3→2
         mesh.indices.push_back(base);
+        mesh.indices.push_back(base + 2);
         mesh.indices.push_back(base + 1);
-        mesh.indices.push_back(base + 2);
         mesh.indices.push_back(base);
-        mesh.indices.push_back(base + 2);
         mesh.indices.push_back(base + 3);
+        mesh.indices.push_back(base + 2);
     }
 
     return mesh;
