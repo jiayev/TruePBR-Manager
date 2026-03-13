@@ -2,7 +2,7 @@
 #include "utils/Log.h"
 
 #include <DirectXTex.h>
-#include <tinyexr.h>
+#include <third_party/tinyexr.h>
 
 #include <algorithm>
 #include <cmath>

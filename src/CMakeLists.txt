@@ -71,6 +71,7 @@ set(ALL_SOURCES
     ${APP_SOURCES}
     ${UTIL_SOURCES}
     ${RENDERER_SOURCES}
+    third_party/tinyexr_impl.cpp
 )
 
 # Qt resources
@@ -89,7 +90,6 @@ find_package(nlohmann_json CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(directxtex CONFIG REQUIRED)
 find_package(Stb REQUIRED)
-find_package(tinyexr CONFIG REQUIRED)
 
 target_include_directories(TruePBR-Manager PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
@@ -101,7 +101,6 @@ target_link_libraries(TruePBR-Manager PRIVATE
     nlohmann_json::nlohmann_json
     spdlog::spdlog
     Microsoft::DirectXTex
-    unofficial::tinyexr::tinyexr
     d3d12.lib
     dxgi.lib
     d3dcompiler.lib
