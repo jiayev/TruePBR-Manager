@@ -107,20 +107,60 @@ bool D3D12Renderer::createDevice()
         return false;
     }
 
+    // --- Prefer discrete (high-performance) GPU ---
+    // Try IDXGIFactory6::EnumAdapterByGpuPreference first (Windows 10 1803+).
+    ComPtr<IDXGIFactory6> factory6;
     ComPtr<IDXGIAdapter1> adapter;
-    for (UINT i = 0; m_factory->EnumAdapters1(i, &adapter) != DXGI_ERROR_NOT_FOUND; ++i)
+    if (SUCCEEDED(m_factory.As(&factory6)))
     {
-        DXGI_ADAPTER_DESC1 desc;
-        adapter->GetDesc1(&desc);
-        if (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)
-            continue;
-
-        if (SUCCEEDED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&m_device))))
+        for (UINT i = 0; factory6->EnumAdapterByGpuPreference(i, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
+                                                              IID_PPV_ARGS(&adapter)) != DXGI_ERROR_NOT_FOUND;
+             ++i)
         {
-            char adapterName[256] = {};
-            WideCharToMultiByte(CP_UTF8, 0, desc.Description, -1, adapterName, sizeof(adapterName), nullptr, nullptr);
-            spdlog::info("D3D12 device created on adapter: {}", adapterName);
-            break;
+            DXGI_ADAPTER_DESC1 desc;
+            adapter->GetDesc1(&desc);
+            if (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)
+                continue;
+
+            if (SUCCEEDED(D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&m_device))))
+            {
+                char adapterName[256] = {};
+                WideCharToMultiByte(CP_UTF8, 0, desc.Description, -1, adapterName, sizeof(adapterName), nullptr,
+                                    nullptr);
+                spdlog::info("D3D12 device created on adapter (high-perf): {}", adapterName);
+                break;
+            }
+        }
+    }
+
+    // Fallback: enumerate all adapters and pick the one with the most dedicated VRAM.
+    if (!m_device)
+    {
+        ComPtr<IDXGIAdapter1> bestAdapter;
+        SIZE_T bestVRAM = 0;
+        for (UINT i = 0; m_factory->EnumAdapters1(i, &adapter) != DXGI_ERROR_NOT_FOUND; ++i)
+        {
+            DXGI_ADAPTER_DESC1 desc;
+            adapter->GetDesc1(&desc);
+            if (desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)
+                continue;
+            if (desc.DedicatedVideoMemory > bestVRAM)
+            {
+                bestVRAM = desc.DedicatedVideoMemory;
+                bestAdapter = adapter;
+            }
+        }
+        if (bestAdapter)
+        {
+            if (SUCCEEDED(D3D12CreateDevice(bestAdapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&m_device))))
+            {
+                DXGI_ADAPTER_DESC1 desc;
+                bestAdapter->GetDesc1(&desc);
+                char adapterName[256] = {};
+                WideCharToMultiByte(CP_UTF8, 0, desc.Description, -1, adapterName, sizeof(adapterName), nullptr,
+                                    nullptr);
+                spdlog::info("D3D12 device created on adapter (best VRAM): {}", adapterName);
+            }
         }
     }
 
