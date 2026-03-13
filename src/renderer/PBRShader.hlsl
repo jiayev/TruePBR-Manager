@@ -98,14 +98,6 @@ PSInput VSMain(VSInput input)
     return output;
 }
 
-// ─── Fresnel with roughness (for IBL) ──────────────────────
-
-float3 FresnelSchlickRoughness(float cosTheta, float3 F0, float roughness)
-{
-    float3 oneMinusR = float3(1.0 - roughness, 1.0 - roughness, 1.0 - roughness);
-    return F0 + (max(oneMinusR, F0) - F0) * pow(saturate(1.0 - cosTheta), 5.0);
-}
-
 // ─── AgX Tone Mapping ──────────────────────────────────────
 
 static const float3x3 AgXInsetMatrix = {
@@ -319,25 +311,18 @@ float4 PSMain(PSInput input) : SV_TARGET
         else
             iblDiffuse *= ao;
 
-        // Specular IBL: sample prefiltered map + BRDF LUT
+        // Specular IBL: use lobe weights from GetIndirectLobeWeights
         float3 R = reflect(-V, N);
         float mipLevel = roughness * g_MaxPrefilteredMip;
         float3 prefilteredColor = g_PrefilteredMap.SampleLevel(g_Sampler, R, mipLevel).rgb;
-        float2 brdfSample = g_BRDFLut.Sample(g_ClampSampler, float2(NdotV, roughness)).rg;
-        float3 iblSpecular = prefilteredColor * (mat.F0 * brdfSample.x + brdfSample.y);
+        float3 iblSpecular = prefilteredColor * lobes.specular;
 
-        // Coat specular IBL (additional reflection lobe)
+        // Coat specular IBL (separate mip due to different roughness)
         [branch] if (g_FeatureFlags & PBR::Flags::TwoLayer)
         {
             float coatMip = mat.CoatRoughness * g_MaxPrefilteredMip;
             float3 coatPref = g_PrefilteredMap.SampleLevel(g_Sampler, R, coatMip).rgb;
-            float2 coatBrdf = g_BRDFLut.Sample(g_ClampSampler, float2(NdotV, mat.CoatRoughness)).rg;
-            float3 coatSpecIBL = coatPref * (mat.CoatF0 * coatBrdf.x + coatBrdf.y);
-
-            float3 coatF = BRDF::F_Schlick(mat.CoatF0, NdotV);
-            float3 layerAtten = 1 - coatF * mat.CoatStrength;
-            iblSpecular *= layerAtten;
-            iblSpecular += coatSpecIBL * mat.CoatStrength;
+            iblSpecular += coatPref * lobes.coatSpecular;
         }
 
         // Horizon occlusion

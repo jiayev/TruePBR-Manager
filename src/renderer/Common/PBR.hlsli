@@ -251,6 +251,7 @@ namespace PBR
 	{
 		float3 diffuse;
 		float3 specular;
+		float3 coatSpecular;
 	};
 
 	IndirectLobeWeights GetIndirectLobeWeights(float3 N, float3 V,
@@ -302,7 +303,7 @@ namespace PBR
 					float3 coatDiffuseLobeWeight = material.CoatColor * (1 - coatSpecularLobeWeight);
 					weights.diffuse += coatDiffuseLobeWeight * material.CoatStrength;
 				}
-				weights.specular += coatSpecularLobeWeight * material.CoatStrength;
+				weights.coatSpecular = coatSpecularLobeWeight * material.CoatStrength;
 			}
 		}
 
