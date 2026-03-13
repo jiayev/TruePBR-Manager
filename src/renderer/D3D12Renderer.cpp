@@ -493,8 +493,16 @@ void D3D12Renderer::uploadTexture(int srvIndex, const uint8_t* rgba, int w, int 
     texDesc.Format = texFormat;
     texDesc.SampleDesc.Count = 1;
 
-    m_device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &texDesc, D3D12_RESOURCE_STATE_COPY_DEST,
-                                      nullptr, IID_PPV_ARGS(&m_textures[srvIndex]));
+    HRESULT hrTex =
+        m_device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &texDesc, D3D12_RESOURCE_STATE_COPY_DEST,
+                                          nullptr, IID_PPV_ARGS(&m_textures[srvIndex]));
+    if (FAILED(hrTex))
+    {
+        spdlog::error("uploadTexture: CreateCommittedResource (texture) failed: 0x{:08X}",
+                      static_cast<unsigned>(hrTex));
+        spdlog::default_logger()->flush();
+        return;
+    }
 
     // Upload heap
     const UINT64 uploadSize = static_cast<UINT64>(w) * h * 4;
@@ -517,9 +525,16 @@ void D3D12Renderer::uploadTexture(int srvIndex, const uint8_t* rgba, int w, int 
     uploadDesc.SampleDesc.Count = 1;
     uploadDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
 
-    m_device->CreateCommittedResource(&uploadProps, D3D12_HEAP_FLAG_NONE, &uploadDesc,
-                                      D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
-                                      IID_PPV_ARGS(&m_textureUploadHeaps[srvIndex]));
+    HRESULT hrUpload = m_device->CreateCommittedResource(&uploadProps, D3D12_HEAP_FLAG_NONE, &uploadDesc,
+                                                         D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+                                                         IID_PPV_ARGS(&m_textureUploadHeaps[srvIndex]));
+    if (FAILED(hrUpload))
+    {
+        spdlog::error("uploadTexture: CreateCommittedResource (upload) failed: 0x{:08X}",
+                      static_cast<unsigned>(hrUpload));
+        spdlog::default_logger()->flush();
+        return;
+    }
 
     // Copy data to upload heap
     uint8_t* mapped = nullptr;
@@ -557,7 +572,13 @@ void D3D12Renderer::uploadTexture(int srvIndex, const uint8_t* rgba, int w, int 
     barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     m_commandList->ResourceBarrier(1, &barrier);
 
-    m_commandList->Close();
+    HRESULT hrClose = m_commandList->Close();
+    if (FAILED(hrClose))
+    {
+        spdlog::error("uploadTexture: CommandList Close failed: 0x{:08X}", static_cast<unsigned>(hrClose));
+        spdlog::default_logger()->flush();
+        return;
+    }
 
     spdlog::debug("D3D12Renderer::uploadTexture: executing and waiting...");
     spdlog::default_logger()->flush();
@@ -794,6 +815,16 @@ void D3D12Renderer::render()
 
 void D3D12Renderer::waitForGPU()
 {
+    // Check for device removed first
+    HRESULT deviceStatus = m_device->GetDeviceRemovedReason();
+    if (FAILED(deviceStatus))
+    {
+        spdlog::error("D3D12Renderer::waitForGPU: DEVICE REMOVED! Reason: 0x{:08X}",
+                      static_cast<unsigned>(deviceStatus));
+        spdlog::default_logger()->flush();
+        return;
+    }
+
     m_commandQueue->Signal(m_fence.Get(), m_fenceValue);
     if (m_fence->GetCompletedValue() < m_fenceValue)
     {
@@ -802,6 +833,9 @@ void D3D12Renderer::waitForGPU()
         if (result == WAIT_TIMEOUT)
         {
             spdlog::error("D3D12Renderer::waitForGPU TIMEOUT waiting for fence value {}", m_fenceValue);
+            // Check device removed after timeout
+            HRESULT reason = m_device->GetDeviceRemovedReason();
+            spdlog::error("D3D12Renderer::waitForGPU: device removed reason: 0x{:08X}", static_cast<unsigned>(reason));
             spdlog::default_logger()->flush();
         }
     }
