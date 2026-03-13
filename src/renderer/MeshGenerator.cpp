@@ -30,45 +30,89 @@ PreviewMesh MeshGenerator::generatePlane()
     PreviewMesh mesh;
 
     // 2x2 quad centered at origin, facing +Z (towards camera in default view)
-    PreviewVertex v{};
-    v.normal[0] = 0;
-    v.normal[1] = 0;
-    v.normal[2] = 1;
-    v.tangent[0] = 1;
-    v.tangent[1] = 0;
-    v.tangent[2] = 0;
-    v.tangent[3] = 1;
+    // Double-sided: front face (+Z normal) and back face (-Z normal)
 
-    // v0: (-1, -1, 0) uv(0, 1)
-    v.position[0] = -1;
-    v.position[1] = -1;
-    v.position[2] = 0;
-    v.uv[0] = 0;
-    v.uv[1] = 1;
-    mesh.vertices.push_back(v);
+    auto addFace = [&](float nz)
+    {
+        uint32_t base = static_cast<uint32_t>(mesh.vertices.size());
+        PreviewVertex v{};
+        v.normal[0] = 0;
+        v.normal[1] = 0;
+        v.normal[2] = nz;
+        v.tangent[0] = 1;
+        v.tangent[1] = 0;
+        v.tangent[2] = 0;
+        v.tangent[3] = nz > 0 ? 1.0f : -1.0f;
 
-    // v1: (1, -1, 0) uv(1, 1)
-    v.position[0] = 1;
-    v.position[1] = -1;
-    v.uv[0] = 1;
-    v.uv[1] = 1;
-    mesh.vertices.push_back(v);
+        // CCW winding when viewed from the normal direction
+        if (nz > 0)
+        {
+            // Front face: v0(-1,-1) v1(1,-1) v2(1,1) v3(-1,1) — CCW from +Z
+            v.position[0] = -1;
+            v.position[1] = -1;
+            v.position[2] = 0;
+            v.uv[0] = 0;
+            v.uv[1] = 1;
+            mesh.vertices.push_back(v);
 
-    // v2: (1, 1, 0) uv(1, 0)
-    v.position[0] = 1;
-    v.position[1] = 1;
-    v.uv[0] = 1;
-    v.uv[1] = 0;
-    mesh.vertices.push_back(v);
+            v.position[0] = 1;
+            v.position[1] = -1;
+            v.uv[0] = 1;
+            v.uv[1] = 1;
+            mesh.vertices.push_back(v);
 
-    // v3: (-1, 1, 0) uv(0, 0)
-    v.position[0] = -1;
-    v.position[1] = 1;
-    v.uv[0] = 0;
-    v.uv[1] = 0;
-    mesh.vertices.push_back(v);
+            v.position[0] = 1;
+            v.position[1] = 1;
+            v.uv[0] = 1;
+            v.uv[1] = 0;
+            mesh.vertices.push_back(v);
 
-    mesh.indices = {0, 2, 1, 0, 3, 2};
+            v.position[0] = -1;
+            v.position[1] = 1;
+            v.uv[0] = 0;
+            v.uv[1] = 0;
+            mesh.vertices.push_back(v);
+        }
+        else
+        {
+            // Back face: reversed winding — v0(1,-1) v1(-1,-1) v2(-1,1) v3(1,1) — CCW from -Z
+            v.position[0] = 1;
+            v.position[1] = -1;
+            v.position[2] = 0;
+            v.uv[0] = 0;
+            v.uv[1] = 1;
+            mesh.vertices.push_back(v);
+
+            v.position[0] = -1;
+            v.position[1] = -1;
+            v.uv[0] = 1;
+            v.uv[1] = 1;
+            mesh.vertices.push_back(v);
+
+            v.position[0] = -1;
+            v.position[1] = 1;
+            v.uv[0] = 1;
+            v.uv[1] = 0;
+            mesh.vertices.push_back(v);
+
+            v.position[0] = 1;
+            v.position[1] = 1;
+            v.uv[0] = 0;
+            v.uv[1] = 0;
+            mesh.vertices.push_back(v);
+        }
+
+        mesh.indices.push_back(base);
+        mesh.indices.push_back(base + 1);
+        mesh.indices.push_back(base + 2);
+        mesh.indices.push_back(base);
+        mesh.indices.push_back(base + 2);
+        mesh.indices.push_back(base + 3);
+    };
+
+    addFace(+1.0f); // front
+    addFace(-1.0f); // back
+
     return mesh;
 }
 
@@ -134,28 +178,28 @@ PreviewMesh MeshGenerator::generateCube()
 {
     PreviewMesh mesh;
 
-    // 6 faces, 4 vertices each
+    // 6 faces, 4 vertices each, CCW winding when viewed from outside
     struct FaceInfo
     {
         float normal[3];
         float tangent[4];
-        float positions[4][3];
+        float positions[4][3]; // CCW order when viewed from normal direction
         float uvs[4][2];
     };
 
     // clang-format off
     FaceInfo faces[] = {
-        // +Z face
-        {{0, 0, 1}, {1, 0, 0, 1}, {{-1,-1, 1},{ 1,-1, 1},{ 1, 1, 1},{-1, 1, 1}}, {{0,0},{1,0},{1,1},{0,1}}},
-        // -Z face
-        {{0, 0,-1}, {-1,0, 0, 1}, {{ 1,-1,-1},{-1,-1,-1},{-1, 1,-1},{ 1, 1,-1}}, {{0,0},{1,0},{1,1},{0,1}}},
-        // +X face
-        {{1, 0, 0}, {0, 0, 1, 1}, {{ 1,-1, 1},{ 1,-1,-1},{ 1, 1,-1},{ 1, 1, 1}}, {{0,0},{1,0},{1,1},{0,1}}},
-        // -X face
-        {{-1,0, 0}, {0, 0,-1, 1}, {{-1,-1,-1},{-1,-1, 1},{-1, 1, 1},{-1, 1,-1}}, {{0,0},{1,0},{1,1},{0,1}}},
-        // +Y face
+        // +Z face (front): CCW from +Z is BL→BR→TR→TL
+        {{0, 0, 1}, {1, 0, 0, 1}, {{-1,-1, 1},{ 1,-1, 1},{ 1, 1, 1},{-1, 1, 1}}, {{0,1},{1,1},{1,0},{0,0}}},
+        // -Z face (back): CCW from -Z is BR→BL→TL→TR
+        {{0, 0,-1}, {-1,0, 0, 1}, {{ 1,-1,-1},{-1,-1,-1},{-1, 1,-1},{ 1, 1,-1}}, {{0,1},{1,1},{1,0},{0,0}}},
+        // +X face (right): CCW from +X
+        {{1, 0, 0}, {0, 0,-1, 1}, {{ 1,-1, 1},{ 1,-1,-1},{ 1, 1,-1},{ 1, 1, 1}}, {{0,1},{1,1},{1,0},{0,0}}},
+        // -X face (left): CCW from -X
+        {{-1,0, 0}, {0, 0, 1, 1}, {{-1,-1,-1},{-1,-1, 1},{-1, 1, 1},{-1, 1,-1}}, {{0,1},{1,1},{1,0},{0,0}}},
+        // +Y face (top): CCW from +Y
         {{0, 1, 0}, {1, 0, 0, 1}, {{-1, 1, 1},{ 1, 1, 1},{ 1, 1,-1},{-1, 1,-1}}, {{0,0},{1,0},{1,1},{0,1}}},
-        // -Y face
+        // -Y face (bottom): CCW from -Y
         {{0,-1, 0}, {1, 0, 0, 1}, {{-1,-1,-1},{ 1,-1,-1},{ 1,-1, 1},{-1,-1, 1}}, {{0,0},{1,0},{1,1},{0,1}}},
     };
     // clang-format on
@@ -165,7 +209,7 @@ PreviewMesh MeshGenerator::generateCube()
         uint32_t base = static_cast<uint32_t>(mesh.vertices.size());
         for (int i = 0; i < 4; ++i)
         {
-            PreviewVertex v;
+            PreviewVertex v{};
             v.position[0] = face.positions[i][0];
             v.position[1] = face.positions[i][1];
             v.position[2] = face.positions[i][2];
@@ -180,12 +224,13 @@ PreviewMesh MeshGenerator::generateCube()
             v.uv[1] = face.uvs[i][1];
             mesh.vertices.push_back(v);
         }
+        // Standard CCW triangle fan: 0-1-2, 0-2-3
         mesh.indices.push_back(base);
-        mesh.indices.push_back(base + 2);
         mesh.indices.push_back(base + 1);
-        mesh.indices.push_back(base);
-        mesh.indices.push_back(base + 3);
         mesh.indices.push_back(base + 2);
+        mesh.indices.push_back(base);
+        mesh.indices.push_back(base + 2);
+        mesh.indices.push_back(base + 3);
     }
 
     return mesh;
