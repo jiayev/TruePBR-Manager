@@ -3,11 +3,11 @@
 #include "utils/Log.h"
 
 #include <DirectXMath.h>
-#include <d3dcompiler.h>
+
+#include <fstream>
 
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "dxgi.lib")
-#pragma comment(lib, "d3dcompiler.lib")
 
 namespace tpbr
 {
@@ -373,45 +373,48 @@ bool D3D12Renderer::createRootSignatureAndPSO()
     m_device->CreateRootSignature(0, sigBlob->GetBufferPointer(), sigBlob->GetBufferSize(),
                                   IID_PPV_ARGS(&m_rootSignature));
 
-    // Locate shader directory
+    // Locate shader directory (pre-compiled .cso files)
     std::filesystem::path shaderDir;
     {
         wchar_t exePath[MAX_PATH] = {};
         GetModuleFileNameW(nullptr, exePath, MAX_PATH);
         auto exeDir = std::filesystem::path(exePath).parent_path();
         auto distDir = exeDir / "shaders";
-        if (std::filesystem::exists(distDir / "PBRShader.hlsl"))
+        if (std::filesystem::exists(distDir / "PBRShader_VS.cso"))
             shaderDir = distDir;
         else
-            shaderDir = std::filesystem::path(__FILE__).parent_path();
+        {
+            // Development fallback: check build output next to source
+            auto srcDir = std::filesystem::path(__FILE__).parent_path();
+            shaderDir = srcDir;
+        }
     }
 
-    // Compile PBR shaders
-    std::wstring shaderPathW = (shaderDir / "PBRShader.hlsl").wstring();
-
-    ComPtr<ID3DBlob> vsBlob, psBlob;
-    UINT compileFlags = 0;
-#ifdef _DEBUG
-    compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
-#endif
-
-    auto compileShader = [&](const wchar_t* path, const char* entry, const char* target, ComPtr<ID3DBlob>& blob) -> bool
+    // Load pre-compiled shader bytecode (.cso)
+    auto loadCSO = [](const std::filesystem::path& path, std::vector<uint8_t>& outData) -> bool
     {
-        ComPtr<ID3DBlob> err;
-        HRESULT hr = D3DCompileFromFile(path, nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, entry, target, compileFlags,
-                                        0, &blob, &err);
-        if (FAILED(hr))
+        std::ifstream file(path, std::ios::binary | std::ios::ate);
+        if (!file.is_open())
         {
-            spdlog::error("Shader compile failed ({}): {}", entry,
-                          err ? (char*)err->GetBufferPointer() : "file not found");
+            spdlog::error("Failed to open compiled shader: {}", path.string());
+            return false;
+        }
+        auto size = static_cast<size_t>(file.tellg());
+        outData.resize(size);
+        file.seekg(0);
+        file.read(reinterpret_cast<char*>(outData.data()), size);
+        if (!file.good())
+        {
+            spdlog::error("Failed to read compiled shader: {}", path.string());
             return false;
         }
         return true;
     };
 
-    if (!compileShader(shaderPathW.c_str(), "VSMain", "vs_5_0", vsBlob))
+    std::vector<uint8_t> vsData, psData;
+    if (!loadCSO(shaderDir / "PBRShader_VS.cso", vsData))
         return false;
-    if (!compileShader(shaderPathW.c_str(), "PSMain", "ps_5_0", psBlob))
+    if (!loadCSO(shaderDir / "PBRShader_PS.cso", psData))
         return false;
 
     // Input layout
@@ -425,8 +428,8 @@ bool D3D12Renderer::createRootSignatureAndPSO()
     // PSO
     D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc{};
     psoDesc.pRootSignature = m_rootSignature.Get();
-    psoDesc.VS = {vsBlob->GetBufferPointer(), vsBlob->GetBufferSize()};
-    psoDesc.PS = {psBlob->GetBufferPointer(), psBlob->GetBufferSize()};
+    psoDesc.VS = {vsData.data(), vsData.size()};
+    psoDesc.PS = {psData.data(), psData.size()};
     psoDesc.InputLayout = {inputLayout, _countof(inputLayout)};
     psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
     psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
@@ -451,17 +454,16 @@ bool D3D12Renderer::createRootSignatureAndPSO()
 
     // ── Skybox PSO (full-screen triangle, no depth write, no input layout) ──
     {
-        std::wstring skyboxPathW = (shaderDir / "SkyboxShader.hlsl").wstring();
-        ComPtr<ID3DBlob> skyVS, skyPS;
-        if (!compileShader(skyboxPathW.c_str(), "SkyboxVS", "vs_5_0", skyVS))
+        std::vector<uint8_t> skyVSData, skyPSData;
+        if (!loadCSO(shaderDir / "SkyboxShader_VS.cso", skyVSData))
             return false;
-        if (!compileShader(skyboxPathW.c_str(), "SkyboxPS", "ps_5_0", skyPS))
+        if (!loadCSO(shaderDir / "SkyboxShader_PS.cso", skyPSData))
             return false;
 
         D3D12_GRAPHICS_PIPELINE_STATE_DESC skyPso{};
         skyPso.pRootSignature = m_rootSignature.Get();
-        skyPso.VS = {skyVS->GetBufferPointer(), skyVS->GetBufferSize()};
-        skyPso.PS = {skyPS->GetBufferPointer(), skyPS->GetBufferSize()};
+        skyPso.VS = {skyVSData.data(), skyVSData.size()};
+        skyPso.PS = {skyPSData.data(), skyPSData.size()};
         skyPso.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
         skyPso.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
         skyPso.RasterizerState.DepthClipEnable = FALSE;

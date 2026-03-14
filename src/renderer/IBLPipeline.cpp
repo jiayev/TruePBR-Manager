@@ -2,14 +2,12 @@
 #include "utils/Log.h"
 
 #include <DirectXTex.h>
-#include <d3dcompiler.h>
 #include <third_party/tinyexr.h>
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
-
-#pragma comment(lib, "d3dcompiler.lib")
+#include <fstream>
 
 namespace tpbr
 {
@@ -70,40 +68,40 @@ bool IBLPipeline::init(ID3D12Device* device)
         GetModuleFileNameW(nullptr, exePath, MAX_PATH);
         auto exeDir = std::filesystem::path(exePath).parent_path();
         auto distDir = exeDir / "shaders";
-        if (std::filesystem::exists(distDir / "IBLEquirectToCube.hlsl"))
+        if (std::filesystem::exists(distDir / "IBLEquirectToCube.cso"))
             shaderDir = distDir;
         else
             shaderDir = std::filesystem::path(__FILE__).parent_path();
     }
 
-    ComPtr<ID3DBlob> equirectBlob, prefilterBlob, brdfLutBlob;
-    ComPtr<ID3DBlob> diffuseIrradianceBlob, mipGenBlob;
-    if (!compileComputeShader(shaderDir / "IBLEquirectToCube.hlsl", "CSMain", equirectBlob))
+    std::vector<uint8_t> equirectData, prefilterData, brdfLutData;
+    std::vector<uint8_t> diffuseIrradianceData, mipGenData;
+    if (!loadCompiledShader(shaderDir / "IBLEquirectToCube.cso", equirectData))
         return false;
-    if (!compileComputeShader(shaderDir / "IBLPrefilter.hlsl", "CSMain", prefilterBlob))
+    if (!loadCompiledShader(shaderDir / "IBLPrefilter.cso", prefilterData))
         return false;
-    if (!compileComputeShader(shaderDir / "IBLBrdfLut.hlsl", "CSMain", brdfLutBlob))
+    if (!loadCompiledShader(shaderDir / "IBLBrdfLut.cso", brdfLutData))
         return false;
-    if (!compileComputeShader(shaderDir / "IBLDiffuseIrradiance.hlsl", "CSMain", diffuseIrradianceBlob))
+    if (!loadCompiledShader(shaderDir / "IBLDiffuseIrradiance.cso", diffuseIrradianceData))
         return false;
-    if (!compileComputeShader(shaderDir / "IBLCubemapMipGen.hlsl", "CSMain", mipGenBlob))
+    if (!loadCompiledShader(shaderDir / "IBLCubemapMipGen.cso", mipGenData))
         return false;
 
     // Root signature layout for passes with SRV+UAV:
     //   [0] root constants b0   [1] SRV table t0   [2] UAV table u0   + static sampler s0
     // For BRDF LUT (no SRV, no sampler):
     //   [0] root constants b0   [1] UAV table u0
-    if (!createRootSignatureAndPSO(device, "EquirectToCube", equirectBlob, 1, 1, 1, m_equirectRS, m_equirectPSO))
+    if (!createRootSignatureAndPSO(device, "EquirectToCube", equirectData.data(), equirectData.size(), 1, 1, 1, m_equirectRS, m_equirectPSO))
         return false;
-    if (!createRootSignatureAndPSO(device, "Prefilter", prefilterBlob, 1, 1, 1, m_prefilterRS, m_prefilterPSO, 5))
+    if (!createRootSignatureAndPSO(device, "Prefilter", prefilterData.data(), prefilterData.size(), 1, 1, 1, m_prefilterRS, m_prefilterPSO, 5))
         return false;
-    if (!createRootSignatureAndPSO(device, "BrdfLut", brdfLutBlob, 0, 1, 0, m_brdfLutRS, m_brdfLutPSO))
+    if (!createRootSignatureAndPSO(device, "BrdfLut", brdfLutData.data(), brdfLutData.size(), 0, 1, 0, m_brdfLutRS, m_brdfLutPSO))
         return false;
     // DiffuseIrradiance: 1 SRV (cubemap) + 1 UAV (structured output) + 1 sampler
-    if (!createRootSignatureAndPSO(device, "DiffuseIrradiance", diffuseIrradianceBlob, 1, 1, 1,
+    if (!createRootSignatureAndPSO(device, "DiffuseIrradiance", diffuseIrradianceData.data(), diffuseIrradianceData.size(), 1, 1, 1,
                                    m_diffuseIrradianceRS, m_diffuseIrradiancePSO))
         return false;
-    if (!createRootSignatureAndPSO(device, "MipGen", mipGenBlob, 1, 1, 1, m_mipGenRS, m_mipGenPSO))
+    if (!createRootSignatureAndPSO(device, "MipGen", mipGenData.data(), mipGenData.size(), 1, 1, 1, m_mipGenRS, m_mipGenPSO))
         return false;
 
     // Create transient command infrastructure
@@ -138,27 +136,28 @@ bool IBLPipeline::init(ID3D12Device* device)
     return true;
 }
 
-bool IBLPipeline::compileComputeShader(const std::filesystem::path& hlslPath, const char* entryPoint,
-                                       ComPtr<ID3DBlob>& outBlob)
+bool IBLPipeline::loadCompiledShader(const std::filesystem::path& csoPath, std::vector<uint8_t>& outData)
 {
-    UINT compileFlags = 0;
-#ifdef _DEBUG
-    compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
-#endif
-    ComPtr<ID3DBlob> errBlob;
-    HRESULT hr = D3DCompileFromFile(hlslPath.wstring().c_str(), nullptr, nullptr, entryPoint, "cs_5_0", compileFlags, 0,
-                                    &outBlob, &errBlob);
-    if (FAILED(hr))
+    std::ifstream file(csoPath, std::ios::binary | std::ios::ate);
+    if (!file.is_open())
     {
-        spdlog::error("IBLPipeline: Failed to compile {}: {}", hlslPath.filename().string(),
-                      errBlob ? (char*)errBlob->GetBufferPointer() : "file not found");
+        spdlog::error("IBLPipeline: Failed to open compiled shader: {}", csoPath.string());
+        return false;
+    }
+    auto size = static_cast<size_t>(file.tellg());
+    outData.resize(size);
+    file.seekg(0);
+    file.read(reinterpret_cast<char*>(outData.data()), size);
+    if (!file.good())
+    {
+        spdlog::error("IBLPipeline: Failed to read compiled shader: {}", csoPath.string());
         return false;
     }
     return true;
 }
 
-bool IBLPipeline::createRootSignatureAndPSO(ID3D12Device* device, const char* name, const ComPtr<ID3DBlob>& csBlob,
-                                            int numSRVs, int numUAVs, int numSamplers,
+bool IBLPipeline::createRootSignatureAndPSO(ID3D12Device* device, const char* name, const void* csBytecode,
+                                            size_t bytecodeSize, int numSRVs, int numUAVs, int numSamplers,
                                             ComPtr<ID3D12RootSignature>& outRS, ComPtr<ID3D12PipelineState>& outPSO,
                                             int numRootConstants)
 {
@@ -232,7 +231,7 @@ bool IBLPipeline::createRootSignatureAndPSO(ID3D12Device* device, const char* na
 
     D3D12_COMPUTE_PIPELINE_STATE_DESC psoDesc{};
     psoDesc.pRootSignature = outRS.Get();
-    psoDesc.CS = {csBlob->GetBufferPointer(), csBlob->GetBufferSize()};
+    psoDesc.CS = {csBytecode, bytecodeSize};
     hr = device->CreateComputePipelineState(&psoDesc, IID_PPV_ARGS(&outPSO));
     if (FAILED(hr))
         return false;

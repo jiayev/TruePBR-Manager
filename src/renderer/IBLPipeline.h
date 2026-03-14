@@ -67,10 +67,10 @@ class IBLPipeline
     }
 
   private:
-    // ── Shader compilation & PSO creation ──────────────────
-    bool compileComputeShader(const std::filesystem::path& hlslPath, const char* entryPoint, ComPtr<ID3DBlob>& outBlob);
-    bool createRootSignatureAndPSO(ID3D12Device* device, const char* name, const ComPtr<ID3DBlob>& csBlob, int numSRVs,
-                                   int numUAVs, int numSamplers, ComPtr<ID3D12RootSignature>& outRS,
+    // ── Shader loading & PSO creation ───────────────────────
+    bool loadCompiledShader(const std::filesystem::path& csoPath, std::vector<uint8_t>& outData);
+    bool createRootSignatureAndPSO(ID3D12Device* device, const char* name, const void* csBytecode, size_t bytecodeSize,
+                                   int numSRVs, int numUAVs, int numSamplers, ComPtr<ID3D12RootSignature>& outRS,
                                    ComPtr<ID3D12PipelineState>& outPSO, int numRootConstants = 4);
 
     // ── Helpers ────────────────────────────────────────────

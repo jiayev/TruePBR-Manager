@@ -77,7 +77,7 @@ set(RENDERER_SOURCES
     renderer/Common/Glints/Glints2023.hlsli
 )
 
-# Prevent Visual Studio from compiling HLSL files with FXC (they are compiled at runtime)
+# Prevent Visual Studio from compiling HLSL files with its built-in FXC (we compile via CMake custom commands)
 set_source_files_properties(
     renderer/SkyboxShader.hlsl
     renderer/PBRShader.hlsl
@@ -131,7 +131,6 @@ target_link_libraries(TruePBR-Manager PRIVATE
     Microsoft::DirectXTex
     d3d12.lib
     dxgi.lib
-    d3dcompiler.lib
 )
 
 # Windows-specific: embed manifest, set subsystem
@@ -208,42 +207,100 @@ add_custom_command(TARGET TruePBR-Manager POST_BUILD
     COMMENT "Copying LICENSE to dist/..."
 )
 
-# Copy HLSL shaders — file-level dependency tracking so that modifying
-# any shader triggers a re-copy on the next build, even when no C++ changed.
-set(SHADER_FILES
-    PBRShader.hlsl
-    IBLEquirectToCube.hlsl
-    IBLDiffuseIrradiance.hlsl
-    IBLPrefilter.hlsl
-    IBLBrdfLut.hlsl
-    IBLCubemapMipGen.hlsl
-    SkyboxShader.hlsl
-    Common/Math.hlsli
-    Common/BRDF.hlsli
-    Common/Shading.hlsli
-    Common/PBRMath.hlsli
-    Common/PBR.hlsli
-    Common/Random.hlsli
-    Common/Glints/Glints2023.hlsli
+# ── Offline HLSL → CSO compilation via FXC ─────────────────────────────
+# Compile shaders at build time so the app loads pre-compiled bytecode
+# instead of calling D3DCompileFromFile at every startup.
+
+find_program(DXC_EXECUTABLE dxc
+    DOC "DirectX Shader Compiler (DXC)"
+    HINTS "$ENV{VULKAN_SDK}/Bin"
+)
+if(NOT DXC_EXECUTABLE)
+    # Try common Windows SDK locations
+    file(GLOB _SDK_BIN_DIRS "C:/Program Files (x86)/Windows Kits/10/bin/10.*/x64")
+    if(_SDK_BIN_DIRS)
+        list(SORT _SDK_BIN_DIRS ORDER DESCENDING)
+        find_program(DXC_EXECUTABLE dxc HINTS ${_SDK_BIN_DIRS})
+    endif()
+endif()
+if(NOT DXC_EXECUTABLE)
+    message(FATAL_ERROR "dxc.exe not found. Install the Vulkan SDK, Windows SDK, or set DXC_EXECUTABLE.")
+endif()
+message(STATUS "Found DXC: ${DXC_EXECUTABLE}")
+
+set(SHADER_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/renderer")
+set(SHADER_OUT_DIR "${DIST_DIR}/shaders")
+
+# All .hlsli include files (used as DEPENDS for shaders that #include them)
+set(HLSLI_DEPS
+    "${SHADER_SRC_DIR}/Common/Math.hlsli"
+    "${SHADER_SRC_DIR}/Common/BRDF.hlsli"
+    "${SHADER_SRC_DIR}/Common/Shading.hlsli"
+    "${SHADER_SRC_DIR}/Common/PBRMath.hlsli"
+    "${SHADER_SRC_DIR}/Common/PBR.hlsli"
+    "${SHADER_SRC_DIR}/Common/Random.hlsli"
+    "${SHADER_SRC_DIR}/Common/Glints/Glints2023.hlsli"
 )
 
-set(SHADER_OUTPUTS)
-foreach(shader IN LISTS SHADER_FILES)
-    set(_src "${CMAKE_CURRENT_SOURCE_DIR}/renderer/${shader}")
-    set(_dst "${DIST_DIR}/shaders/${shader}")
-    get_filename_component(_dst_dir "${_dst}" DIRECTORY)
+# Helper function: compile one HLSL entry point to a .cso file
+# Usage: compile_hlsl(<source.hlsl> <EntryPoint> <profile> <output.cso> [INCLUDE_DIR dir] [DEPENDS ...])
+function(compile_hlsl SOURCE ENTRY PROFILE OUTPUT)
+    cmake_parse_arguments(ARG "" "INCLUDE_DIR" "DEPENDS" ${ARGN})
+    set(_src "${SHADER_SRC_DIR}/${SOURCE}")
+    set(_dst "${SHADER_OUT_DIR}/${OUTPUT}")
+
+    set(_include_args)
+    if(ARG_INCLUDE_DIR)
+        set(_include_args /I "${ARG_INCLUDE_DIR}")
+    endif()
+
     add_custom_command(
         OUTPUT "${_dst}"
-        COMMAND ${CMAKE_COMMAND} -E make_directory "${_dst_dir}"
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different "${_src}" "${_dst}"
-        DEPENDS "${_src}"
-        COMMENT "Shader: ${shader}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${SHADER_OUT_DIR}"
+        COMMAND ${DXC_EXECUTABLE}
+            $<$<CONFIG:Debug>:-Zi>
+            $<$<CONFIG:Debug>:-Od>
+            $<$<NOT:$<CONFIG:Debug>>:-O1>
+            -T ${PROFILE}
+            -E ${ENTRY}
+            ${_include_args}
+            -Fo "${_dst}"
+            "${_src}"
+        DEPENDS "${_src}" ${ARG_DEPENDS}
+        COMMENT "DXC: ${SOURCE} [${ENTRY}] -> ${OUTPUT}"
+        VERBATIM
     )
-    list(APPEND SHADER_OUTPUTS "${_dst}")
-endforeach()
+endfunction()
 
-add_custom_target(copy_shaders ALL DEPENDS ${SHADER_OUTPUTS})
-add_dependencies(TruePBR-Manager copy_shaders)
+# ── Graphics shaders (PBRShader needs include path for Common/) ─────────
+compile_hlsl(PBRShader.hlsl   VSMain   vs_6_0  PBRShader_VS.cso
+    INCLUDE_DIR "${SHADER_SRC_DIR}"  DEPENDS ${HLSLI_DEPS})
+compile_hlsl(PBRShader.hlsl   PSMain   ps_6_0  PBRShader_PS.cso
+    INCLUDE_DIR "${SHADER_SRC_DIR}"  DEPENDS ${HLSLI_DEPS})
+compile_hlsl(SkyboxShader.hlsl  SkyboxVS  vs_6_0  SkyboxShader_VS.cso)
+compile_hlsl(SkyboxShader.hlsl  SkyboxPS  ps_6_0  SkyboxShader_PS.cso)
+
+# ── Compute shaders (IBL – no includes) ─────────────────────────────────
+compile_hlsl(IBLEquirectToCube.hlsl     CSMain  cs_6_0  IBLEquirectToCube.cso)
+compile_hlsl(IBLPrefilter.hlsl          CSMain  cs_6_0  IBLPrefilter.cso)
+compile_hlsl(IBLBrdfLut.hlsl            CSMain  cs_6_0  IBLBrdfLut.cso)
+compile_hlsl(IBLDiffuseIrradiance.hlsl  CSMain  cs_6_0  IBLDiffuseIrradiance.cso)
+compile_hlsl(IBLCubemapMipGen.hlsl      CSMain  cs_6_0  IBLCubemapMipGen.cso)
+
+set(COMPILED_SHADER_OUTPUTS
+    "${SHADER_OUT_DIR}/PBRShader_VS.cso"
+    "${SHADER_OUT_DIR}/PBRShader_PS.cso"
+    "${SHADER_OUT_DIR}/SkyboxShader_VS.cso"
+    "${SHADER_OUT_DIR}/SkyboxShader_PS.cso"
+    "${SHADER_OUT_DIR}/IBLEquirectToCube.cso"
+    "${SHADER_OUT_DIR}/IBLPrefilter.cso"
+    "${SHADER_OUT_DIR}/IBLBrdfLut.cso"
+    "${SHADER_OUT_DIR}/IBLDiffuseIrradiance.cso"
+    "${SHADER_OUT_DIR}/IBLCubemapMipGen.cso"
+)
+
+add_custom_target(compile_shaders ALL DEPENDS ${COMPILED_SHADER_OUTPUTS})
+add_dependencies(TruePBR-Manager compile_shaders)
 
 # Create hdris directory in dist (user places HDRI files here)
 add_custom_command(TARGET TruePBR-Manager POST_BUILD
@@ -326,5 +383,5 @@ if(TRUEPBR_PACK)
         COMMAND_EXPAND_LISTS
         COMMENT "Packing into ${PACK_DIR}/${PACK_NAME}.zip ..."
     )
-    add_dependencies(pack TruePBR-Manager copy_shaders)
+    add_dependencies(pack TruePBR-Manager compile_shaders)
 endif()
