@@ -1317,6 +1317,7 @@ void D3D12Renderer::uploadMesh(const PreviewMesh& mesh)
 void D3D12Renderer::setMesh(PreviewShape shape)
 {
     auto mesh = MeshGenerator::generate(shape);
+    flushGPU();
     uploadMesh(mesh);
 }
 
