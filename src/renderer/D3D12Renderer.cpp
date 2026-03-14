@@ -1211,7 +1211,8 @@ void D3D12Renderer::setFeatureParams(const PBRFeatureFlags& features, const PBRP
     if (features.glint)
         flags |= (1 << 11); // Glint
 
-    m_featureFlags = flags;
+    // Preserve HasFeatureTexture0/1 bits (2,3) set by setFeatureTextures()
+    m_featureFlags = flags | (m_featureFlags & ((1 << 2) | (1 << 3)));
 
     m_subsurfaceColor = {params.subsurfaceColor[0], params.subsurfaceColor[1], params.subsurfaceColor[2]};
     m_subsurfaceOpacity = params.subsurfaceOpacity;
