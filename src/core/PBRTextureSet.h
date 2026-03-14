@@ -205,6 +205,11 @@ struct PBRTextureSet
     /// The textures are shared with NIF export — no separate landscape texture output.
     std::vector<std::string> landscapeEdids;
 
+    /// Optional per-slot path overrides. When set, the exporter uses the given
+    /// full relative path (e.g. "textures\\pbr\\custom\\tex.dds") as a PGPatcher
+    /// slot command instead of deriving the path automatically.
+    std::map<PBRTextureSlot, std::string> slotPathOverrides;
+
     std::string tags;
     std::string notes;
 };

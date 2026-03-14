@@ -609,6 +609,7 @@ void MainWindow::setupCentralWidget()
     connect(m_featurePanel, &FeatureTogglePanel::featuresChanged, this, &MainWindow::onFeaturesChanged);
     connect(m_paramPanel, &ParameterPanel::parametersChanged, this, &MainWindow::onParametersChanged);
     connect(m_slotEditor, &SlotEditorWidget::landscapeEdidsChanged, this, &MainWindow::onLandscapeEdidsChanged);
+    connect(m_slotEditor, &SlotEditorWidget::slotPathOverrideChanged, this, &MainWindow::onSlotPathOverrideChanged);
 }
 
 void MainWindow::setupStatusBar()
@@ -1238,6 +1239,23 @@ void MainWindow::onLandscapeEdidsChanged(const QStringList& edids)
         ts.landscapeEdids.push_back(edid.toStdString());
     }
     spdlog::debug("Landscape EDIDs updated: {} entries", ts.landscapeEdids.size());
+}
+
+void MainWindow::onSlotPathOverrideChanged(PBRTextureSlot slot, const QString& path)
+{
+    if (m_currentSetIndex < 0)
+        return;
+
+    auto& ts = m_project.textureSets[m_currentSetIndex];
+    if (path.isEmpty())
+    {
+        ts.slotPathOverrides.erase(slot);
+    }
+    else
+    {
+        ts.slotPathOverrides[slot] = path.toStdString();
+    }
+    spdlog::debug("Slot path override updated: {} -> {}", slotDisplayName(slot), path.toStdString());
 }
 
 // ─── Refresh ───────────────────────────────────────────────

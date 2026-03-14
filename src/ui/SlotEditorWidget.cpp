@@ -4,6 +4,7 @@
 #include "utils/FileUtils.h"
 
 #include <QDragEnterEvent>
+#include <QCheckBox>
 #include <QDropEvent>
 #include <QFrame>
 #include <QGroupBox>
@@ -434,6 +435,7 @@ void SlotEditorWidget::setupUI()
             mainLayout->addWidget(m_rmaosModeContainer);
         }
         mainLayout->addWidget(row.container);
+        mainLayout->addWidget(row.pathOverrideContainer);
         if (slot == PBRTextureSlot::RMAOS)
         {
             mainLayout->addWidget(m_channelSection);
@@ -528,6 +530,49 @@ void SlotEditorWidget::addSlotRow(PBRTextureSlot slot, const QString& label, boo
                 emit exportCompressionChanged(slot, mode);
             });
 
+    // ── Path Override Row ──────────────────────────────────
+    row.pathOverrideContainer = new QWidget(this);
+    auto* overrideLayout = new QHBoxLayout(row.pathOverrideContainer);
+    overrideLayout->setContentsMargins(0, 0, 0, 2);
+    overrideLayout->setSpacing(6);
+
+    row.pathOverrideCheckbox = new QCheckBox(tr("Override Path"), row.pathOverrideContainer);
+    row.pathOverrideCheckbox->setFixedWidth(100);
+    row.pathOverrideCheckbox->setToolTip(tr("Override the export path for this slot (PGPatcher slot command)"));
+
+    row.pathOverrideEdit = new QLineEdit(row.pathOverrideContainer);
+    row.pathOverrideEdit->setPlaceholderText(tr("e.g. textures\\pbr\\architecture\\custom\\mytex.dds"));
+    row.pathOverrideEdit->setEnabled(false);
+
+    overrideLayout->addWidget(row.pathOverrideCheckbox);
+    overrideLayout->addWidget(row.pathOverrideEdit, 1);
+
+    row.pathOverrideContainer->setVisible(visible);
+
+    connect(row.pathOverrideCheckbox, &QCheckBox::toggled, this,
+            [this, slot, edit = row.pathOverrideEdit](bool checked)
+            {
+                edit->setEnabled(checked);
+                if (!checked)
+                {
+                    edit->clear();
+                    emit slotPathOverrideChanged(slot, QString());
+                }
+                else if (!edit->text().isEmpty())
+                {
+                    emit slotPathOverrideChanged(slot, edit->text());
+                }
+            });
+
+    connect(row.pathOverrideEdit, &QLineEdit::editingFinished, this,
+            [this, slot, edit = row.pathOverrideEdit, cb = row.pathOverrideCheckbox]()
+            {
+                if (cb->isChecked())
+                {
+                    emit slotPathOverrideChanged(slot, edit->text());
+                }
+            });
+
     m_slotRows[slot] = row;
 }
 
@@ -570,7 +615,10 @@ void SlotEditorWidget::updateSlots(const PBRFeatureFlags& features)
     auto show = [&](PBRTextureSlot slot, bool vis)
     {
         if (m_slotRows.count(slot))
+        {
             m_slotRows[slot].container->setVisible(vis);
+            m_slotRows[slot].pathOverrideContainer->setVisible(vis);
+        }
     };
 
     show(PBRTextureSlot::Emissive, features.emissive);
@@ -659,6 +707,17 @@ void SlotEditorWidget::setTextureSet(const PBRTextureSet& ts)
         {
             row.dropZone->clear();
         }
+
+        // Update path override state
+        auto overrideIt = ts.slotPathOverrides.find(slot);
+        const bool hasOverride = overrideIt != ts.slotPathOverrides.end() && !overrideIt->second.empty();
+        row.pathOverrideCheckbox->blockSignals(true);
+        row.pathOverrideEdit->blockSignals(true);
+        row.pathOverrideCheckbox->setChecked(hasOverride);
+        row.pathOverrideEdit->setEnabled(hasOverride);
+        row.pathOverrideEdit->setText(hasOverride ? QString::fromStdString(overrideIt->second) : QString());
+        row.pathOverrideCheckbox->blockSignals(false);
+        row.pathOverrideEdit->blockSignals(false);
     }
 
     // Update channel rows

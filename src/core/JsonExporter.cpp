@@ -381,6 +381,26 @@ static json serializeEntryToJson(const PBRTextureSet& ts)
         setExplicitSlotIfNeeded(entry, ts, PBRTextureSlot::Subsurface, "slot8");
     }
 
+    // Apply explicit slot path overrides — these always take precedence and
+    // force the use of slot commands with the user-specified full relative path.
+    auto applyOverride = [&](PBRTextureSlot slot, const char* slotName)
+    {
+        auto it = ts.slotPathOverrides.find(slot);
+        if (it != ts.slotPathOverrides.end() && !it->second.empty())
+        {
+            entry[slotName] = normalizeJsonPath(fs::path(it->second));
+        }
+    };
+    applyOverride(PBRTextureSlot::Diffuse, "slot1");
+    applyOverride(PBRTextureSlot::Normal, "slot2");
+    applyOverride(PBRTextureSlot::Emissive, "slot3");
+    applyOverride(PBRTextureSlot::Displacement, "slot4");
+    applyOverride(PBRTextureSlot::RMAOS, "slot6");
+    applyOverride(PBRTextureSlot::CoatNormalRoughness, "slot7");
+    applyOverride(PBRTextureSlot::Fuzz, "slot7");
+    applyOverride(PBRTextureSlot::Subsurface, "slot8");
+    applyOverride(PBRTextureSlot::CoatColor, "slot8");
+
     return entry;
 }
 

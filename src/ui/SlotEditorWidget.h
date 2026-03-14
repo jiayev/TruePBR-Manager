@@ -2,6 +2,7 @@
 
 #include "core/PBRTextureSet.h"
 
+#include <QCheckBox>
 #include <QComboBox>
 #include <QLabel>
 #include <QLineEdit>
@@ -96,6 +97,9 @@ class SlotEditorWidget : public QWidget
     /// Emitted when the landscape EDID list changes
     void landscapeEdidsChanged(const QStringList& edids);
 
+    /// Emitted when a slot's path override changes (empty string = disabled)
+    void slotPathOverrideChanged(PBRTextureSlot slot, const QString& path);
+
   private:
     void setupUI();
     void addSlotRow(PBRTextureSlot slot, const QString& label, bool visible);
@@ -115,6 +119,9 @@ class SlotEditorWidget : public QWidget
         QPushButton* clearButton = nullptr;
         QComboBox* compressionCombo = nullptr;
         QWidget* container = nullptr;
+        QCheckBox* pathOverrideCheckbox = nullptr;
+        QLineEdit* pathOverrideEdit = nullptr;
+        QWidget* pathOverrideContainer = nullptr;
     };
 
     struct ChannelRowData

@@ -60,6 +60,7 @@ class MainWindow : public QMainWindow
     void onFeaturesChanged(const PBRFeatureFlags& flags);
     void onParametersChanged(const PBRParameters& params);
     void onLandscapeEdidsChanged(const QStringList& edids);
+    void onSlotPathOverrideChanged(PBRTextureSlot slot, const QString& path);
 
   private:
     void setupMenuBar();

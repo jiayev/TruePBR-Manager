@@ -336,6 +336,17 @@ static json textureSetToJson(const PBRTextureSet& ts)
     }
     j["channel_maps"] = chArr;
 
+    // Slot path overrides
+    if (!ts.slotPathOverrides.empty())
+    {
+        json overridesObj = json::object();
+        for (const auto& [slot, path] : ts.slotPathOverrides)
+        {
+            overridesObj[slotToString(slot)] = path;
+        }
+        j["slot_path_overrides"] = overridesObj;
+    }
+
     return j;
 }
 
@@ -412,6 +423,14 @@ static PBRTextureSet textureSetFromJson(const json& j)
         for (auto& [key, val] : j["channel_maps"].items())
         {
             ts.channelMaps[channelFromString(key)] = channelMapEntryFromJson(val);
+        }
+    }
+
+    if (j.contains("slot_path_overrides") && j["slot_path_overrides"].is_object())
+    {
+        for (auto& [key, val] : j["slot_path_overrides"].items())
+        {
+            ts.slotPathOverrides[slotFromString(key)] = val.get<std::string>();
         }
     }
 

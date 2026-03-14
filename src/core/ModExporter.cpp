@@ -238,6 +238,13 @@ static bool saveTextureWithCompression(const fs::path& outputPath, PBRTextureSlo
 
 fs::path ModExporter::buildOutputPath(const fs::path& modFolder, const PBRTextureSet& textureSet, PBRTextureSlot slot)
 {
+    // If a slot path override exists, use it directly.
+    auto overrideIt = textureSet.slotPathOverrides.find(slot);
+    if (overrideIt != textureSet.slotPathOverrides.end() && !overrideIt->second.empty())
+    {
+        return modFolder / fs::path(overrideIt->second);
+    }
+
     // PBR textures go under textures/pbr/<original_parent>/<texture_set_name><suffix>
     fs::path relative = fs::path("textures") / "pbr" / fs::path(textureSet.matchTexture);
     std::string filename = sanitizedTextureSetStem(textureSet) + slotSuffix(slot);
