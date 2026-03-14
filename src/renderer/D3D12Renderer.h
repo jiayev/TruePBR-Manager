@@ -24,6 +24,15 @@ using Microsoft::WRL::ComPtr;
 
 class IBLPipeline;
 
+/// HDR display capability information.
+struct HDRDisplayInfo
+{
+    bool hdrSupported = false;           // OS-level HDR enabled on this output
+    float minLuminance = 0.0f;           // Display min luminance (nits)
+    float maxLuminance = 0.0f;           // Display max luminance (nits)
+    float maxFullFrameLuminance = 0.0f;  // Display max full-frame luminance (nits)
+};
+
 /// Scene constant buffer data (matches cbuffer SceneCB in shader) — 256-byte aligned.
 struct SceneCBData
 {
@@ -42,7 +51,12 @@ struct SceneCBData
     float envRotation;                     // 4 bytes  (HDRI Y-axis rotation in radians)
     // ZH3 irradiance: pre-convolved SH2 + ZH3 zonal coefficient
     DirectX::XMFLOAT4 zh3Data[5];    // 80 bytes
-    DirectX::XMFLOAT4X4 invViewProj; // 64 bytes  => total 400 bytes
+    DirectX::XMFLOAT4X4 invViewProj; // 64 bytes
+    // HDR parameters (16 bytes)
+    uint32_t hdrEnabled;             // 0 = SDR, 1 = HDR (scRGB output)
+    float paperWhiteNits;            // SDR white-point brightness in nits (default 200)
+    float peakBrightnessNits;        // Display peak brightness in nits
+    float _padHDR;                   // => total 416 bytes
 };
 
 /// Material constant buffer data (matches cbuffer MaterialCB in shader).
@@ -150,6 +164,28 @@ class D3D12Renderer
     /// @param prefilterSamples  GGX importance samples per texel (e.g., 64, 128, 256, 512, 1024).
     void setIBLParams(int prefilteredSize, int prefilterSamples);
 
+    /// Enable or disable vertical sync. When disabled, uses ALLOW_TEARING if supported.
+    void setVSync(bool enabled);
+
+    /// Query HDR display capability for the current output.
+    HDRDisplayInfo queryHDRSupport() const;
+
+    /// Enable or disable HDR output. Only effective when the display supports HDR.
+    /// Recreates swap chain and PSOs — not a per-frame operation.
+    void setHDREnabled(bool enabled);
+
+    /// Set the SDR white-point brightness in nits (range 80–400, default 200).
+    void setPaperWhiteNits(float nits);
+
+    /// Set the peak brightness in nits. 0 = use display-reported maximum.
+    void setPeakBrightnessNits(float nits);
+
+    /// Returns true if HDR output is currently active.
+    bool isHDREnabled() const { return m_hdrEnabled; }
+
+    /// Returns true if VSync is currently enabled.
+    bool isVSyncEnabled() const { return m_vsyncEnabled; }
+
     /// Render one frame.
     void render();
 
@@ -181,9 +217,17 @@ class D3D12Renderer
     bool createRenderTargets();
     bool createDepthStencil(uint32_t width, uint32_t height);
     bool createRootSignatureAndPSO();
+    bool recreatePSOs();
     bool createFrameContexts();
     void createDefaultTextures();
     void createDefaultIBL();
+    void rebuildSwapChainAndPSO();
+
+    /// Current swap chain back buffer format (depends on HDR mode).
+    DXGI_FORMAT swapChainFormat() const;
+
+    /// Effective peak brightness: user override or display-reported max.
+    float effectivePeakNits() const;
 
     // ── Resource upload ────────────────────────────────────
     void uploadTexture(int texIndex, int srvIndex, const uint8_t* rgba, int w, int h, bool srgb);
@@ -222,6 +266,18 @@ class D3D12Renderer
     std::array<ComPtr<ID3D12Resource>, FrameCount> m_renderTargets;
     uint32_t m_width = 0;
     uint32_t m_height = 0;
+    HWND m_hwnd = nullptr;
+    bool m_tearingSupported = false;
+    UINT m_swapChainFlags = 0;
+
+    // VSync / frame rate
+    bool m_vsyncEnabled = true;
+
+    // HDR state
+    bool m_hdrEnabled = false;
+    float m_paperWhiteNits = 200.0f;
+    float m_peakBrightnessNits = 0.0f;  // 0 = use display max
+    HDRDisplayInfo m_hdrInfo;
 
     // Descriptor heaps
     DescriptorHeap m_rtvHeap; // Non-visible, RTV

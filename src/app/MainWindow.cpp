@@ -283,6 +283,85 @@ void MainWindow::setupCentralWidget()
     renderOptsRow->setVisible(false);
     previewLayout->addWidget(renderOptsRow);
 
+    // Display options row (VSync, HDR, Paper White, Peak Brightness)
+    auto* displayOptsRow = new QWidget(previewContainer);
+    auto* displayOptsLayout = new QHBoxLayout(displayOptsRow);
+    displayOptsLayout->setContentsMargins(4, 2, 4, 2);
+    displayOptsLayout->setSpacing(8);
+
+    m_vsyncCB = new QCheckBox(tr("VSync"), displayOptsRow);
+    m_vsyncCB->setChecked(true);
+    m_vsyncCB->setToolTip(tr("Vertical sync (off = uncapped frame rate with tearing support)"));
+    displayOptsLayout->addWidget(m_vsyncCB);
+
+    m_hdrCB = new QCheckBox(tr("HDR"), displayOptsRow);
+    m_hdrCB->setChecked(false);
+    m_hdrCB->setToolTip(tr("Enable HDR output (scRGB) — requires Windows HDR enabled"));
+    displayOptsLayout->addWidget(m_hdrCB);
+
+    displayOptsLayout->addWidget(new QLabel(tr("Paper White:"), displayOptsRow));
+    m_paperWhiteSlider = new QSlider(Qt::Horizontal, displayOptsRow);
+    m_paperWhiteSlider->setRange(80, 400);
+    m_paperWhiteSlider->setValue(200);
+    m_paperWhiteSlider->setToolTip(tr("Paper white brightness in nits (SDR reference white)"));
+    m_paperWhiteSlider->setEnabled(false);
+    displayOptsLayout->addWidget(m_paperWhiteSlider, 1);
+
+    m_paperWhiteLabel = new QLabel("200", displayOptsRow);
+    m_paperWhiteLabel->setFixedWidth(32);
+    displayOptsLayout->addWidget(m_paperWhiteLabel);
+
+    displayOptsLayout->addWidget(new QLabel(tr("Peak:"), displayOptsRow));
+    m_peakBrightnessSlider = new QSlider(Qt::Horizontal, displayOptsRow);
+    m_peakBrightnessSlider->setRange(200, 2000);
+    m_peakBrightnessSlider->setValue(1000);
+    m_peakBrightnessSlider->setToolTip(tr("Peak brightness in nits (0 = use display maximum)"));
+    m_peakBrightnessSlider->setEnabled(false);
+    displayOptsLayout->addWidget(m_peakBrightnessSlider, 1);
+
+    m_peakBrightnessLabel = new QLabel("1000", displayOptsRow);
+    m_peakBrightnessLabel->setFixedWidth(40);
+    displayOptsLayout->addWidget(m_peakBrightnessLabel);
+
+    displayOptsRow->setVisible(false);
+    previewLayout->addWidget(displayOptsRow);
+
+    auto updateDisplayOpts = [this]()
+    {
+        m_materialPreview->setVSync(m_vsyncCB->isChecked());
+    };
+    connect(m_vsyncCB, &QCheckBox::toggled, this, updateDisplayOpts);
+
+    connect(m_hdrCB, &QCheckBox::toggled, this,
+            [this](bool checked)
+            {
+                m_materialPreview->setHDREnabled(checked);
+                bool hdrActive = m_materialPreview->isHDREnabled();
+                if (checked && !hdrActive)
+                {
+                    m_hdrCB->blockSignals(true);
+                    m_hdrCB->setChecked(false);
+                    m_hdrCB->blockSignals(false);
+                    statusBar()->showMessage(tr("HDR not available — enable HDR in Windows Display Settings"), 5000);
+                }
+                m_paperWhiteSlider->setEnabled(hdrActive);
+                m_peakBrightnessSlider->setEnabled(hdrActive);
+            });
+
+    connect(m_paperWhiteSlider, &QSlider::valueChanged, this,
+            [this](int value)
+            {
+                m_paperWhiteLabel->setText(QString::number(value));
+                m_materialPreview->setPaperWhiteNits(static_cast<float>(value));
+            });
+
+    connect(m_peakBrightnessSlider, &QSlider::valueChanged, this,
+            [this](int value)
+            {
+                m_peakBrightnessLabel->setText(QString::number(value));
+                m_materialPreview->setPeakBrightnessNits(static_cast<float>(value));
+            });
+
     auto updateRenderFlags = [this]()
     {
         uint32_t flags = 0;
@@ -460,7 +539,7 @@ void MainWindow::setupCentralWidget()
 
     // 2D/3D toggle connections
     connect(m_preview2DBtn, &QToolButton::clicked, this,
-            [this, iblRow, iblParamsRow, renderOptsRow]()
+            [this, iblRow, iblParamsRow, renderOptsRow, displayOptsRow]()
             {
                 m_preview3DMode = false;
                 m_preview2DBtn->setChecked(true);
@@ -470,10 +549,11 @@ void MainWindow::setupCentralWidget()
                 iblRow->setVisible(false);
                 iblParamsRow->setVisible(false);
                 renderOptsRow->setVisible(false);
+                displayOptsRow->setVisible(false);
                 refreshPreview();
             });
     connect(m_preview3DBtn, &QToolButton::clicked, this,
-            [this, iblRow, iblParamsRow, renderOptsRow]()
+            [this, iblRow, iblParamsRow, renderOptsRow, displayOptsRow]()
             {
                 m_preview3DMode = true;
                 m_preview2DBtn->setChecked(false);
@@ -483,7 +563,20 @@ void MainWindow::setupCentralWidget()
                 iblRow->setVisible(true);
                 iblParamsRow->setVisible(true);
                 renderOptsRow->setVisible(true);
+                displayOptsRow->setVisible(true);
+
                 refresh3DPreview();
+
+                // Update HDR checkbox availability (after refresh, which ensures renderer is initialized)
+                auto hdrInfo = m_materialPreview->queryHDRSupport();
+                m_hdrCB->setEnabled(hdrInfo.hdrSupported);
+                if (!hdrInfo.hdrSupported)
+                    m_hdrCB->setToolTip(tr("HDR not available — enable HDR in Windows Display Settings"));
+                else
+                {
+                    m_hdrCB->setToolTip(tr("Enable HDR output (scRGB, peak %.0f nits)").arg(static_cast<double>(hdrInfo.maxLuminance)));
+                    m_peakBrightnessSlider->setMaximum(static_cast<int>(hdrInfo.maxLuminance));
+                }
             });
 
     splitter->setStretchFactor(0, 1); // list

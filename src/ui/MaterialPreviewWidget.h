@@ -42,6 +42,15 @@ class MaterialPreviewWidget : public QWidget
     /// Set IBL specular prefilter parameters (triggers reprocessing).
     void setIBLParams(int prefilteredSize, int prefilterSamples);
 
+    // ── HDR / Frame Rate ──
+    HDRDisplayInfo queryHDRSupport() const;
+    void setVSync(bool enabled);
+    void setHDREnabled(bool enabled);
+    void setPaperWhiteNits(float nits);
+    void setPeakBrightnessNits(float nits);
+    bool isHDREnabled() const;
+    bool isVSyncEnabled() const;
+
     QComboBox* shapeCombo() const
     {
         return m_shapeCombo;

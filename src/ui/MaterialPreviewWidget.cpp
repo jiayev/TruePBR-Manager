@@ -36,7 +36,8 @@ MaterialPreviewWidget::MaterialPreviewWidget(QWidget* parent) : QWidget(parent)
             });
 
     m_renderTimer = new QTimer(this);
-    m_renderTimer->setInterval(33);
+    m_renderTimer->setTimerType(Qt::PreciseTimer);
+    m_renderTimer->setInterval(1);
     connect(m_renderTimer, &QTimer::timeout, this,
             [this]()
             {
@@ -164,6 +165,49 @@ void MaterialPreviewWidget::setIBLParams(int prefilteredSize, int prefilterSampl
         initRenderer();
     if (m_renderer)
         m_renderer->setIBLParams(prefilteredSize, prefilterSamples);
+}
+
+HDRDisplayInfo MaterialPreviewWidget::queryHDRSupport() const
+{
+    if (m_renderer)
+        return m_renderer->queryHDRSupport();
+    return {};
+}
+
+void MaterialPreviewWidget::setVSync(bool enabled)
+{
+    if (m_renderer)
+        m_renderer->setVSync(enabled);
+}
+
+void MaterialPreviewWidget::setHDREnabled(bool enabled)
+{
+    if (!m_renderer)
+        initRenderer();
+    if (m_renderer)
+        m_renderer->setHDREnabled(enabled);
+}
+
+void MaterialPreviewWidget::setPaperWhiteNits(float nits)
+{
+    if (m_renderer)
+        m_renderer->setPaperWhiteNits(nits);
+}
+
+void MaterialPreviewWidget::setPeakBrightnessNits(float nits)
+{
+    if (m_renderer)
+        m_renderer->setPeakBrightnessNits(nits);
+}
+
+bool MaterialPreviewWidget::isHDREnabled() const
+{
+    return m_renderer ? m_renderer->isHDREnabled() : false;
+}
+
+bool MaterialPreviewWidget::isVSyncEnabled() const
+{
+    return m_renderer ? m_renderer->isVSyncEnabled() : true;
 }
 
 void MaterialPreviewWidget::resizeEvent(QResizeEvent* event)

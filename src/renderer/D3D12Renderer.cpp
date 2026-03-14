@@ -47,10 +47,25 @@ D3D12Renderer::~D3D12Renderer()
 // Initialization
 // ═══════════════════════════════════════════════════════════
 
+DXGI_FORMAT D3D12Renderer::swapChainFormat() const
+{
+    return m_hdrEnabled ? DXGI_FORMAT_R16G16B16A16_FLOAT : DXGI_FORMAT_R8G8B8A8_UNORM;
+}
+
+float D3D12Renderer::effectivePeakNits() const
+{
+    if (m_peakBrightnessNits > 0.0f)
+        return m_peakBrightnessNits;
+    if (m_hdrInfo.maxLuminance > 0.0f)
+        return m_hdrInfo.maxLuminance;
+    return 1000.0f; // sensible default for unknown displays
+}
+
 bool D3D12Renderer::init(HWND hwnd, uint32_t width, uint32_t height)
 {
     m_width = width;
     m_height = height;
+    m_hwnd = hwnd;
 
     spdlog::info("D3D12Renderer::init starting ({}x{}, hwnd=0x{:X})", width, height, reinterpret_cast<uintptr_t>(hwnd));
 
@@ -58,8 +73,32 @@ bool D3D12Renderer::init(HWND hwnd, uint32_t width, uint32_t height)
         return false;
     if (!createCommandInfrastructure())
         return false;
+
+    // Query tearing support (DXGI_FEATURE_PRESENT_ALLOW_TEARING)
+    {
+        ComPtr<IDXGIFactory5> factory5;
+        if (SUCCEEDED(m_factory.As(&factory5)))
+        {
+            BOOL allowTearing = FALSE;
+            if (SUCCEEDED(factory5->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING, &allowTearing,
+                                                       sizeof(allowTearing))))
+            {
+                m_tearingSupported = (allowTearing == TRUE);
+            }
+        }
+        spdlog::info("DXGI tearing support: {}", m_tearingSupported ? "yes" : "no");
+    }
+
+    m_swapChainFlags = m_tearingSupported ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0;
+
     if (!createSwapChain(hwnd, width, height))
         return false;
+
+    // Query HDR display capability (after swap chain so GetContainingOutput works)
+    m_hdrInfo = queryHDRSupport();
+    spdlog::info("HDR display support: {} (max={:.0f} nits, min={:.4f} nits)", m_hdrInfo.hdrSupported ? "yes" : "no",
+                 m_hdrInfo.maxLuminance, m_hdrInfo.minLuminance);
+
     if (!createRenderTargets())
         return false;
     if (!createDepthStencil(width, height))
@@ -214,11 +253,12 @@ bool D3D12Renderer::createSwapChain(HWND hwnd, uint32_t width, uint32_t height)
     DXGI_SWAP_CHAIN_DESC1 desc{};
     desc.Width = width;
     desc.Height = height;
-    desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    desc.Format = swapChainFormat();
     desc.SampleDesc.Count = 1;
     desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     desc.BufferCount = FrameCount;
     desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+    desc.Flags = m_swapChainFlags;
 
     ComPtr<IDXGISwapChain1> swapChain;
     HRESULT hr = m_factory->CreateSwapChainForHwnd(m_directQueue.Get(), hwnd, &desc, nullptr, nullptr, &swapChain);
@@ -235,6 +275,23 @@ bool D3D12Renderer::createSwapChain(HWND hwnd, uint32_t width, uint32_t height)
     }
 
     m_factory->MakeWindowAssociation(hwnd, DXGI_MWA_NO_ALT_ENTER);
+
+    // Set color space for HDR (scRGB: linear Rec.709 primaries)
+    if (m_hdrEnabled)
+    {
+        UINT colorSpaceSupport = 0;
+        hr = m_swapChain->CheckColorSpaceSupport(DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709, &colorSpaceSupport);
+        if (SUCCEEDED(hr) && (colorSpaceSupport & DXGI_SWAP_CHAIN_COLOR_SPACE_SUPPORT_FLAG_PRESENT))
+        {
+            m_swapChain->SetColorSpace1(DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709);
+            spdlog::info("Swap chain color space set to scRGB (linear Rec.709)");
+        }
+        else
+        {
+            spdlog::warn("scRGB color space not supported by swap chain, HDR may not display correctly");
+        }
+    }
+
     return true;
 }
 
@@ -442,7 +499,7 @@ bool D3D12Renderer::createRootSignatureAndPSO()
     psoDesc.SampleMask = UINT_MAX;
     psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     psoDesc.NumRenderTargets = 1;
-    psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+    psoDesc.RTVFormats[0] = swapChainFormat();
     psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
     psoDesc.SampleDesc.Count = 1;
 
@@ -472,13 +529,122 @@ bool D3D12Renderer::createRootSignatureAndPSO()
         skyPso.SampleMask = UINT_MAX;
         skyPso.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
         skyPso.NumRenderTargets = 1;
-        skyPso.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+        skyPso.RTVFormats[0] = swapChainFormat();
         skyPso.DSVFormat = DXGI_FORMAT_D32_FLOAT;
         skyPso.SampleDesc.Count = 1;
 
         if (FAILED(m_device->CreateGraphicsPipelineState(&skyPso, IID_PPV_ARGS(&m_skyboxPSO))))
         {
             spdlog::error("Failed to create skybox PSO");
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool D3D12Renderer::recreatePSOs()
+{
+    // Locate shader directory (pre-compiled .cso files)
+    std::filesystem::path shaderDir;
+    {
+        wchar_t exePath[MAX_PATH] = {};
+        GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+        auto exeDir = std::filesystem::path(exePath).parent_path();
+        auto distDir = exeDir / "shaders";
+        if (std::filesystem::exists(distDir / "PBRShader_VS.cso"))
+            shaderDir = distDir;
+        else
+        {
+            auto srcDir = std::filesystem::path(__FILE__).parent_path();
+            shaderDir = srcDir;
+        }
+    }
+
+    auto loadCSO = [](const std::filesystem::path& path, std::vector<uint8_t>& outData) -> bool
+    {
+        std::ifstream file(path, std::ios::binary | std::ios::ate);
+        if (!file.is_open())
+        {
+            spdlog::error("Failed to open compiled shader: {}", path.string());
+            return false;
+        }
+        auto size = static_cast<size_t>(file.tellg());
+        outData.resize(size);
+        file.seekg(0);
+        file.read(reinterpret_cast<char*>(outData.data()), size);
+        return file.good();
+    };
+
+    // PBR PSO
+    {
+        std::vector<uint8_t> vsData, psData;
+        if (!loadCSO(shaderDir / "PBRShader_VS.cso", vsData))
+            return false;
+        if (!loadCSO(shaderDir / "PBRShader_PS.cso", psData))
+            return false;
+
+        D3D12_INPUT_ELEMENT_DESC inputLayout[] = {
+            {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+            {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+            {"TANGENT", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+            {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 40, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+        };
+
+        D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc{};
+        psoDesc.pRootSignature = m_rootSignature.Get();
+        psoDesc.VS = {vsData.data(), vsData.size()};
+        psoDesc.PS = {psData.data(), psData.size()};
+        psoDesc.InputLayout = {inputLayout, _countof(inputLayout)};
+        psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+        psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
+        psoDesc.RasterizerState.FrontCounterClockwise = TRUE;
+        psoDesc.RasterizerState.DepthClipEnable = TRUE;
+        psoDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+        psoDesc.DepthStencilState.DepthEnable = TRUE;
+        psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+        psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+        psoDesc.SampleMask = UINT_MAX;
+        psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+        psoDesc.NumRenderTargets = 1;
+        psoDesc.RTVFormats[0] = swapChainFormat();
+        psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+        psoDesc.SampleDesc.Count = 1;
+
+        if (FAILED(m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pipelineState))))
+        {
+            spdlog::error("Failed to recreate PBR PSO");
+            return false;
+        }
+    }
+
+    // Skybox PSO
+    {
+        std::vector<uint8_t> skyVSData, skyPSData;
+        if (!loadCSO(shaderDir / "SkyboxShader_VS.cso", skyVSData))
+            return false;
+        if (!loadCSO(shaderDir / "SkyboxShader_PS.cso", skyPSData))
+            return false;
+
+        D3D12_GRAPHICS_PIPELINE_STATE_DESC skyPso{};
+        skyPso.pRootSignature = m_rootSignature.Get();
+        skyPso.VS = {skyVSData.data(), skyVSData.size()};
+        skyPso.PS = {skyPSData.data(), skyPSData.size()};
+        skyPso.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+        skyPso.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+        skyPso.RasterizerState.DepthClipEnable = FALSE;
+        skyPso.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+        skyPso.DepthStencilState.DepthEnable = FALSE;
+        skyPso.SampleMask = UINT_MAX;
+        skyPso.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+        skyPso.NumRenderTargets = 1;
+        skyPso.RTVFormats[0] = swapChainFormat();
+        skyPso.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+        skyPso.SampleDesc.Count = 1;
+
+        if (FAILED(m_device->CreateGraphicsPipelineState(&skyPso, IID_PPV_ARGS(&m_skyboxPSO))))
+        {
+            spdlog::error("Failed to recreate skybox PSO");
             return false;
         }
     }
@@ -1318,7 +1484,7 @@ void D3D12Renderer::resize(uint32_t width, uint32_t height)
         rt.Reset();
     m_depthStencilBuffer.Reset();
 
-    m_swapChain->ResizeBuffers(FrameCount, width, height, DXGI_FORMAT_R8G8B8A8_UNORM, 0);
+    m_swapChain->ResizeBuffers(FrameCount, width, height, swapChainFormat(), m_swapChainFlags);
     m_width = width;
     m_height = height;
 
@@ -1385,6 +1551,9 @@ void D3D12Renderer::render()
     {
         frame.sceneCBMapped->zh3Data[i] = {m_zh3Data[i][0], m_zh3Data[i][1], m_zh3Data[i][2], m_zh3Data[i][3]};
     }
+    frame.sceneCBMapped->hdrEnabled = m_hdrEnabled ? 1 : 0;
+    frame.sceneCBMapped->paperWhiteNits = m_paperWhiteNits;
+    frame.sceneCBMapped->peakBrightnessNits = effectivePeakNits();
 
     frame.materialCBMapped->specularLevel = m_specularLevel;
     frame.materialCBMapped->roughnessScale = m_roughnessScale;
@@ -1472,7 +1641,11 @@ void D3D12Renderer::render()
     m_directQueue->Signal(m_directFence.Get(), m_directFenceValue);
 
     // 7. Present
-    m_swapChain->Present(1, 0);
+    {
+        const UINT syncInterval = m_vsyncEnabled ? 1 : 0;
+        const UINT presentFlags = (!m_vsyncEnabled && m_tearingSupported) ? DXGI_PRESENT_ALLOW_TEARING : 0;
+        m_swapChain->Present(syncInterval, presentFlags);
+    }
 
     // Advance frame counter
     ++m_frameNumber;
@@ -1636,6 +1809,180 @@ void D3D12Renderer::setIBLParams(int prefilteredSize, int prefilterSamples)
             }
         }
     }
+}
+
+// ═══════════════════════════════════════════════════════════
+// HDR & Frame Rate Control
+// ═══════════════════════════════════════════════════════════
+
+HDRDisplayInfo D3D12Renderer::queryHDRSupport() const
+{
+    HDRDisplayInfo info;
+
+    if (!m_swapChain && !m_factory)
+        return info;
+
+    // Get the output the swap chain is currently on
+    ComPtr<IDXGIOutput> output;
+    HRESULT hr = E_FAIL;
+    if (m_swapChain)
+        hr = m_swapChain->GetContainingOutput(&output);
+
+    if (FAILED(hr) || !output)
+    {
+        spdlog::debug("queryHDRSupport: GetContainingOutput failed (hr=0x{:08X}), falling back to enumeration",
+                      static_cast<unsigned>(hr));
+    }
+
+    // Fallback: enumerate all outputs on all non-software adapters
+    if (!output)
+    {
+        ComPtr<IDXGIAdapter1> adapter;
+        for (UINT ai = 0; m_factory->EnumAdapters1(ai, &adapter) != DXGI_ERROR_NOT_FOUND; ++ai)
+        {
+            DXGI_ADAPTER_DESC1 adesc;
+            adapter->GetDesc1(&adesc);
+            if (adesc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE)
+                continue;
+            ComPtr<IDXGIOutput> adapterOutput;
+            for (UINT oi = 0; adapter->EnumOutputs(oi, &adapterOutput) != DXGI_ERROR_NOT_FOUND; ++oi)
+            {
+                // Prefer the first output that reports HDR
+                ComPtr<IDXGIOutput6> out6;
+                if (SUCCEEDED(adapterOutput.As(&out6)))
+                {
+                    DXGI_OUTPUT_DESC1 d1{};
+                    if (SUCCEEDED(out6->GetDesc1(&d1)))
+                    {
+                        spdlog::debug("queryHDRSupport: adapter {} output {} colorSpace={} maxLum={:.0f}",
+                                      ai, oi, static_cast<int>(d1.ColorSpace), d1.MaxLuminance);
+                        if (d1.ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020)
+                        {
+                            output = adapterOutput;
+                            break;
+                        }
+                        if (!output)
+                            output = adapterOutput; // keep first as fallback
+                    }
+                }
+                adapterOutput.Reset();
+            }
+            if (output)
+                break;
+            adapter.Reset();
+        }
+    }
+
+    if (!output)
+    {
+        spdlog::warn("queryHDRSupport: no DXGI output found");
+        return info;
+    }
+
+    ComPtr<IDXGIOutput6> output6;
+    if (FAILED(output.As(&output6)))
+    {
+        spdlog::warn("queryHDRSupport: IDXGIOutput6 not available (old driver?)");
+        return info;
+    }
+
+    DXGI_OUTPUT_DESC1 desc1{};
+    if (FAILED(output6->GetDesc1(&desc1)))
+    {
+        spdlog::warn("queryHDRSupport: GetDesc1 failed");
+        return info;
+    }
+
+    spdlog::info("queryHDRSupport: ColorSpace={}, BitsPerColor={}, MaxLum={:.0f}, MinLum={:.4f}, MaxFullFrame={:.0f}",
+                 static_cast<int>(desc1.ColorSpace), desc1.BitsPerColor,
+                 desc1.MaxLuminance, desc1.MinLuminance, desc1.MaxFullFrameLuminance);
+
+    info.minLuminance = desc1.MinLuminance;
+    info.maxLuminance = desc1.MaxLuminance;
+    info.maxFullFrameLuminance = desc1.MaxFullFrameLuminance;
+
+    // HDR is considered supported only if the OS has HDR enabled on this display
+    info.hdrSupported = (desc1.ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020);
+
+    return info;
+}
+
+void D3D12Renderer::setVSync(bool enabled)
+{
+    m_vsyncEnabled = enabled;
+}
+
+void D3D12Renderer::setHDREnabled(bool enabled)
+{
+    if (!m_initialized || !m_hwnd)
+        return;
+
+    // Only allow HDR if the display supports it
+    if (enabled && !m_hdrInfo.hdrSupported)
+    {
+        spdlog::warn("HDR requested but display does not support it — ignoring");
+        return;
+    }
+
+    if (m_hdrEnabled == enabled)
+        return;
+
+    m_hdrEnabled = enabled;
+    spdlog::info("HDR output {}", m_hdrEnabled ? "enabled" : "disabled");
+
+    rebuildSwapChainAndPSO();
+}
+
+void D3D12Renderer::setPaperWhiteNits(float nits)
+{
+    m_paperWhiteNits = std::clamp(nits, 80.0f, 400.0f);
+}
+
+void D3D12Renderer::setPeakBrightnessNits(float nits)
+{
+    m_peakBrightnessNits = std::max(nits, 0.0f); // 0 = use display max
+}
+
+void D3D12Renderer::rebuildSwapChainAndPSO()
+{
+    if (!m_initialized || !m_hwnd)
+        return;
+
+    flushGPU();
+
+    // Release swap-chain-dependent resources
+    for (auto& rt : m_renderTargets)
+        rt.Reset();
+    m_depthStencilBuffer.Reset();
+    m_pipelineState.Reset();
+    m_skyboxPSO.Reset();
+    m_swapChain.Reset();
+
+    // Recreate swap chain with correct format
+    if (!createSwapChain(m_hwnd, m_width, m_height))
+    {
+        spdlog::error("Failed to recreate swap chain during HDR toggle");
+        return;
+    }
+
+    // Recreate RTVs
+    for (UINT i = 0; i < FrameCount; ++i)
+    {
+        m_swapChain->GetBuffer(i, IID_PPV_ARGS(&m_renderTargets[i]));
+        m_device->CreateRenderTargetView(m_renderTargets[i].Get(), nullptr, m_rtvHeap.cpuHandle(i));
+    }
+
+    createDepthStencil(m_width, m_height);
+
+    // Recreate PSOs with matching RTV format (preserves root signature + SRV heap)
+    if (!recreatePSOs())
+    {
+        spdlog::error("Failed to recreate PSOs during HDR toggle");
+        return;
+    }
+
+    spdlog::info("Swap chain rebuilt: format={}, HDR={}", m_hdrEnabled ? "R16G16B16A16_FLOAT" : "R8G8B8A8_UNORM",
+                 m_hdrEnabled);
 }
 
 } // namespace tpbr

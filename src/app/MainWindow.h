@@ -104,6 +104,12 @@ class MainWindow : public QMainWindow
     QCheckBox* m_horizonOcclusionCB = nullptr;
     QCheckBox* m_multiBounceAOCB = nullptr;
     QCheckBox* m_specularOcclusionCB = nullptr;
+    QCheckBox* m_vsyncCB = nullptr;
+    QCheckBox* m_hdrCB = nullptr;
+    QSlider* m_paperWhiteSlider = nullptr;
+    QLabel* m_paperWhiteLabel = nullptr;
+    QSlider* m_peakBrightnessSlider = nullptr;
+    QLabel* m_peakBrightnessLabel = nullptr;
     float m_lightColorR = 1.0f;
     float m_lightColorG = 1.0f;
     float m_lightColorB = 1.0f;

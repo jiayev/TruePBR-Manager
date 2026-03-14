@@ -75,6 +75,7 @@ set(RENDERER_SOURCES
     renderer/Common/PBR.hlsli
     renderer/Common/Random.hlsli
     renderer/Common/Glints/Glints2023.hlsli
+    renderer/Common/GT7ToneMap.hlsli
 )
 
 # Prevent Visual Studio from compiling HLSL files with its built-in FXC (we compile via CMake custom commands)
@@ -88,6 +89,7 @@ set_source_files_properties(
     renderer/Common/PBR.hlsli
     renderer/Common/Random.hlsli
     renderer/Common/Glints/Glints2023.hlsli
+    renderer/Common/GT7ToneMap.hlsli
     PROPERTIES VS_TOOL_OVERRIDE "None"
 )
 
@@ -240,6 +242,7 @@ set(HLSLI_DEPS
     "${SHADER_SRC_DIR}/Common/PBR.hlsli"
     "${SHADER_SRC_DIR}/Common/Random.hlsli"
     "${SHADER_SRC_DIR}/Common/Glints/Glints2023.hlsli"
+    "${SHADER_SRC_DIR}/Common/GT7ToneMap.hlsli"
 )
 
 # Helper function: compile one HLSL entry point to a .cso file
@@ -277,8 +280,10 @@ compile_hlsl(PBRShader.hlsl   VSMain   vs_6_0  PBRShader_VS.cso
     INCLUDE_DIR "${SHADER_SRC_DIR}"  DEPENDS ${HLSLI_DEPS})
 compile_hlsl(PBRShader.hlsl   PSMain   ps_6_0  PBRShader_PS.cso
     INCLUDE_DIR "${SHADER_SRC_DIR}"  DEPENDS ${HLSLI_DEPS})
-compile_hlsl(SkyboxShader.hlsl  SkyboxVS  vs_6_0  SkyboxShader_VS.cso)
-compile_hlsl(SkyboxShader.hlsl  SkyboxPS  ps_6_0  SkyboxShader_PS.cso)
+compile_hlsl(SkyboxShader.hlsl  SkyboxVS  vs_6_0  SkyboxShader_VS.cso
+    INCLUDE_DIR "${SHADER_SRC_DIR}"  DEPENDS ${HLSLI_DEPS})
+compile_hlsl(SkyboxShader.hlsl  SkyboxPS  ps_6_0  SkyboxShader_PS.cso
+    INCLUDE_DIR "${SHADER_SRC_DIR}"  DEPENDS ${HLSLI_DEPS})
 
 # ── Compute shaders (IBL – no includes) ─────────────────────────────────
 compile_hlsl(IBLEquirectToCube.hlsl     CSMain  cs_6_0  IBLEquirectToCube.cso)
