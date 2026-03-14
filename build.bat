@@ -79,13 +79,8 @@ if !errorlevel! neq 0 (
     exit /b 1
 )
 
-REM --- Verify build tool (Ninja or fall back to NMake) ---
-set "GENERATOR=Ninja"
-where ninja.exe >nul 2>&1
-if !errorlevel! neq 0 (
-    echo Ninja not found in PATH, falling back to NMake Makefiles.
-    set "GENERATOR=NMake Makefiles"
-)
+REM --- Use Visual Studio generator ---
+set "GENERATOR=Visual Studio 17 2022"
 
 echo.
 echo Using generator: !GENERATOR!
@@ -96,14 +91,14 @@ echo Build:            %BUILD_DIR%
 echo.
 
 REM --- Configure ---
-cmake -S "%SRC_DIR%." -B "%BUILD_DIR%" -G "!GENERATOR!" -DCMAKE_BUILD_TYPE=Release "-DCMAKE_TOOLCHAIN_FILE=!TOOLCHAIN!" -DVCPKG_TARGET_TRIPLET=x64-windows !PACK_FLAG!
+cmake -S "%SRC_DIR%." -B "%BUILD_DIR%" -G "!GENERATOR!" -A x64 "-DCMAKE_TOOLCHAIN_FILE=!TOOLCHAIN!" -DVCPKG_TARGET_TRIPLET=x64-windows !PACK_FLAG!
 if !errorlevel! neq 0 (
     echo CMake configure failed
     exit /b !errorlevel!
 )
 
 REM --- Build ---
-cmake --build "%BUILD_DIR%"
+cmake --build "%BUILD_DIR%" --config Release
 if !errorlevel! neq 0 (
     echo Build failed
     exit /b !errorlevel!

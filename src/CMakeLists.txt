@@ -79,6 +79,20 @@ set(RENDERER_SOURCES
     renderer/Common/Glints/Glints2023.hlsli
 )
 
+# Prevent Visual Studio from compiling HLSL files with FXC (they are compiled at runtime)
+set_source_files_properties(
+    renderer/SkyboxShader.hlsl
+    renderer/PBRShader.hlsl
+    renderer/Common/Math.hlsli
+    renderer/Common/BRDF.hlsli
+    renderer/Common/Shading.hlsli
+    renderer/Common/PBRMath.hlsli
+    renderer/Common/PBR.hlsli
+    renderer/Common/Random.hlsli
+    renderer/Common/Glints/Glints2023.hlsli
+    PROPERTIES VS_TOOL_OVERRIDE "None"
+)
+
 set(ALL_SOURCES
     main.cpp
     ${CORE_SOURCES}
@@ -140,6 +154,10 @@ set(DIST_DIR "${CMAKE_SOURCE_DIR}/dist/TruePBR-Manager")
 
 set_target_properties(TruePBR-Manager PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${DIST_DIR}"
+    RUNTIME_OUTPUT_DIRECTORY_DEBUG "${DIST_DIR}"
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE "${DIST_DIR}"
+    RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${DIST_DIR}"
+    RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL "${DIST_DIR}"
 )
 
 # Qt and vcpkg DLLs: CMake copies dependent DLLs next to the exe automatically
@@ -251,12 +269,64 @@ option(TRUEPBR_PACK "Create a zip archive of the dist folder after build" OFF)
 if(TRUEPBR_PACK)
     set(PACK_DIR "${CMAKE_SOURCE_DIR}/dist/package")
     set(PACK_NAME "TruePBR-Manager-${PROJECT_VERSION}")
+    set(PACK_STAGING_BASE "${CMAKE_BINARY_DIR}/_pack_staging")
+    set(STAGING_DIR "${PACK_STAGING_BASE}/TruePBR-Manager")
+
+    # Ensure the staging base directory exists at configure time
+    # so WORKING_DIRECTORY is valid on the very first build
+    file(MAKE_DIRECTORY "${PACK_STAGING_BASE}")
+
+    # Collect optional commands
+    set(_PACK_EXTRA_COMMANDS)
+
+    if(WINDEPLOYQT_EXECUTABLE)
+        list(APPEND _PACK_EXTRA_COMMANDS
+            COMMAND "${WINDEPLOYQT_EXECUTABLE}"
+                --no-compiler-runtime
+                --no-translations
+                --no-opengl-sw
+                "${STAGING_DIR}/TruePBR-Manager.exe"
+        )
+    endif()
+
+    if(EXISTS "${CMAKE_SOURCE_DIR}/resources/HDRIs")
+        list(APPEND _PACK_EXTRA_COMMANDS
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_SOURCE_DIR}/resources/HDRIs"
+                "${STAGING_DIR}/hdris"
+        )
+    endif()
 
     add_custom_target(pack ALL
+        # 1. Clean and recreate staging subdirectory (keep the base for CWD)
+        COMMAND ${CMAKE_COMMAND} -E rm -rf "${STAGING_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${STAGING_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${STAGING_DIR}/shaders"
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${STAGING_DIR}/hdris"
+        # 2. Copy exe
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:TruePBR-Manager>"
+            "${STAGING_DIR}/"
+        # 3. Copy runtime DLLs
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_RUNTIME_DLLS:TruePBR-Manager>
+            "${STAGING_DIR}/"
+        # 4. Copy LICENSE
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_SOURCE_DIR}/LICENSE"
+            "${STAGING_DIR}/LICENSE"
+        # 5. Copy shaders
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${DIST_DIR}/shaders"
+            "${STAGING_DIR}/shaders"
+        # 6. Optional: windeployqt + HDRIs
+        ${_PACK_EXTRA_COMMANDS}
+        # 7. Pack
         COMMAND ${CMAKE_COMMAND} -E make_directory "${PACK_DIR}"
         COMMAND ${CMAKE_COMMAND} -E tar cf "${PACK_DIR}/${PACK_NAME}.zip" --format=zip -- "TruePBR-Manager"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/dist"
-        COMMENT "Packing dist into ${PACK_DIR}/${PACK_NAME}.zip ..."
+        WORKING_DIRECTORY "${PACK_STAGING_BASE}"
+        COMMAND_EXPAND_LISTS
+        COMMENT "Packing into ${PACK_DIR}/${PACK_NAME}.zip ..."
     )
     add_dependencies(pack TruePBR-Manager copy_shaders)
 endif()
