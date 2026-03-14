@@ -11,7 +11,7 @@
 #include "ui/TextureSetPanel.h"
 #include "ui/MaterialPreviewWidget.h"
 
-#include "renderer/IBLProcessor.h"
+#include "renderer/IBLPipeline.h"
 
 #include "utils/DDSUtils.h"
 #include "utils/FileUtils.h"
@@ -408,7 +408,7 @@ void MainWindow::setupCentralWidget()
 
         auto scanDir = [this](const std::filesystem::path& dir)
         {
-            auto files = IBLProcessor::listHDRIs(dir);
+            auto files = IBLPipeline::listHDRIs(dir);
             for (const auto& f : files)
             {
                 m_hdriCombo->addItem(QString::fromStdString(f.stem().string()), QString::fromStdString(f.string()));

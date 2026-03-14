@@ -95,6 +95,16 @@ namespace BRDF
 		return AB;
 	}
 
+	/// LUT-based EnvBRDF: apply pre-integrated BRDF factors from LUT to specular color.
+	/// AB = float2 sampled from BRDF LUT at (NdotV, roughness).
+	/// UE-style F90 handling: saturate(50.0 * specularColor.g) for dielectrics.
+	float3 EnvBRDF(float3 specularColor, float2 AB)
+	{
+		float3 GF = specularColor * AB.x + saturate(50.0 * specularColor.g) * AB.y;
+		return GF;
+	}
+
+	/// Analytical EnvBRDF fallback (Lazarov approximation).
 	float2 EnvBRDF(float roughness, float NdotV)
 	{
 		return EnvBRDFApproxLazarov(roughness, NdotV);

@@ -2,7 +2,6 @@
 
 #include "D3D12UploadQueue.h"
 #include "DescriptorHeap.h"
-#include "IBLProcessor.h"
 #include "MeshGenerator.h"
 
 #include "core/PBRTextureSet.h"
@@ -190,8 +189,6 @@ class D3D12Renderer
     void uploadTexture(int texIndex, int srvIndex, const uint8_t* rgba, int w, int h, bool srgb);
     void uploadCubemap(int srvIndex, ComPtr<ID3D12Resource>& resource, const std::vector<float>* faces, int faceSize,
                        int mipLevels);
-    void uploadCubemapMipped(int srvIndex, ComPtr<ID3D12Resource>& resource,
-                             const std::vector<IBLData::MipFace>* faceMips, int faceSize, int mipLevels);
     void uploadBRDFLut(int srvIndex, const float* rgPixels, int size);
     void uploadMesh(const PreviewMesh& mesh);
 

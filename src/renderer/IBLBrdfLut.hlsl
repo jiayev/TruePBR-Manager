@@ -1,5 +1,9 @@
 // IBLBrdfLut.hlsl — Compute BRDF integration LUT for split-sum approximation
 // Dispatch: one thread per output texel (2D LUT)
+//
+// Visibility function: Smith height-correlated GGX (Heitz 2014)
+// Alpha mapping: a = roughness^2, a2 = roughness^4 (standard GGX remapping)
+// Aligned with UE PreIntegratedGF generation.
 
 cbuffer BrdfLutCB : register(b0)
 {
@@ -12,35 +16,28 @@ RWTexture2D<float2> g_OutputLut : register(u0);
 
 static const float PI = 3.14159265359;
 
-float radicalInverse(uint bits)
-{
-    bits = (bits << 16u) | (bits >> 16u);
-    bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
-    bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
-    bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
-    bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
-    return float(bits) * 2.3283064365386963e-10;
-}
-
 float2 hammersley(uint i, uint N)
 {
-    return float2(float(i) / float(N), radicalInverse(i));
+    float E1 = float(i) / float(N);
+    float E2 = float(reversebits(i)) * 2.3283064365386963e-10;
+    return float2(E1, E2);
 }
 
-float3 importanceSampleGGX(float2 xi, float roughness, float3 N)
+float4 importanceSampleGGX(float2 E, float a2)
 {
-    float a = roughness * roughness;
-    float phi = 2.0 * PI * xi.x;
-    float cosTheta = sqrt((1.0 - xi.y) / (1.0 + (a * a - 1.0) * xi.y));
-    float sinTheta = sqrt(1.0 - cosTheta * cosTheta);
+    float Phi = 2.0 * PI * E.x;
+    float CosTheta = sqrt((1.0 - E.y) / (1.0 + (a2 - 1.0) * E.y));
+    float SinTheta = sqrt(1.0 - CosTheta * CosTheta);
 
     float3 H;
-    H.x = sinTheta * cos(phi);
-    H.y = sinTheta * sin(phi);
-    H.z = cosTheta;
+    H.x = SinTheta * cos(Phi);
+    H.y = SinTheta * sin(Phi);
+    H.z = CosTheta;
 
-    // N = (0, 0, 1) for LUT generation, so TBN is identity
-    return H;
+    float d = (CosTheta * a2 - CosTheta) * CosTheta + 1.0;
+    float PDF = a2 / (PI * d * d);
+
+    return float4(H, PDF);
 }
 
 [numthreads(8, 8, 1)]
@@ -59,7 +56,9 @@ void CSMain(uint3 dispatchID : SV_DispatchThreadID)
     V.y = 0;
     V.z = NdotV;
 
-    float3 N = float3(0, 0, 1);
+    // Alpha mapping: a2 = roughness^4 (standard GGX remapping, matches UE)
+    float a = roughness * roughness;
+    float a2 = a * a;
 
     float A = 0;
     float B = 0;
@@ -67,7 +66,7 @@ void CSMain(uint3 dispatchID : SV_DispatchThreadID)
     for (uint i = 0; i < g_SampleCount; ++i)
     {
         float2 xi = hammersley(i, g_SampleCount);
-        float3 H = importanceSampleGGX(xi, roughness, N);
+        float3 H = importanceSampleGGX(xi, a2).xyz;
 
         float VdotH = max(dot(V, H), 0.0);
         float3 L = 2.0 * VdotH * H - V;
@@ -78,14 +77,16 @@ void CSMain(uint3 dispatchID : SV_DispatchThreadID)
 
         if (NdotL > 0)
         {
-            float r2 = roughness * roughness;
-            float k = r2 / 2.0;
+            // Smith height-correlated GGX visibility (Heitz 2014)
+            // Vis = 0.5 / (SmithV + SmithL)
+            // SmithV = NdotL * sqrt(NdotV^2 * (1-a2) + a2)
+            // SmithL = NdotV * sqrt(NdotL^2 * (1-a2) + a2)
+            float Vis_SmithV = NdotL * sqrt(NdotV * NdotV * (1.0 - a2) + a2);
+            float Vis_SmithL = NdotV * sqrt(NdotL * NdotL * (1.0 - a2) + a2);
+            float Vis = 0.5 / (Vis_SmithV + Vis_SmithL + 1e-7);
 
-            float G_V = NdotV / (NdotV * (1.0 - k) + k);
-            float G_L = NdotL / (NdotL * (1.0 - k) + k);
-            float G = G_V * G_L;
-
-            float G_Vis = (G * VdotH) / (NdotH * NdotV + 0.0001);
+            // G_Vis = Vis * 4 * NdotL * VdotH / NdotH
+            float G_Vis = Vis * (4.0 * NdotL * VdotH / (NdotH + 1e-7));
             float Fc = pow(1.0 - VdotH, 5.0);
 
             A += (1.0 - Fc) * G_Vis;

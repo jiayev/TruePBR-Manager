@@ -1,7 +1,9 @@
 #include "IBLPipeline.h"
 #include "utils/Log.h"
 
+#include <DirectXTex.h>
 #include <d3dcompiler.h>
+#include <third_party/tinyexr.h>
 
 #include <algorithm>
 #include <cmath>
@@ -27,6 +29,15 @@ struct PrefilterCB
     uint32_t outputSize;
     uint32_t sampleCount;
     float roughness;
+    uint32_t inputSize;
+};
+
+struct MipGenCB
+{
+    uint32_t dstSize;
+    uint32_t numMips;
+    uint32_t dstMipIndex;
+    uint32_t pad;
 };
 
 struct BrdfLutCB
@@ -66,16 +77,16 @@ bool IBLPipeline::init(ID3D12Device* device)
     }
 
     ComPtr<ID3DBlob> equirectBlob, prefilterBlob, brdfLutBlob;
-    ComPtr<ID3DBlob> shProjectBlob, shReduceBlob;
+    ComPtr<ID3DBlob> diffuseIrradianceBlob, mipGenBlob;
     if (!compileComputeShader(shaderDir / "IBLEquirectToCube.hlsl", "CSMain", equirectBlob))
         return false;
     if (!compileComputeShader(shaderDir / "IBLPrefilter.hlsl", "CSMain", prefilterBlob))
         return false;
     if (!compileComputeShader(shaderDir / "IBLBrdfLut.hlsl", "CSMain", brdfLutBlob))
         return false;
-    if (!compileComputeShader(shaderDir / "IBLProjectSH.hlsl", "CSMain", shProjectBlob))
+    if (!compileComputeShader(shaderDir / "IBLDiffuseIrradiance.hlsl", "CSMain", diffuseIrradianceBlob))
         return false;
-    if (!compileComputeShader(shaderDir / "IBLReduceSH.hlsl", "CSMain", shReduceBlob))
+    if (!compileComputeShader(shaderDir / "IBLCubemapMipGen.hlsl", "CSMain", mipGenBlob))
         return false;
 
     // Root signature layout for passes with SRV+UAV:
@@ -84,13 +95,15 @@ bool IBLPipeline::init(ID3D12Device* device)
     //   [0] root constants b0   [1] UAV table u0
     if (!createRootSignatureAndPSO(device, "EquirectToCube", equirectBlob, 1, 1, 1, m_equirectRS, m_equirectPSO))
         return false;
-    if (!createRootSignatureAndPSO(device, "Prefilter", prefilterBlob, 1, 1, 1, m_prefilterRS, m_prefilterPSO))
+    if (!createRootSignatureAndPSO(device, "Prefilter", prefilterBlob, 1, 1, 1, m_prefilterRS, m_prefilterPSO, 5))
         return false;
     if (!createRootSignatureAndPSO(device, "BrdfLut", brdfLutBlob, 0, 1, 0, m_brdfLutRS, m_brdfLutPSO))
         return false;
-    if (!createRootSignatureAndPSO(device, "SHProject", shProjectBlob, 1, 1, 0, m_shProjectRS, m_shProjectPSO))
+    // DiffuseIrradiance: 1 SRV (cubemap) + 1 UAV (structured output) + 1 sampler
+    if (!createRootSignatureAndPSO(device, "DiffuseIrradiance", diffuseIrradianceBlob, 1, 1, 1,
+                                   m_diffuseIrradianceRS, m_diffuseIrradiancePSO))
         return false;
-    if (!createRootSignatureAndPSO(device, "SHReduce", shReduceBlob, 1, 1, 0, m_shReduceRS, m_shReducePSO))
+    if (!createRootSignatureAndPSO(device, "MipGen", mipGenBlob, 1, 1, 1, m_mipGenRS, m_mipGenPSO))
         return false;
 
     // Create transient command infrastructure
@@ -368,8 +381,10 @@ IBLResult IBLPipeline::process(ID3D12Device* device, ID3D12CommandQueue* directQ
     int cubemapSize = std::min(prefilteredSize * 2, 1024);
 
     // Intermediate cubemap (equirect → cubemap): UAV writable, then SRV readable
+    // Create with full mip chain for filtered importance sampling (firefly suppression)
+    int cubemapMipCount = static_cast<int>(std::log2(cubemapSize)) + 1;
     auto cubemapTex =
-        createDefaultTextureCube(device, cubemapSize, 1, DXGI_FORMAT_R32G32B32A32_FLOAT,
+        createDefaultTextureCube(device, cubemapSize, cubemapMipCount, DXGI_FORMAT_R32G32B32A32_FLOAT,
                                  D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
     // Prefiltered output (with mip chain)
@@ -387,17 +402,11 @@ IBLResult IBLPipeline::process(ID3D12Device* device, ID3D12CommandQueue* directQ
                                D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
     // ── 3. Create descriptor heap for compute passes ───────
-    //   EquirectToCube: 6×2=12, SHProject: 2, SHReduce: 2, Prefilter: up to ~108, BRDF: 1
+    //   EquirectToCube: 6×2=12, MipGen: ~18, DiffuseIrradiance: 2, Prefilter: up to ~108, BRDF: 1
     DescriptorHeap computeHeap;
     computeHeap.create(device, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 256, true);
 
-    // ── 4. Create SH projection buffers ────────────────────
-    int totalPixels = equirectW * equirectH;
-    int numSHGroups = (totalPixels + 255) / 256;
-
-    auto partialSumsBuf =
-        createDefaultBuffer(device, static_cast<UINT64>(numSHGroups) * 9 * 16,
-                            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    // ── 4. Create diffuse irradiance output buffer ─────────
     auto zh3OutBuf = createDefaultBuffer(device, 5 * 16, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
                                          D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
@@ -423,31 +432,20 @@ IBLResult IBLPipeline::process(ID3D12Device* device, ID3D12CommandQueue* directQ
     m_cmdList->Reset(m_cmdAllocator.Get(), nullptr);
     runEquirectToCubemap(device, m_cmdList.Get(), equirectTex.Get(), cubemapTex.Get(), cubemapSize, computeHeap);
 
-    // Barrier: cubemap UAV → SRV for subsequent passes
-    barrier.Transition.pResource = cubemapTex.Get();
-    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-    m_cmdList->ResourceBarrier(1, &barrier);
+    // Generate mip chain for the intermediate cubemap (wide 9-tap filter, UE-aligned)
+    // This function handles all per-subresource transitions internally.
+    // On return, all subresources are in NON_PIXEL_SHADER_RESOURCE state.
+    runCubemapMipGen(device, m_cmdList.Get(), cubemapTex.Get(), cubemapSize, cubemapMipCount, computeHeap);
 
     executeAndWait(m_cmdList.Get(), directQueue, m_fence.Get(), m_fenceEvent, m_fenceValue);
-    spdlog::info("IBLPipeline: equirect → cubemap done ({}x{})", cubemapSize, cubemapSize);
+    spdlog::info("IBLPipeline: equirect → cubemap done ({}x{}, {} mips)", cubemapSize, cubemapSize, cubemapMipCount);
 
-    // Pass 2: SH3 projection + ZH3 extraction (GPU)
+    // Pass 2: Diffuse irradiance (cubemap → ZH3)
     m_cmdAllocator->Reset();
     m_cmdList->Reset(m_cmdAllocator.Get(), nullptr);
 
-    runSH3Projection(device, m_cmdList.Get(), equirectTex.Get(), partialSumsBuf.Get(), equirectW, equirectH,
-                     numSHGroups, computeHeap);
-
-    // Barrier: partial sums UAV → SRV
-    barrier.Transition.pResource = partialSumsBuf.Get();
-    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-    m_cmdList->ResourceBarrier(1, &barrier);
-
-    runSHReduction(device, m_cmdList.Get(), partialSumsBuf.Get(), zh3OutBuf.Get(), numSHGroups, computeHeap);
+    runDiffuseIrradiance(device, m_cmdList.Get(), cubemapTex.Get(), zh3OutBuf.Get(), cubemapSize, cubemapMipCount,
+                         computeHeap);
 
     // Barrier: ZH3 output UAV → COPY_SOURCE
     barrier.Transition.pResource = zh3OutBuf.Get();
@@ -468,13 +466,13 @@ IBLResult IBLPipeline::process(ID3D12Device* device, ID3D12CommandQueue* directQ
         D3D12_RANGE writeRange{0, 0};
         zh3ReadbackBuf->Unmap(0, &writeRange);
     }
-    spdlog::info("IBLPipeline: ZH3 irradiance projection done (GPU, {} groups)", numSHGroups);
+    spdlog::info("IBLPipeline: ZH3 irradiance projection done (cubemap-based)");
 
     // Pass 3: Specular prefilter (all mip levels)
     m_cmdAllocator->Reset();
     m_cmdList->Reset(m_cmdAllocator.Get(), nullptr);
     runPrefilter(device, m_cmdList.Get(), cubemapTex.Get(), result.prefilteredCubemap.Get(), cubemapSize,
-                 prefilteredSize, maxMips, computeHeap, prefilterSamples);
+                 prefilteredSize, maxMips, computeHeap, prefilterSamples, cubemapMipCount);
 
     // Barrier: prefiltered UAV → SRV
     barrier.Transition.pResource = result.prefilteredCubemap.Get();
@@ -587,79 +585,36 @@ ComPtr<ID3D12Resource> IBLPipeline::createDefaultBuffer(ID3D12Device* device, UI
 }
 
 // ═════════════════════════════════════════════════════════════
-// Pass 2a: SH3 Projection (GPU parallel reduction)
+// Pass 2: Diffuse Irradiance (Cubemap → ZH3, single dispatch)
 // ═════════════════════════════════════════════════════════════
 
-void IBLPipeline::runSH3Projection(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList,
-                                   ID3D12Resource* equirectTex, ID3D12Resource* partialSumsBuf, int equirectW,
-                                   int equirectH, int numGroups, DescriptorHeap& heap)
+void IBLPipeline::runDiffuseIrradiance(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList,
+                                       ID3D12Resource* cubemap, ID3D12Resource* zh3OutBuf, int cubeSize,
+                                       int cubeMipLevels, DescriptorHeap& heap)
 {
+    // Sample from a moderate mip level for stability (target ~32×32 effective resolution)
+    float mipLevel = std::max(0.0f, std::log2(static_cast<float>(cubeSize)) - 5.0f);
+
     struct
     {
-        uint32_t w, h, total, pad;
-    } cb = {static_cast<uint32_t>(equirectW), static_cast<uint32_t>(equirectH),
-            static_cast<uint32_t>(equirectW * equirectH), 0};
+        uint32_t cubeSize;
+        float mipLevel;
+        uint32_t pad0;
+        uint32_t pad1;
+    } cb = {static_cast<uint32_t>(cubeSize), mipLevel, 0, 0};
 
     uint32_t srvIdx = heap.allocate(1);
     uint32_t uavIdx = heap.allocate(1);
 
-    // SRV for equirect 2D texture
+    // SRV: TextureCube (all mips)
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
     srvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
-    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    srvDesc.Texture2D.MipLevels = 1;
-    device->CreateShaderResourceView(equirectTex, &srvDesc, heap.cpuHandle(srvIdx));
+    srvDesc.TextureCube.MipLevels = static_cast<UINT>(cubeMipLevels);
+    device->CreateShaderResourceView(cubemap, &srvDesc, heap.cpuHandle(srvIdx));
 
-    // UAV for structured buffer (partial sums)
-    D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{};
-    uavDesc.Format = DXGI_FORMAT_UNKNOWN;
-    uavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
-    uavDesc.Buffer.FirstElement = 0;
-    uavDesc.Buffer.NumElements = static_cast<UINT>(numGroups * 9);
-    uavDesc.Buffer.StructureByteStride = 16;
-    device->CreateUnorderedAccessView(partialSumsBuf, nullptr, &uavDesc, heap.cpuHandle(uavIdx));
-
-    cmdList->SetComputeRootSignature(m_shProjectRS.Get());
-    cmdList->SetPipelineState(m_shProjectPSO.Get());
-    ID3D12DescriptorHeap* heaps[] = {heap.heap()};
-    cmdList->SetDescriptorHeaps(1, heaps);
-
-    cmdList->SetComputeRoot32BitConstants(0, 4, &cb, 0);
-    cmdList->SetComputeRootDescriptorTable(1, heap.gpuHandle(srvIdx));
-    cmdList->SetComputeRootDescriptorTable(2, heap.gpuHandle(uavIdx));
-
-    cmdList->Dispatch(static_cast<UINT>(numGroups), 1, 1);
-}
-
-// ═════════════════════════════════════════════════════════════
-// Pass 2b: SH Reduction + ZH3 Extraction (GPU)
-// ═════════════════════════════════════════════════════════════
-
-void IBLPipeline::runSHReduction(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList,
-                                 ID3D12Resource* partialSumsBuf, ID3D12Resource* zh3OutBuf, int numGroups,
-                                 DescriptorHeap& heap)
-{
-    struct
-    {
-        uint32_t numGroups;
-        uint32_t pad[3];
-    } cb = {static_cast<uint32_t>(numGroups), {}};
-
-    uint32_t srvIdx = heap.allocate(1);
-    uint32_t uavIdx = heap.allocate(1);
-
-    // SRV for structured buffer (partial sums — read)
-    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
-    srvDesc.Format = DXGI_FORMAT_UNKNOWN;
-    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    srvDesc.Buffer.FirstElement = 0;
-    srvDesc.Buffer.NumElements = static_cast<UINT>(numGroups * 9);
-    srvDesc.Buffer.StructureByteStride = 16;
-    device->CreateShaderResourceView(partialSumsBuf, &srvDesc, heap.cpuHandle(srvIdx));
-
-    // UAV for structured buffer (ZH3 output — write)
+    // UAV: structured buffer (5 × float4)
     D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{};
     uavDesc.Format = DXGI_FORMAT_UNKNOWN;
     uavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
@@ -668,8 +623,8 @@ void IBLPipeline::runSHReduction(ID3D12Device* device, ID3D12GraphicsCommandList
     uavDesc.Buffer.StructureByteStride = 16;
     device->CreateUnorderedAccessView(zh3OutBuf, nullptr, &uavDesc, heap.cpuHandle(uavIdx));
 
-    cmdList->SetComputeRootSignature(m_shReduceRS.Get());
-    cmdList->SetPipelineState(m_shReducePSO.Get());
+    cmdList->SetComputeRootSignature(m_diffuseIrradianceRS.Get());
+    cmdList->SetPipelineState(m_diffuseIrradiancePSO.Get());
     ID3D12DescriptorHeap* heaps[] = {heap.heap()};
     cmdList->SetDescriptorHeaps(1, heaps);
 
@@ -677,7 +632,26 @@ void IBLPipeline::runSHReduction(ID3D12Device* device, ID3D12GraphicsCommandList
     cmdList->SetComputeRootDescriptorTable(1, heap.gpuHandle(srvIdx));
     cmdList->SetComputeRootDescriptorTable(2, heap.gpuHandle(uavIdx));
 
+    // Single dispatch: 256 threads × 8 samples/thread = 2048 sphere samples
     cmdList->Dispatch(1, 1, 1);
+}
+
+// ═════════════════════════════════════════════════════════════
+// UE-aligned roughness ↔ mip mapping
+// ═════════════════════════════════════════════════════════════
+
+float IBLPipeline::computeRoughnessFromMip(int mip, int maxMip)
+{
+    // UE: ComputeReflectionCaptureRoughnessFromMip
+    // REFLECTION_CAPTURE_ROUGHEST_MIP = 1
+    // REFLECTION_CAPTURE_ROUGHNESS_MIP_SCALE = 1.2
+    // LevelFrom1x1 = maxMip - 1 - mip
+    // Roughness = exp2((1.0 - LevelFrom1x1) / 1.2)
+    if (mip == 0)
+        return 0.0f;
+    float levelFrom1x1 = static_cast<float>(maxMip - 1 - mip);
+    float roughness = std::exp2((1.0f - levelFrom1x1) / 1.2f);
+    return std::min(roughness, 1.0f);
 }
 
 // ═════════════════════════════════════════════════════════════
@@ -784,34 +758,42 @@ void IBLPipeline::computeZH3CPU(const float* pixels, int w, int h, float outZH3[
 // ═══════════════════════════════════════════════════════════
 
 void IBLPipeline::runPrefilter(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ID3D12Resource* inputCubemap,
-                               ID3D12Resource* outputPrefiltered, int /*inputSize*/, int outputSize, int mipLevels,
-                               DescriptorHeap& heap, int sampleCount)
+                               ID3D12Resource* outputPrefiltered, int inputSize, int outputSize, int mipLevels,
+                               DescriptorHeap& heap, int sampleCount, int inputMipLevels)
 {
     for (int mip = 0; mip < mipLevels; ++mip)
     {
         int mipSize = std::max(outputSize >> mip, 1);
-        float roughness = static_cast<float>(mip) / static_cast<float>(mipLevels - 1);
+        float roughness = computeRoughnessFromMip(mip, mipLevels);
         UINT groups = (mipSize + 7) / 8;
         if (groups == 0)
             groups = 1;
+
+        // Adaptive sample count (UE-aligned):
+        //   roughness < 0.01: mirror copy (handled in shader, sampleCount unused)
+        //   roughness < 0.1:  32 samples
+        //   roughness > 0.99: cosine hemisphere (handled in shader)
+        //   else:             64 samples
+        int adaptiveSamples = (roughness < 0.1f) ? 32 : 64;
 
         for (int face = 0; face < 6; ++face)
         {
             PrefilterCB cbData{};
             cbData.faceIndex = face;
             cbData.outputSize = mipSize;
-            cbData.sampleCount = static_cast<uint32_t>(sampleCount);
+            cbData.sampleCount = static_cast<uint32_t>(adaptiveSamples);
             cbData.roughness = roughness;
+            cbData.inputSize = static_cast<uint32_t>(inputSize);
 
             uint32_t srvIdx = heap.allocate(1);
             uint32_t uavIdx = heap.allocate(1);
 
-            // SRV: TextureCube of input cubemap
+            // SRV: TextureCube of input cubemap (all mip levels for filtered importance sampling)
             D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
             srvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
             srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
             srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-            srvDesc.TextureCube.MipLevels = 1;
+            srvDesc.TextureCube.MipLevels = static_cast<UINT>(inputMipLevels);
             device->CreateShaderResourceView(inputCubemap, &srvDesc, heap.cpuHandle(srvIdx));
 
             // UAV: RWTexture2DArray for this mip level
@@ -828,7 +810,7 @@ void IBLPipeline::runPrefilter(ID3D12Device* device, ID3D12GraphicsCommandList* 
             ID3D12DescriptorHeap* heaps[] = {heap.heap()};
             cmdList->SetDescriptorHeaps(1, heaps);
 
-            cmdList->SetComputeRoot32BitConstants(0, 4, &cbData, 0);
+            cmdList->SetComputeRoot32BitConstants(0, 5, &cbData, 0);
             cmdList->SetComputeRootDescriptorTable(1, heap.gpuHandle(srvIdx));
             cmdList->SetComputeRootDescriptorTable(2, heap.gpuHandle(uavIdx));
 
@@ -840,6 +822,86 @@ void IBLPipeline::runPrefilter(ID3D12Device* device, ID3D12GraphicsCommandList* 
             cmdList->ResourceBarrier(1, &uavBarrier);
         }
     }
+}
+
+// ═══════════════════════════════════════════════════════════
+// Cubemap Mip Generation (wide 9-tap filter, UE-aligned)
+// ═══════════════════════════════════════════════════════════
+
+void IBLPipeline::runCubemapMipGen(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ID3D12Resource* cubemap,
+                                   int faceSize, int mipLevels, DescriptorHeap& heap)
+{
+    // After equirect→cubemap, all subresources are in UAV state.
+    // Transition mip 0 (all 6 faces) to SRV state for reading.
+    {
+        D3D12_RESOURCE_BARRIER barriers[6] = {};
+        for (int face = 0; face < 6; ++face)
+        {
+            barriers[face].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barriers[face].Transition.pResource = cubemap;
+            barriers[face].Transition.Subresource = static_cast<UINT>(0 + face * mipLevels);
+            barriers[face].Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+            barriers[face].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        }
+        cmdList->ResourceBarrier(6, barriers);
+    }
+
+    for (int mip = 1; mip < mipLevels; ++mip)
+    {
+        int dstSize = std::max(faceSize >> mip, 1);
+
+        MipGenCB cbData{};
+        cbData.dstSize = static_cast<uint32_t>(dstSize);
+        cbData.numMips = static_cast<uint32_t>(mipLevels);
+        cbData.dstMipIndex = static_cast<uint32_t>(mip);
+
+        // SRV: TextureCube viewing only the source mip level (mip-1)
+        uint32_t srvIdx = heap.allocate(1);
+        D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+        srvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
+        srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        srvDesc.TextureCube.MostDetailedMip = static_cast<UINT>(mip - 1);
+        srvDesc.TextureCube.MipLevels = 1;
+        device->CreateShaderResourceView(cubemap, &srvDesc, heap.cpuHandle(srvIdx));
+
+        // UAV: destination mip level
+        uint32_t uavIdx = heap.allocate(1);
+        D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{};
+        uavDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+        uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2DARRAY;
+        uavDesc.Texture2DArray.MipSlice = mip;
+        uavDesc.Texture2DArray.FirstArraySlice = 0;
+        uavDesc.Texture2DArray.ArraySize = 6;
+        device->CreateUnorderedAccessView(cubemap, nullptr, &uavDesc, heap.cpuHandle(uavIdx));
+
+        cmdList->SetComputeRootSignature(m_mipGenRS.Get());
+        cmdList->SetPipelineState(m_mipGenPSO.Get());
+        ID3D12DescriptorHeap* heaps[] = {heap.heap()};
+        cmdList->SetDescriptorHeaps(1, heaps);
+
+        cmdList->SetComputeRoot32BitConstants(0, 4, &cbData, 0);
+        cmdList->SetComputeRootDescriptorTable(1, heap.gpuHandle(srvIdx));
+        cmdList->SetComputeRootDescriptorTable(2, heap.gpuHandle(uavIdx));
+
+        UINT groups = (dstSize + 7) / 8;
+        if (groups == 0)
+            groups = 1;
+        cmdList->Dispatch(groups, groups, 6);
+
+        // Transition this mip (all 6 faces) from UAV to SRV for subsequent reads
+        D3D12_RESOURCE_BARRIER barriers[6] = {};
+        for (int face = 0; face < 6; ++face)
+        {
+            barriers[face].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barriers[face].Transition.pResource = cubemap;
+            barriers[face].Transition.Subresource = static_cast<UINT>(mip + face * mipLevels);
+            barriers[face].Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+            barriers[face].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        }
+        cmdList->ResourceBarrier(6, barriers);
+    }
+    // All subresources are now in NON_PIXEL_SHADER_RESOURCE state.
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -873,6 +935,151 @@ void IBLPipeline::runBrdfLut(ID3D12Device* device, ID3D12GraphicsCommandList* cm
 
     UINT groups = (lutSize + 7) / 8;
     cmdList->Dispatch(groups, groups, 1);
+}
+
+// ═══════════════════════════════════════════════════════════
+// HDRI File Loading
+// ═══════════════════════════════════════════════════════════
+
+static bool loadEXR(const std::filesystem::path& path, int& w, int& h, std::vector<float>& rgba)
+{
+    float* out = nullptr;
+    const char* err = nullptr;
+    int ret = LoadEXR(&out, &w, &h, path.string().c_str(), &err);
+    if (ret != TINYEXR_SUCCESS)
+    {
+        spdlog::error("IBL: Failed to load EXR {}: {}", path.string(), err ? err : "unknown");
+        FreeEXRErrorMessage(err);
+        return false;
+    }
+    rgba.assign(out, out + w * h * 4);
+    free(out);
+    return true;
+}
+
+static bool loadHDR_DXTex(const std::filesystem::path& path, int& w, int& h, std::vector<float>& rgba)
+{
+    DirectX::TexMetadata meta{};
+    DirectX::ScratchImage scratch;
+    HRESULT hr = DirectX::LoadFromHDRFile(path.wstring().c_str(), &meta, scratch);
+    if (FAILED(hr))
+    {
+        spdlog::error("IBL: Failed to load HDR {}: 0x{:08X}", path.string(), static_cast<unsigned>(hr));
+        return false;
+    }
+
+    DirectX::ScratchImage converted;
+    if (meta.format != DXGI_FORMAT_R32G32B32A32_FLOAT)
+    {
+        hr = DirectX::Convert(scratch.GetImages(), scratch.GetImageCount(), meta, DXGI_FORMAT_R32G32B32A32_FLOAT,
+                              DirectX::TEX_FILTER_DEFAULT, 0, converted);
+        if (FAILED(hr))
+        {
+            spdlog::error("IBL: HDR format conversion failed");
+            return false;
+        }
+    }
+    else
+    {
+        converted = std::move(scratch);
+    }
+
+    const auto* img = converted.GetImage(0, 0, 0);
+    w = static_cast<int>(img->width);
+    h = static_cast<int>(img->height);
+    const size_t pixelCount = static_cast<size_t>(w) * h;
+    rgba.resize(pixelCount * 4);
+    for (int y = 0; y < h; ++y)
+    {
+        memcpy(rgba.data() + y * w * 4, img->pixels + y * img->rowPitch, w * 4 * sizeof(float));
+    }
+    return true;
+}
+
+static bool loadDDS_float(const std::filesystem::path& path, int& w, int& h, std::vector<float>& rgba)
+{
+    DirectX::TexMetadata meta{};
+    DirectX::ScratchImage scratch;
+    HRESULT hr = DirectX::LoadFromDDSFile(path.wstring().c_str(), DirectX::DDS_FLAGS_NONE, &meta, scratch);
+    if (FAILED(hr))
+    {
+        spdlog::error("IBL: Failed to load DDS {}: 0x{:08X}", path.string(), static_cast<unsigned>(hr));
+        return false;
+    }
+
+    DirectX::ScratchImage decompressed;
+    if (DirectX::IsCompressed(meta.format))
+    {
+        hr = DirectX::Decompress(scratch.GetImages(), scratch.GetImageCount(), meta, DXGI_FORMAT_R32G32B32A32_FLOAT,
+                                 decompressed);
+        if (FAILED(hr))
+            return false;
+    }
+    else
+    {
+        decompressed = std::move(scratch);
+    }
+
+    DirectX::ScratchImage converted;
+    if (decompressed.GetMetadata().format != DXGI_FORMAT_R32G32B32A32_FLOAT)
+    {
+        hr = DirectX::Convert(decompressed.GetImages(), decompressed.GetImageCount(), decompressed.GetMetadata(),
+                              DXGI_FORMAT_R32G32B32A32_FLOAT, DirectX::TEX_FILTER_DEFAULT, 0, converted);
+        if (FAILED(hr))
+            return false;
+    }
+    else
+    {
+        converted = std::move(decompressed);
+    }
+
+    const auto* img = converted.GetImage(0, 0, 0);
+    w = static_cast<int>(img->width);
+    h = static_cast<int>(img->height);
+    rgba.resize(static_cast<size_t>(w) * h * 4);
+    for (int y = 0; y < h; ++y)
+    {
+        memcpy(rgba.data() + y * w * 4, img->pixels + y * img->rowPitch, w * 4 * sizeof(float));
+    }
+    return true;
+}
+
+bool IBLPipeline::loadHDRI(const std::filesystem::path& path, int& w, int& h, std::vector<float>& rgba)
+{
+    auto ext = path.extension().string();
+    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+
+    if (ext == ".exr")
+        return loadEXR(path, w, h, rgba);
+    if (ext == ".hdr")
+        return loadHDR_DXTex(path, w, h, rgba);
+    if (ext == ".dds")
+        return loadDDS_float(path, w, h, rgba);
+
+    spdlog::error("IBL: Unsupported HDRI format: {}", ext);
+    return false;
+}
+
+std::vector<std::filesystem::path> IBLPipeline::listHDRIs(const std::filesystem::path& directory)
+{
+    std::vector<std::filesystem::path> result;
+    if (!std::filesystem::is_directory(directory))
+        return result;
+
+    for (const auto& entry : std::filesystem::directory_iterator(directory))
+    {
+        if (!entry.is_regular_file())
+            continue;
+        auto ext = entry.path().extension().string();
+        std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+        if (ext == ".exr" || ext == ".hdr" || ext == ".dds")
+        {
+            result.push_back(entry.path());
+        }
+    }
+
+    std::sort(result.begin(), result.end());
+    return result;
 }
 
 } // namespace tpbr

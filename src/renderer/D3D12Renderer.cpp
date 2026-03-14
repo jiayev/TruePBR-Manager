@@ -1,6 +1,5 @@
 #include "D3D12Renderer.h"
 #include "IBLPipeline.h"
-#include "IBLProcessor.h"
 #include "utils/Log.h"
 
 #include <DirectXMath.h>
@@ -1021,112 +1020,6 @@ void D3D12Renderer::uploadCubemap(int srvIndex, ComPtr<ID3D12Resource>& resource
     m_device->CreateShaderResourceView(resource.Get(), &srvDesc, m_srvHeap.cpuHandle(m_srvBaseIndex + srvIndex));
 }
 
-void D3D12Renderer::uploadCubemapMipped(int srvIndex, ComPtr<ID3D12Resource>& resource,
-                                        const std::vector<IBLData::MipFace>* faceMips, int faceSize, int mipLevels)
-{
-    D3D12_HEAP_PROPERTIES heapProps{};
-    heapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
-
-    D3D12_RESOURCE_DESC texDesc{};
-    texDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-    texDesc.Width = faceSize;
-    texDesc.Height = faceSize;
-    texDesc.DepthOrArraySize = 6;
-    texDesc.MipLevels = static_cast<UINT16>(mipLevels);
-    texDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
-    texDesc.SampleDesc.Count = 1;
-
-    m_device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &texDesc, D3D12_RESOURCE_STATE_COPY_DEST,
-                                      nullptr, IID_PPV_ARGS(&resource));
-
-    m_uploadQueue->flush();
-    m_uploadQueue->resetRingBuffer();
-    m_uploadQueue->resetCommandList();
-    auto* copyList = m_uploadQueue->commandList();
-
-    for (int f = 0; f < 6; ++f)
-    {
-        for (int m = 0; m < mipLevels; ++m)
-        {
-            const auto& mipFace = faceMips[f][m];
-            int mipSize = mipFace.size;
-            UINT subresource = static_cast<UINT>(f) * static_cast<UINT>(mipLevels) + static_cast<UINT>(m);
-
-            D3D12_RESOURCE_DESC mipDesc{};
-            mipDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-            mipDesc.Width = mipSize;
-            mipDesc.Height = mipSize;
-            mipDesc.DepthOrArraySize = 1;
-            mipDesc.MipLevels = 1;
-            mipDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
-            mipDesc.SampleDesc.Count = 1;
-
-            D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint;
-            UINT64 requiredSize = 0;
-            m_device->GetCopyableFootprints(&mipDesc, 0, 1, 0, &footprint, nullptr, nullptr, &requiredSize);
-
-            uint64_t ringOffset = 0;
-            uint8_t* mapped = m_uploadQueue->allocate(requiredSize, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT, ringOffset);
-            if (!mapped)
-            {
-                uint64_t fence = m_uploadQueue->execute();
-                m_uploadQueue->flush();
-                m_uploadQueue->resetRingBuffer();
-                m_uploadQueue->resetCommandList();
-                copyList = m_uploadQueue->commandList();
-                mapped = m_uploadQueue->allocate(requiredSize, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT, ringOffset);
-            }
-
-            footprint.Offset = ringOffset;
-            for (int y = 0; y < mipSize; ++y)
-            {
-                memcpy(mapped + y * footprint.Footprint.RowPitch, mipFace.pixels.data() + y * mipSize * 4,
-                       mipSize * 4 * sizeof(float));
-            }
-
-            D3D12_TEXTURE_COPY_LOCATION dst{};
-            dst.pResource = resource.Get();
-            dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-            dst.SubresourceIndex = subresource;
-
-            D3D12_TEXTURE_COPY_LOCATION src{};
-            src.pResource = m_uploadQueue->ringBuffer();
-            src.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-            src.PlacedFootprint = footprint;
-
-            copyList->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
-        }
-    }
-
-    uint64_t copyFence = m_uploadQueue->execute();
-    m_uploadQueue->directQueueWaitForCopy(m_directQueue.Get(), copyFence);
-
-    flushGPU();
-    m_frames[0].commandAllocator->Reset();
-    m_commandList->Reset(m_frames[0].commandAllocator.Get(), nullptr);
-
-    D3D12_RESOURCE_BARRIER barrier{};
-    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    barrier.Transition.pResource = resource.Get();
-    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-    m_commandList->ResourceBarrier(1, &barrier);
-
-    m_commandList->Close();
-    ID3D12CommandList* lists[] = {m_commandList.Get()};
-    m_directQueue->ExecuteCommandLists(1, lists);
-    flushGPU();
-
-    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
-    srvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
-    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
-    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    srvDesc.TextureCube.MipLevels = mipLevels;
-
-    m_device->CreateShaderResourceView(resource.Get(), &srvDesc, m_srvHeap.cpuHandle(m_srvBaseIndex + srvIndex));
-}
-
 void D3D12Renderer::uploadBRDFLut(int srvIndex, const float* rgPixels, int size)
 {
     D3D12_HEAP_PROPERTIES heapProps{};
@@ -1636,7 +1529,7 @@ bool D3D12Renderer::loadIBL(const std::filesystem::path& hdriPath)
     // Load HDRI file to CPU float RGBA pixels
     int eqW = 0, eqH = 0;
     std::vector<float> equirect;
-    if (!IBLProcessor::loadHDRI(hdriPath, eqW, eqH, equirect))
+    if (!IBLPipeline::loadHDRI(hdriPath, eqW, eqH, equirect))
     {
         spdlog::error("D3D12Renderer: failed to load HDRI {}", hdriPath.string());
         return false;
@@ -1685,35 +1578,12 @@ bool D3D12Renderer::loadIBL(const std::filesystem::path& hdriPath)
                          hdriPath.filename().string(), m_iblPrefilteredSize, m_iblPrefilterSamples);
             return true;
         }
-        spdlog::warn("D3D12Renderer: GPU IBL failed, falling back to CPU");
-    }
-
-    // CPU fallback
-    IBLData data = IBLProcessor::process(hdriPath, 64, m_iblPrefilteredSize, 256);
-    if (!data.valid)
-    {
-        spdlog::error("D3D12Renderer: IBL processing failed for {}", hdriPath.string());
+        spdlog::error("D3D12Renderer: GPU IBL processing failed for {}", hdriPath.filename().string());
         return false;
     }
 
-    // Compute ZH3 from equirect pixels (CPU fallback)
-    {
-        IBLPipeline::computeZH3CPU(m_hdriPixels.data(), m_hdriW, m_hdriH, m_zh3Data);
-    }
-
-    if (data.prefilteredMipLevels > 0)
-    {
-        uploadCubemapMipped(3, m_prefilteredCubemap, data.prefilteredFaces, data.prefilteredSize,
-                            data.prefilteredMipLevels);
-        m_maxPrefilteredMip = data.prefilteredMipLevels - 1;
-    }
-
-    uploadBRDFLut(4, data.brdfLutPixels.data(), data.brdfLutSize);
-
-    m_iblLoaded = true;
-    m_iblIntensity = 1.0f;
-    spdlog::info("D3D12Renderer: IBL loaded via CPU from {}", hdriPath.filename().string());
-    return true;
+    spdlog::error("D3D12Renderer: IBL pipeline not initialized");
+    return false;
 }
 
 void D3D12Renderer::setIBLParams(int prefilteredSize, int prefilterSamples)
@@ -1761,21 +1631,6 @@ void D3D12Renderer::setIBLParams(int prefilteredSize, int prefilterSamples)
                              prefilterSamples);
                 return;
             }
-        }
-
-        // CPU fallback reprocess
-        IBLData data = IBLProcessor::process(m_hdriPath, 64, prefilteredSize, 256);
-        if (data.valid)
-        {
-            IBLPipeline::computeZH3CPU(m_hdriPixels.data(), m_hdriW, m_hdriH, m_zh3Data);
-            if (data.prefilteredMipLevels > 0)
-            {
-                uploadCubemapMipped(3, m_prefilteredCubemap, data.prefilteredFaces, data.prefilteredSize,
-                                    data.prefilteredMipLevels);
-                m_maxPrefilteredMip = data.prefilteredMipLevels - 1;
-            }
-            uploadBRDFLut(4, data.brdfLutPixels.data(), data.brdfLutSize);
-            spdlog::info("D3D12Renderer: IBL reprocessed (CPU, prefSize={})", prefilteredSize);
         }
     }
 }

@@ -66,8 +66,6 @@ set(RENDERER_SOURCES
     renderer/IBLPipeline.cpp
     renderer/MeshGenerator.h
     renderer/MeshGenerator.cpp
-    renderer/IBLProcessor.h
-    renderer/IBLProcessor.cpp
     renderer/SkyboxShader.hlsl
     renderer/PBRShader.hlsl
     renderer/Common/Math.hlsli
@@ -215,10 +213,10 @@ add_custom_command(TARGET TruePBR-Manager POST_BUILD
 set(SHADER_FILES
     PBRShader.hlsl
     IBLEquirectToCube.hlsl
-    IBLProjectSH.hlsl
-    IBLReduceSH.hlsl
+    IBLDiffuseIrradiance.hlsl
     IBLPrefilter.hlsl
     IBLBrdfLut.hlsl
+    IBLCubemapMipGen.hlsl
     SkyboxShader.hlsl
     Common/Math.hlsli
     Common/BRDF.hlsli

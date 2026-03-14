@@ -255,7 +255,7 @@ namespace PBR
 	};
 
 	IndirectLobeWeights GetIndirectLobeWeights(float3 N, float3 V,
-		PBRMaterial material, uint featureFlags)
+		PBRMaterial material, uint featureFlags, float2 envBRDF_AB)
 	{
 		IndirectLobeWeights weights = (IndirectLobeWeights)0;
 
@@ -281,8 +281,8 @@ namespace PBR
 				weights.diffuse += material.FuzzColor * material.FuzzWeight;
 			}
 
-			float2 specularBRDF = BRDF::EnvBRDF(material.Roughness, NdotV);
-			weights.specular = material.F0 * specularBRDF.x + specularBRDF.y;
+			// Use LUT-based EnvBRDF with UE F90 handling
+			weights.specular = BRDF::EnvBRDF(material.F0, envBRDF_AB);
 
 			// Energy conservation: use integrated specular reflectance from EnvBRDF
 			// (1 - specularWeight) is the energy not reflected specularly, available for diffuse
@@ -290,8 +290,8 @@ namespace PBR
 
 			[branch] if ((featureFlags & Flags::TwoLayer) != 0)
 			{
-				float2 coatSpecularBRDF = BRDF::EnvBRDF(material.CoatRoughness, NdotV);
-				float3 coatSpecularLobeWeight = material.CoatF0 * coatSpecularBRDF.x + coatSpecularBRDF.y;
+				float2 coatAB = BRDF::EnvBRDF(material.CoatRoughness, NdotV);
+				float3 coatSpecularLobeWeight = BRDF::EnvBRDF(material.CoatF0, coatAB);
 
 				// Use integrated coat reflectance for layer attenuation
 				float3 layerAttenuation = 1 - coatSpecularLobeWeight * material.CoatStrength;
