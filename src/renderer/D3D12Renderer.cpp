@@ -1379,7 +1379,7 @@ void D3D12Renderer::render()
     frame.sceneCBMapped->lightIntensity = m_lightIntensity;
     frame.sceneCBMapped->iblIntensity = m_iblLoaded ? m_iblIntensity : 0.0f;
     frame.sceneCBMapped->maxPrefilteredMip = static_cast<float>(m_maxPrefilteredMip);
-    frame.sceneCBMapped->frameCount = static_cast<uint32_t>(m_frameNumber);
+    frame.sceneCBMapped->frameCount = 0; // Fixed: no TAA, so keep glint noise stable across frames
     frame.sceneCBMapped->envRotation = m_envRotation;
     for (int i = 0; i < 5; i++)
     {
