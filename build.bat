@@ -90,6 +90,16 @@ echo Source:           %SRC_DIR%
 echo Build:            %BUILD_DIR%
 echo.
 
+REM --- Auto-clean stale CMake cache if platform mismatches ---
+if exist "%BUILD_DIR%\CMakeCache.txt" (
+    findstr /C:"CMAKE_GENERATOR_PLATFORM:INTERNAL=x64" "%BUILD_DIR%\CMakeCache.txt" >nul 2>&1
+    if !errorlevel! neq 0 (
+        echo Detected platform mismatch in CMake cache. Cleaning build cache...
+        del /q "%BUILD_DIR%\CMakeCache.txt" 2>nul
+        rmdir /s /q "%BUILD_DIR%\CMakeFiles" 2>nul
+    )
+)
+
 REM --- Configure ---
 cmake -S "%SRC_DIR%." -B "%BUILD_DIR%" -G "!GENERATOR!" -A x64 "-DCMAKE_TOOLCHAIN_FILE=!TOOLCHAIN!" -DVCPKG_TARGET_TRIPLET=x64-windows !PACK_FLAG!
 if !errorlevel! neq 0 (
