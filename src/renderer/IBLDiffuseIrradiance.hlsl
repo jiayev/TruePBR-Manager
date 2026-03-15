@@ -115,7 +115,8 @@ void CSMain(uint3 gtid : SV_GroupThreadID)
 
         // ── Compute luminance zonal axis from L1 band ──
         // Shared luminance axis avoids per-channel color fringing (Section 3.2)
-        const float3 lumW = float3(0.2126, 0.7152, 0.0722);
+        // AP1 luminance coefficients (cubemap data is in ACEScg)
+        const float3 lumW = float3(0.2722287168, 0.6740817658, 0.0536895174);
         float3 l1Vec = float3(
             dot(raw[3], lumW),   // x (positive basis convention)
             dot(raw[1], lumW),   // y

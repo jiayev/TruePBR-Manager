@@ -1,7 +1,9 @@
 // PBR Preview Shader — Feature-aware with CS-aligned BRDF + IBL
 // Uses Common/*.hlsli adapted from skyrim-community-shaders
+// All lighting computation is performed in ACEScg color space.
 
 #include "Common/PBR.hlsli"
+#include "Common/ColorSpaces.hlsli"
 
 // ─── Constant Buffers ──────────────────────────────────────
 
@@ -132,7 +134,8 @@ PSOutput PSMain(PSInput input)
 {
     // ── Sample textures ────────────────────────────────────
     float4 albedoSample = g_Diffuse.Sample(g_Sampler, input.uv);
-    float3 albedo = albedoSample.rgb;
+    // Hardware sRGB format → linear Rec.709; convert to ACEScg working space
+    float3 albedo = ColorSpaces::sRGBToACEScg(albedoSample.rgb);
     float alpha = albedoSample.a;
 
     float3 normalTS = g_Normal.Sample(g_Sampler, input.uv).rgb;
@@ -169,15 +172,16 @@ PSOutput PSMain(PSInput input)
     // Subsurface
     [branch] if (g_FeatureFlags & PBR::Flags::Subsurface)
     {
+        float3 ssColorACES = ColorSpaces::sRGBToACEScg(g_SubsurfaceColor);
         [branch] if (g_FeatureFlags & PBR::Flags::HasFeatureTexture1)
         {
             float4 ssTex = g_FeatureTex1.Sample(g_Sampler, input.uv);
-            mat.SubsurfaceColor = ssTex.rgb * g_SubsurfaceColor;
+            mat.SubsurfaceColor = ColorSpaces::sRGBToACEScg(ssTex.rgb) * ssColorACES;
             mat.Thickness = 1.0 - ssTex.a * g_SubsurfaceOpacity;
         }
         else
         {
-            mat.SubsurfaceColor = g_SubsurfaceColor;
+            mat.SubsurfaceColor = ssColorACES;
             mat.Thickness = 1.0 - g_SubsurfaceOpacity;
         }
     }
@@ -199,7 +203,7 @@ PSOutput PSMain(PSInput input)
         [branch] if ((g_FeatureFlags & PBR::Flags::ColoredCoat) && (g_FeatureFlags & PBR::Flags::HasFeatureTexture1))
         {
             float4 coatColorTex = g_FeatureTex1.Sample(g_Sampler, input.uv);
-            mat.CoatColor = coatColorTex.rgb;
+            mat.CoatColor = ColorSpaces::sRGBToACEScg(coatColorTex.rgb);
             mat.CoatStrength *= coatColorTex.a;
         }
     }
@@ -207,13 +211,13 @@ PSOutput PSMain(PSInput input)
     // Fuzz
     [branch] if (g_FeatureFlags & PBR::Flags::Fuzz)
     {
-        mat.FuzzColor = g_FuzzColor;
+        mat.FuzzColor = ColorSpaces::sRGBToACEScg(g_FuzzColor);
         mat.FuzzWeight = g_FuzzWeight;
 
         [branch] if (g_FeatureFlags & PBR::Flags::HasFeatureTexture0)
         {
             float4 fuzzTex = g_FeatureTex0.Sample(g_Sampler, input.uv);
-            mat.FuzzColor *= fuzzTex.rgb;
+            mat.FuzzColor *= ColorSpaces::sRGBToACEScg(fuzzTex.rgb);
             mat.FuzzWeight *= fuzzTex.a;
         }
     }
@@ -241,7 +245,8 @@ PSOutput PSMain(PSInput input)
 
     // ── Direct lighting ────────────────────────────────────
     float3 L = normalize(g_LightDir);
-    float3 radiance = g_LightColor * g_LightIntensity;
+    // Light color is authored in Rec.709; convert to ACEScg
+    float3 radiance = ColorSpaces::sRGBToACEScg(g_LightColor) * g_LightIntensity;
 
     PBR::DirectLightResult directResult = PBR::GetDirectLight(
         N, V, L, radiance, mat, g_FeatureFlags);
@@ -260,7 +265,8 @@ PSOutput PSMain(PSInput input)
     float3 emissive = float3(0, 0, 0);
     [branch] if (g_FeatureFlags & PBR::Flags::HasEmissive)
     {
-        emissive = g_Emissive.Sample(g_Sampler, input.uv).rgb * g_EmissiveScale;
+        // Emissive texture is sRGB; hardware linearizes to Rec.709, convert to ACEScg
+        emissive = ColorSpaces::sRGBToACEScg(g_Emissive.Sample(g_Sampler, input.uv).rgb) * g_EmissiveScale;
     }
 
     // ── Image-Based Lighting ───────────────────────────────
@@ -281,7 +287,8 @@ PSOutput PSMain(PSInput input)
         float3 Nr = float3(envCs * N.x + envSn * N.z, N.y, -envSn * N.x + envCs * N.z);
 
         // Diffuse IBL: ZH3 evaluation
-        const float3 lumCoeffs = float3(0.2126, 0.7152, 0.0722);
+        // AP1 luminance coefficients (SH data is in ACEScg)
+        const float3 lumCoeffs = ColorSpaces::AP1_RGB2Y;
         float3 l1_lum = float3(
             dot(g_SH[3].xyz, lumCoeffs),
             dot(g_SH[1].xyz, lumCoeffs),

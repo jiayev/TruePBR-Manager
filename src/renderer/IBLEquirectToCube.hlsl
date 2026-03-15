@@ -1,5 +1,6 @@
 // IBLEquirectToCube.hlsl — Convert equirectangular HDR map to cubemap faces
 // Dispatch: one thread per output texel, 6 faces via array slice
+// Input is already in ACEScg (CPU-side color space conversion in IBLPipeline).
 
 cbuffer EquirectToCubeCB : register(b0)
 {
@@ -56,5 +57,6 @@ void CSMain(uint3 dispatchID : SV_DispatchThreadID)
     float2 eqUV = dirToEquirectUV(dir);
 
     float4 color = g_EquirectMap.SampleLevel(g_LinearSampler, eqUV, 0);
+
     g_OutputCubemap[uint3(dispatchID.x, dispatchID.y, g_FaceIndex)] = color;
 }

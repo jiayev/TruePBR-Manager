@@ -15,6 +15,15 @@ namespace tpbr
 
 using Microsoft::WRL::ComPtr;
 
+/// Detected HDRI color space based on EXR chromaticities or file type defaults.
+enum class HDRIColorSpace
+{
+    Rec709,     // sRGB / Rec.709 primaries, D65 white (default for .hdr/.dds/no metadata)
+    ACEScg,     // AP1 primaries, ACES white (~D60)
+    ACES2065_1, // AP0 primaries, ACES white (~D60)
+    Rec2020,    // Rec.2020 primaries, D65 white
+};
+
 /// GPU IBL processing result — resources ready for rendering.
 struct IBLResult
 {
@@ -59,7 +68,12 @@ class IBLPipeline
     static void computeZH3CPU(const float* pixels, int w, int h, float outZH3[5][4]);
 
     /// Load an HDRI file (.exr, .hdr, .dds) to equirectangular float RGBA pixels.
-    static bool loadHDRI(const std::filesystem::path& path, int& width, int& height, std::vector<float>& rgbaPixels);
+    /// Optionally returns the detected color space of the loaded data.
+    static bool loadHDRI(const std::filesystem::path& path, int& width, int& height, std::vector<float>& rgbaPixels,
+                         HDRIColorSpace* outColorSpace = nullptr);
+
+    /// Convert HDRI pixel data in-place from a source color space to ACEScg (AP1).
+    static void convertPixelsToACEScg(float* rgbaPixels, int width, int height, HDRIColorSpace sourceColorSpace);
 
     /// List available HDRI files in a directory (*.exr, *.hdr, *.dds).
     static std::vector<std::filesystem::path> listHDRIs(const std::filesystem::path& directory);

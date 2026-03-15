@@ -1,5 +1,8 @@
 // Tone Map Post-Process Shader — fullscreen triangle that applies GT7 tone mapping
 // to the resolved HDR color buffer and outputs to the swap chain.
+// Input buffer is in ACEScg; converted to Rec.709 before GT7 tone mapping.
+
+#include "Common/ColorSpaces.hlsli"
 
 // ─── Constant Buffer (subset of SceneCB — only HDR params needed) ──────
 
@@ -47,6 +50,10 @@ float4 ToneMapPS(VSOutput input) : SV_TARGET
 {
     float4 hdr = g_HDRColor.Sample(g_PointSampler, input.uv);
     float3 color = max(hdr.rgb, float3(0, 0, 0));
+
+    // Convert from ACEScg working space to Rec.709 for GT7 tone mapping
+    color = ColorSpaces::ACEScgToSRGB(color);
+    color = max(color, float3(0, 0, 0));
     color *= exp2(g_ExposureEV);
 
     [branch] if (g_HDREnabled)
@@ -57,7 +64,8 @@ float4 ToneMapPS(VSOutput input) : SV_TARGET
     else
     {
         color = GT7ToneMap(color, false, 0, 0);
-        color = pow(max(color, 0.0), 1.0 / 2.2);
-        return float4(saturate(color), hdr.a);
+        // Proper sRGB OETF (piecewise linear + pow 2.4) per IEC 61966-2-1
+        color = ColorSpaces::sRGBOETF(saturate(color));
+        return float4(color, hdr.a);
     }
 }

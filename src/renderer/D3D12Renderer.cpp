@@ -2300,11 +2300,15 @@ bool D3D12Renderer::loadIBL(const std::filesystem::path& hdriPath)
     // Load HDRI file to CPU float RGBA pixels
     int eqW = 0, eqH = 0;
     std::vector<float> equirect;
-    if (!IBLPipeline::loadHDRI(hdriPath, eqW, eqH, equirect))
+    HDRIColorSpace hdriCS = HDRIColorSpace::Rec709;
+    if (!IBLPipeline::loadHDRI(hdriPath, eqW, eqH, equirect, &hdriCS))
     {
         spdlog::error("D3D12Renderer: failed to load HDRI {}", hdriPath.string());
         return false;
     }
+
+    // Convert HDRI pixels to ACEScg (GPU pipeline expects ACEScg input)
+    IBLPipeline::convertPixelsToACEScg(equirect.data(), eqW, eqH, hdriCS);
 
     // Cache the loaded HDRI for reprocessing with different parameters
     m_hdriPath = hdriPath;

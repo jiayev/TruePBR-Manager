@@ -694,6 +694,7 @@ void IBLPipeline::computeZH3CPU(const float* pixels, int w, int h, float outZH3[
             double z = cosEl * std::sin(azimuth);
 
             const float* pixel = pixels + (py * w + px) * 4;
+            // Pixels are already in ACEScg (converted by convertPixelsToACEScg on CPU)
             double r = pixel[0], g = pixel[1], b = pixel[2];
 
             double basis[9];
@@ -718,7 +719,8 @@ void IBLPipeline::computeZH3CPU(const float* pixels, int w, int h, float outZH3[
     }
 
     // Extract ZH3: luminance zonal axis + stored coefficient
-    double lumR = 0.2126, lumG = 0.7152, lumB = 0.0722;
+    // AP1 luminance coefficients (data is in ACEScg)
+    double lumR = 0.2722287168, lumG = 0.6740817658, lumB = 0.0536895174;
     double axX = accum[3][0] * lumR + accum[3][1] * lumG + accum[3][2] * lumB;
     double axY = accum[1][0] * lumR + accum[1][1] * lumG + accum[1][2] * lumB;
     double axZ = accum[2][0] * lumR + accum[2][1] * lumG + accum[2][2] * lumB;
@@ -954,6 +956,92 @@ void IBLPipeline::runBrdfLut(ID3D12Device* device, ID3D12GraphicsCommandList* cm
 // HDRI File Loading
 // ═══════════════════════════════════════════════════════════
 
+// Detect EXR color space from chromaticities custom attribute.
+static HDRIColorSpace detectEXRColorSpace(const std::filesystem::path& path)
+{
+    EXRVersion version;
+    int ret = ParseEXRVersionFromFile(&version, path.string().c_str());
+    if (ret != TINYEXR_SUCCESS)
+        return HDRIColorSpace::Rec709;
+
+    EXRHeader header;
+    InitEXRHeader(&header);
+    const char* err = nullptr;
+    ret = ParseEXRHeaderFromFile(&header, &version, path.string().c_str(), &err);
+    if (ret != TINYEXR_SUCCESS)
+    {
+        FreeEXRErrorMessage(err);
+        return HDRIColorSpace::Rec709;
+    }
+
+    HDRIColorSpace result = HDRIColorSpace::Rec709;
+
+    // Look for "chromaticities" attribute: 8 floats (32 bytes)
+    // Layout: redX, redY, greenX, greenY, blueX, blueY, whiteX, whiteY
+    for (int i = 0; i < header.num_custom_attributes; ++i)
+    {
+        if (std::strcmp(header.custom_attributes[i].name, "chromaticities") == 0 &&
+            header.custom_attributes[i].size == 32)
+        {
+            const float* c = reinterpret_cast<const float*>(header.custom_attributes[i].value);
+            float rX = c[0], rY = c[1], gX = c[2], gY = c[3];
+            float bX = c[4], bY = c[5]; // whiteX=c[6], whiteY=c[7]
+
+            // Match against known primaries (tolerance 0.02)
+            auto approx = [](float a, float b) { return std::abs(a - b) < 0.02f; };
+
+            // ACEScg (AP1): R(0.713,0.293) G(0.165,0.830) B(0.128,0.044)
+            if (approx(rX, 0.713f) && approx(rY, 0.293f) && approx(gX, 0.165f) && approx(gY, 0.830f))
+            {
+                result = HDRIColorSpace::ACEScg;
+                spdlog::info("IBL: EXR chromaticities detected as ACEScg (AP1)");
+            }
+            // ACES 2065-1 (AP0): R(0.7347,0.2653) G(0.0,1.0) B(0.0001,-0.077)
+            else if (approx(rX, 0.7347f) && approx(rY, 0.2653f) && approx(gX, 0.0f) && approx(gY, 1.0f))
+            {
+                result = HDRIColorSpace::ACES2065_1;
+                spdlog::info("IBL: EXR chromaticities detected as ACES 2065-1 (AP0)");
+            }
+            // Rec.2020: R(0.708,0.292) G(0.170,0.797) B(0.131,0.046)
+            else if (approx(rX, 0.708f) && approx(rY, 0.292f) && approx(gX, 0.170f) && approx(gY, 0.797f))
+            {
+                result = HDRIColorSpace::Rec2020;
+                spdlog::info("IBL: EXR chromaticities detected as Rec.2020");
+            }
+            // sRGB / Rec.709: R(0.64,0.33) G(0.30,0.60) B(0.15,0.06)
+            else if (approx(rX, 0.64f) && approx(rY, 0.33f) && approx(gX, 0.30f) && approx(gY, 0.60f))
+            {
+                result = HDRIColorSpace::Rec709;
+                spdlog::info("IBL: EXR chromaticities detected as sRGB/Rec.709");
+            }
+            else
+            {
+                spdlog::warn("IBL: EXR has unknown chromaticities R({:.3f},{:.3f}) G({:.3f},{:.3f}) "
+                             "B({:.3f},{:.3f}) W({:.3f},{:.3f}) — assuming Rec.709",
+                             rX, rY, gX, gY, bX, bY, c[6], c[7]);
+            }
+            break;
+        }
+    }
+
+    if (result == HDRIColorSpace::Rec709)
+    {
+        // Check for "acesImageContainerFlag" attribute (ACES container format)
+        for (int i = 0; i < header.num_custom_attributes; ++i)
+        {
+            if (std::strcmp(header.custom_attributes[i].name, "acesImageContainerFlag") == 0)
+            {
+                result = HDRIColorSpace::ACES2065_1;
+                spdlog::info("IBL: EXR has acesImageContainerFlag — treating as ACES 2065-1");
+                break;
+            }
+        }
+    }
+
+    FreeEXRHeader(&header);
+    return result;
+}
+
 static bool loadEXR(const std::filesystem::path& path, int& w, int& h, std::vector<float>& rgba)
 {
     float* out = nullptr;
@@ -1057,20 +1145,86 @@ static bool loadDDS_float(const std::filesystem::path& path, int& w, int& h, std
     return true;
 }
 
-bool IBLPipeline::loadHDRI(const std::filesystem::path& path, int& w, int& h, std::vector<float>& rgba)
+bool IBLPipeline::loadHDRI(const std::filesystem::path& path, int& w, int& h, std::vector<float>& rgba,
+                           HDRIColorSpace* outColorSpace)
 {
     auto ext = path.extension().string();
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 
-    if (ext == ".exr")
-        return loadEXR(path, w, h, rgba);
-    if (ext == ".hdr")
-        return loadHDR_DXTex(path, w, h, rgba);
-    if (ext == ".dds")
-        return loadDDS_float(path, w, h, rgba);
+    HDRIColorSpace cs = HDRIColorSpace::Rec709; // default for .hdr/.dds
 
-    spdlog::error("IBL: Unsupported HDRI format: {}", ext);
-    return false;
+    if (ext == ".exr")
+    {
+        cs = detectEXRColorSpace(path);
+        if (!loadEXR(path, w, h, rgba))
+            return false;
+    }
+    else if (ext == ".hdr")
+    {
+        if (!loadHDR_DXTex(path, w, h, rgba))
+            return false;
+    }
+    else if (ext == ".dds")
+    {
+        if (!loadDDS_float(path, w, h, rgba))
+            return false;
+    }
+    else
+    {
+        spdlog::error("IBL: Unsupported HDRI format: {}", ext);
+        return false;
+    }
+
+    if (outColorSpace)
+        *outColorSpace = cs;
+    return true;
+}
+
+void IBLPipeline::convertPixelsToACEScg(float* rgba, int w, int h, HDRIColorSpace src)
+{
+    if (src == HDRIColorSpace::ACEScg)
+        return; // already in target space
+
+    // Conversion matrices to ACEScg (AP1, ACES white ~D60)
+    // Each row: {m00,m01,m02, m10,m11,m12, m20,m21,m22}
+    double m[9];
+
+    switch (src)
+    {
+    case HDRIColorSpace::Rec709:
+        // Linear Rec.709 (D65) → ACEScg (Bradford D65→ACES white)
+        m[0] = 0.61319; m[1] = 0.33951; m[2] = 0.04737;
+        m[3] = 0.07021; m[4] = 0.91634; m[5] = 0.01345;
+        m[6] = 0.02062; m[7] = 0.10957; m[8] = 0.86981;
+        break;
+    case HDRIColorSpace::ACES2065_1:
+        // AP0 → AP1 (same white point, no adaptation needed)
+        m[0] =  1.4514393161; m[1] = -0.2365107469; m[2] = -0.2149285693;
+        m[3] = -0.0765537734; m[4] =  1.1762296998; m[5] = -0.0996759264;
+        m[6] =  0.0083161484; m[7] = -0.0060324498; m[8] =  0.9977163014;
+        break;
+    case HDRIColorSpace::Rec2020:
+        // Rec.2020 (D65) → ACEScg = Rec709ToACEScg × Rec2020ToRec709
+        m[0] = 0.97495; m[1] = 0.01955; m[2] = 0.00548;
+        m[3] = 0.00225; m[4] = 0.99559; m[5] = 0.00228;
+        m[6] = 0.00479; m[7] = 0.02453; m[8] = 0.97080;
+        break;
+    default:
+        return;
+    }
+
+    const size_t pixelCount = static_cast<size_t>(w) * h;
+    for (size_t i = 0; i < pixelCount; ++i)
+    {
+        float* p = rgba + i * 4;
+        double r = p[0], g = p[1], b = p[2];
+        p[0] = static_cast<float>(m[0] * r + m[1] * g + m[2] * b);
+        p[1] = static_cast<float>(m[3] * r + m[4] * g + m[5] * b);
+        p[2] = static_cast<float>(m[6] * r + m[7] * g + m[8] * b);
+    }
+
+    static const char* csNames[] = {"Rec.709", "ACEScg", "ACES 2065-1", "Rec.2020"};
+    spdlog::info("IBL: Converted {} pixels from {} to ACEScg", pixelCount, csNames[static_cast<int>(src)]);
 }
 
 std::vector<std::filesystem::path> IBLPipeline::listHDRIs(const std::filesystem::path& directory)
