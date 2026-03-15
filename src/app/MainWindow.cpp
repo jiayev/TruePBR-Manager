@@ -1215,10 +1215,35 @@ void MainWindow::onExportSizeChanged(PBRTextureSlot slot, int width, int height)
         return;
 
     auto& ts = m_project.textureSets[m_currentSetIndex];
-    auto texIt = ts.textures.find(slot);
-    if (texIt != ts.textures.end() && width == texIt->second.width && height == texIt->second.height)
+
+    // Determine the native size for this slot
+    int nativeW = 0, nativeH = 0;
+    if (slot == PBRTextureSlot::RMAOS && ts.rmaosSourceMode == RMAOSSourceMode::SeparateChannels)
     {
-        // Original size selected — remove override
+        for (const auto& [ch, chEntry] : ts.channelMaps)
+        {
+            if (chEntry.width > 0 && chEntry.height > 0 &&
+                static_cast<int64_t>(chEntry.width) * chEntry.height >
+                    static_cast<int64_t>(nativeW) * nativeH)
+            {
+                nativeW = chEntry.width;
+                nativeH = chEntry.height;
+            }
+        }
+    }
+    else
+    {
+        auto texIt = ts.textures.find(slot);
+        if (texIt != ts.textures.end())
+        {
+            nativeW = texIt->second.width;
+            nativeH = texIt->second.height;
+        }
+    }
+
+    if (width == nativeW && height == nativeH)
+    {
+        // Original/native size selected — remove override
         ts.exportSize.erase(slot);
     }
     else

@@ -715,7 +715,34 @@ void SlotEditorWidget::setTextureSet(const PBRTextureSet& ts)
             emit exportCompressionChanged(slot, fallbackMode);
         }
 
-        if (textureIt != ts.textures.end() && !textureIt->second.sourcePath.empty())
+        // Determine the native size for the export size combo.
+        // For RMAOS in split mode, derive from the largest assigned channel map.
+        int nativeW = 0, nativeH = 0;
+        bool hasTexture = textureIt != ts.textures.end() && !textureIt->second.sourcePath.empty();
+
+        if (slot == PBRTextureSlot::RMAOS && ts.rmaosSourceMode == RMAOSSourceMode::SeparateChannels)
+        {
+            // Find the largest channel map dimensions
+            for (const auto& [ch, chEntry] : ts.channelMaps)
+            {
+                if (chEntry.width > 0 && chEntry.height > 0)
+                {
+                    if (static_cast<int64_t>(chEntry.width) * chEntry.height >
+                        static_cast<int64_t>(nativeW) * nativeH)
+                    {
+                        nativeW = chEntry.width;
+                        nativeH = chEntry.height;
+                    }
+                }
+            }
+        }
+        else if (hasTexture)
+        {
+            nativeW = textureIt->second.width;
+            nativeH = textureIt->second.height;
+        }
+
+        if (hasTexture)
         {
             QString detailText;
             if (textureIt->second.width > 0 && textureIt->second.height > 0)
@@ -723,73 +750,67 @@ void SlotEditorWidget::setTextureSet(const PBRTextureSet& ts)
                 detailText = tr("%1 x %2").arg(textureIt->second.width).arg(textureIt->second.height);
             }
             row.dropZone->setFile(textureIt->second.sourcePath, detailText);
-
-            // Populate export size combo
-            row.exportSizeCombo->blockSignals(true);
-            row.exportSizeCombo->clear();
-            if (textureIt->second.width > 0 && textureIt->second.height > 0)
-            {
-                const auto sizeOptions =
-                    generateExportSizeOptions(textureIt->second.width, textureIt->second.height);
-                for (const auto& [w, h] : sizeOptions)
-                {
-                    QString label = tr("%1 x %2").arg(w).arg(h);
-                    if (w == textureIt->second.width && h == textureIt->second.height)
-                    {
-                        label += tr(" (original)");
-                    }
-                    QVariantList sizeData;
-                    sizeData << w << h;
-                    row.exportSizeCombo->addItem(label, sizeData);
-                }
-
-                // Select the stored export size, or default to original
-                auto sizeIt = ts.exportSize.find(slot);
-                int selectedIndex = -1;
-                if (sizeIt != ts.exportSize.end() && sizeIt->second.first > 0 && sizeIt->second.second > 0)
-                {
-                    for (int i = 0; i < row.exportSizeCombo->count(); ++i)
-                    {
-                        auto data = row.exportSizeCombo->itemData(i).toList();
-                        if (data.size() == 2 && data[0].toInt() == sizeIt->second.first &&
-                            data[1].toInt() == sizeIt->second.second)
-                        {
-                            selectedIndex = i;
-                            break;
-                        }
-                    }
-                }
-                if (selectedIndex < 0)
-                {
-                    // Default: select original size
-                    for (int i = 0; i < row.exportSizeCombo->count(); ++i)
-                    {
-                        auto data = row.exportSizeCombo->itemData(i).toList();
-                        if (data.size() == 2 && data[0].toInt() == textureIt->second.width &&
-                            data[1].toInt() == textureIt->second.height)
-                        {
-                            selectedIndex = i;
-                            break;
-                        }
-                    }
-                }
-                row.exportSizeCombo->setCurrentIndex(selectedIndex >= 0 ? selectedIndex : 0);
-                row.exportSizeCombo->setEnabled(true);
-            }
-            else
-            {
-                row.exportSizeCombo->setEnabled(false);
-            }
-            row.exportSizeCombo->blockSignals(false);
         }
         else
         {
             row.dropZone->clear();
-            row.exportSizeCombo->blockSignals(true);
-            row.exportSizeCombo->clear();
-            row.exportSizeCombo->setEnabled(false);
-            row.exportSizeCombo->blockSignals(false);
         }
+
+        // Populate export size combo
+        row.exportSizeCombo->blockSignals(true);
+        row.exportSizeCombo->clear();
+        if (nativeW > 0 && nativeH > 0)
+        {
+            const auto sizeOptions = generateExportSizeOptions(nativeW, nativeH);
+            for (const auto& [w, h] : sizeOptions)
+            {
+                QString label = tr("%1 x %2").arg(w).arg(h);
+                if (w == nativeW && h == nativeH)
+                {
+                    label += tr(" (original)");
+                }
+                QVariantList sizeData;
+                sizeData << w << h;
+                row.exportSizeCombo->addItem(label, sizeData);
+            }
+
+            // Select the stored export size, or default to native size
+            auto sizeIt = ts.exportSize.find(slot);
+            int selectedIndex = -1;
+            if (sizeIt != ts.exportSize.end() && sizeIt->second.first > 0 && sizeIt->second.second > 0)
+            {
+                for (int i = 0; i < row.exportSizeCombo->count(); ++i)
+                {
+                    auto data = row.exportSizeCombo->itemData(i).toList();
+                    if (data.size() == 2 && data[0].toInt() == sizeIt->second.first &&
+                        data[1].toInt() == sizeIt->second.second)
+                    {
+                        selectedIndex = i;
+                        break;
+                    }
+                }
+            }
+            if (selectedIndex < 0)
+            {
+                // Default: select native size
+                for (int i = 0; i < row.exportSizeCombo->count(); ++i)
+                {
+                    auto data = row.exportSizeCombo->itemData(i).toList();
+                    if (data.size() == 2 && data[0].toInt() == nativeW && data[1].toInt() == nativeH)
+                    {
+                        selectedIndex = i;
+                        break;
+                    }
+                }
+            }
+            row.exportSizeCombo->setCurrentIndex(selectedIndex >= 0 ? selectedIndex : 0);
+            row.exportSizeCombo->setEnabled(true);
+        }
+        else
+        {
+            row.exportSizeCombo->setEnabled(false);
+        }
+        row.exportSizeCombo->blockSignals(false);
 
         // Update path override state
         auto overrideIt = ts.slotPathOverrides.find(slot);
