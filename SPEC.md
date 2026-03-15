@@ -47,6 +47,8 @@ Primary references:
 - Import slot textures from DDS and raster formats (PNG, TGA, BMP, JPG/JPEG)
 - Import split RMAOS channels independently
 - Drag-and-drop import onto slot and channel controls
+- Separate Import and Clear buttons per slot and per channel row
+- Click a slot's DropZone to preview that texture (does not open import dialog)
 - Persist imported file metadata: source path, dimensions, channel count, format
 
 ### 3.3 Material authoring
@@ -56,17 +58,48 @@ Primary references:
 - Store per-slot export compression overrides
 - Store RMAOS source mode per texture set
 
-### 3.4 Preview and export
+### 3.4 2D preview
 
 - Image preview with zoom, pan, and per-channel isolation (R/G/B/A)
 - Click any slot's texture to preview it; channel buttons appear for multi-channel textures
+- Default display: diffuse → normal → empty
+
+### 3.5 3D material preview
+
+- D3D12-based real-time PBR renderer with Cook-Torrance BRDF
+- Loads Diffuse, Normal, RMAOS, and feature textures (Emissive, Coat/Fuzz, Subsurface/CoatColor) from the current texture set
+- RMAOS composed from split channels in SeparateChannels mode
+- Four mesh shapes: Sphere, Plane (double-sided), Cube, Rounded Cube
+- Orbit camera (left-drag to rotate, scroll to zoom)
+- Directional light rotation (right-drag)
+- HDRI environment rotation (middle-drag)
+- Image-Based Lighting (IBL) with GPU compute pipeline:
+  - HDRI loading from EXR, HDR, and DDS files
+  - HDRI color space detection (Rec709, ACEScg, ACES2065-1, Rec2020) with automatic conversion to ACEScg
+  - 4 GPU compute passes: equirect-to-cubemap, ZH3 diffuse irradiance, GGX prefiltered specular, BRDF LUT
+  - Configurable prefilter resolution and sample count
+- Skybox rendering from loaded HDRI
+- GT7 tone mapping with exposure compensation (EV)
+- All shader computation in ACEScg working color space
+- Temporal Anti-Aliasing (TAA) with per-frame jitter and velocity reprojection
+- HDR output support (scRGB) with paper-white and peak-brightness controls
+- VSync toggle (DXGI_PRESENT_ALLOW_TEARING when disabled)
+- Render flags: Horizon Occlusion, Multi-Bounce AO, Specular Occlusion
+- Full PBR feature support in preview: emissive, subsurface, coat, fuzz, glint, hair
+- Automatic GPU selection (discrete adapter preferred)
+- Device-lost detection and recovery
+
+### 3.6 Export
+
 - DDS export for each assigned slot
 - Split-channel packing into `_rmaos.dds` during export
+- Per-slot export size override (power-of-two downscale or original)
+- Per-slot path override for custom PGPatcher `slotN` paths
 - PGPatcher JSON export to `PBRNIFPatcher/<project>.json`
 - Automatic export directory creation under `textures/pbr/...`
 - Pre-export validation with error/warning reporting
 
-### 3.5 Batch import
+### 3.7 Batch import
 
 - Scan a folder and auto-assign textures to slots by suffix convention
 - Recognized slot suffixes: `_n`, `_g`, `_p`, `_rmaos`, `_cnr`, `_f`, `_s`
@@ -74,7 +107,7 @@ Primary references:
 - Files with no recognized suffix are assigned as Diffuse
 - If channel maps are found, RMAOS source mode is automatically set to SeparateChannels
 
-### 3.6 Input validation
+### 3.8 Input validation
 
 - Pre-export validation checks per texture set:
   - Missing required slots (Diffuse, Normal, RMAOS)
@@ -85,7 +118,7 @@ Primary references:
   - Empty vanilla match texture path
 - Errors block export; warnings allow continue with user confirmation
 
-### 3.7 Landscape support
+### 3.9 Landscape support
 
 - Any texture set can optionally have one or more Landscape TXST EDIDs
 - When EDIDs are present, the exporter generates `PBRTextureSets/<edid>.json` per EDID
@@ -93,11 +126,10 @@ Primary references:
 - Textures are shared with NIF export — no separate landscape texture output
 - This is an additive option, not a separate type: the same set can serve both NIF and Landscape
 
-### 3.8 Known current limitations
+### 3.10 Known current limitations
 
 - No undo/redo
 - No localization support
-- Vertex-color tuning fields exist in the data/export layer and are now exposed in the UI
 
 ## 4. Texture Slot Model
 
@@ -214,10 +246,13 @@ Each `PBRTextureSet` currently contains:
 - Vanilla match mode: auto, diffuse, or normal
 - Imported textures map
 - Per-slot export compression map
+- Per-slot export size override map (`{0,0}` = original, otherwise power-of-two target)
+- Per-slot path override map (custom PGPatcher `slotN` export paths)
 - Active RMAOS source mode
 - Split channel map entries
 - Feature flags
 - Parameters
+- Landscape TXST EDIDs (optional, one JSON per EDID)
 - Tags and notes
 
 ### 5.6 Project
@@ -406,9 +441,9 @@ Current UI composition:
 
 Note: `ExportDialog` exists in the codebase but is currently unused; `MainWindow` uses an inline export folder row instead. `ImportDialog` is a thin wrapper over `QFileDialog::getOpenFileName`.
 
-### 9.3 Current preview behavior
+### 9.3 Preview
 
-The preview area supports two modes toggled via 2D/3D buttons:
+The preview area is a `QStackedWidget` toggled via 2D/3D buttons.
 
 **2D Mode** (default):
 1. Show the current set's diffuse texture if present.
@@ -418,12 +453,66 @@ The preview area supports two modes toggled via 2D/3D buttons:
 5. Click any slot's DropZone to preview that specific texture.
 
 **3D Mode**:
-1. D3D12-rendered material preview using Cook-Torrance PBR BRDF.
-2. Loads Diffuse, Normal, and RMAOS textures from the current texture set.
-3. Four mesh shapes: Sphere, Plane, Cube, Rounded Cube.
-4. Single directional light, Reinhard tone mapping.
-5. Orbit camera: left-drag to rotate, scroll wheel to zoom.
-6. Material parameters (specularLevel, roughnessScale) applied from the texture set.
+- `MaterialPreviewWidget` wraps the D3D12 renderer in a Qt widget.
+- Loads Diffuse, Normal, RMAOS, and feature textures (Emissive, Coat/Fuzz, Subsurface/CoatColor).
+- RMAOS composed from split channels when in SeparateChannels mode.
+- Input: left-drag orbit, right-drag rotate light, middle-drag rotate HDRI, scroll zoom.
+- Shape selector: Sphere, Plane, Cube, Rounded Cube.
+
+**3D Control Bar** (visible only in 3D mode):
+- Light intensity slider (0–10) and color picker button
+- Exposure slider (EV compensation)
+- HDRI selector combo (scans a folder for .exr/.hdr/.dds files)
+- IBL intensity slider, prefilter resolution combo, sample count combo
+- Render flag checkboxes: Horizon Occlusion, Multi-Bounce AO, Specular Occlusion
+- VSync, TAA, and HDR checkboxes
+- Paper-white and peak-brightness sliders (HDR mode only)
+
+### 9.4 D3D12 Renderer
+
+`D3D12Renderer` provides the GPU backend:
+
+- Double-buffered frame management with per-frame command allocators and fence values
+- Dedicated async copy queue (`D3D12UploadQueue`) with 64 MB ring buffer for texture uploads
+- `DescriptorHeap` helper for linear SRV/CBV/UAV and RTV/DSV allocation
+- Cook-Torrance PBR pipeline state with precompiled vertex and pixel shaders
+- Skybox pipeline for HDRI environment background
+- GT7 tone-mapping post-process pass
+- TAA resolve compute pass with velocity reprojection
+- HDR (scRGB) and SDR swap chain modes
+- GPU adapter selection preferring discrete GPUs
+- Device-lost detection (`checkDeviceLost()`, `isDeviceLost()`)
+
+### 9.5 IBL Pipeline
+
+`IBLPipeline` orchestrates GPU-based image-based lighting:
+
+1. Load HDRI file (EXR/HDR/DDS) via `IBLPipeline::loadHDRI()` with color space detection
+2. Convert pixels to ACEScg working space
+3. Run 4 GPU compute passes:
+   - Equirect → Cubemap (`IBLEquirectToCube.hlsl`)
+   - ZH3 Diffuse Irradiance (`IBLDiffuseIrradiance.hlsl`)
+   - GGX Specular Prefilter (`IBLPrefilter.hlsl`) with configurable mip chain
+   - BRDF Integration LUT (`IBLBrdfLut.hlsl`)
+4. Results: ZH3 irradiance coefficients, prefiltered cubemap, intermediate cubemap for skybox, BRDF LUT
+
+CPU fallback (`computeZH3CPU()`) available when GPU processing is not possible.
+
+### 9.6 Shader files
+
+| File | Type | Purpose |
+|------|------|---------|
+| `PBRShader.hlsl` | VS+PS | Cook-Torrance PBR with IBL, feature textures, TAA velocity |
+| `SkyboxShader.hlsl` | VS+PS | Fullscreen HDRI background with Y-axis rotation |
+| `ToneMapShader.hlsl` | VS+PS | GT7 tone mapping, exposure, SDR/HDR output |
+| `TAAResolve.hlsl` | CS | Temporal resolve with history reprojection |
+| `IBLEquirectToCube.hlsl` | CS | Equirectangular to 6-face cubemap |
+| `IBLCubemapMipGen.hlsl` | CS | Wide 9-tap cubemap mip generation |
+| `IBLDiffuseIrradiance.hlsl` | CS | ZH3 projection for diffuse irradiance |
+| `IBLPrefilter.hlsl` | CS | GGX importance-sampled specular prefilter |
+| `IBLBrdfLut.hlsl` | CS | Split-sum BRDF integration LUT |
+
+Shared HLSL includes under `Common/`: Math, BRDF, Shading, PBRMath, PBR, Random, ColorSpaces, GT7ToneMap, Glints2023.
 
 ## 10. Source Tree
 
@@ -432,13 +521,18 @@ TruePBR-Manager/
 ├── CMakeLists.txt
 ├── CMakePresets.json
 ├── build.bat
+├── builddebug.bat
+├── buildrelease.bat
 ├── README.md
 ├── SPEC.md
+├── docs/
 ├── resources/
 └── src/
     ├── app/
     ├── core/
+    ├── renderer/
     ├── ui/
+    ├── third_party/
     └── utils/
 ```
 
@@ -450,7 +544,14 @@ Important implementation modules:
 - `core/ChannelPacker.*`: split-channel RMAOS generation
 - `core/JsonExporter.*`: PGPatcher JSON generation
 - `core/ModExporter.*`: DDS and JSON export orchestration
+- `core/LandscapeExporter.*`: Landscape TXST JSON generation
 - `core/TextureSetValidator.*`: pre-export validation checks
+- `renderer/D3D12Renderer.*`: D3D12 GPU backend, double-buffered rendering
+- `renderer/D3D12UploadQueue.*`: async texture upload via copy queue
+- `renderer/DescriptorHeap.*`: descriptor heap allocation helper
+- `renderer/IBLPipeline.*`: GPU IBL compute orchestration
+- `renderer/MeshGenerator.*`: procedural mesh generation (Sphere, Plane, Cube, RoundedCube)
+- `ui/MaterialPreviewWidget.*`: D3D12-based 3D preview Qt widget
 - `ui/SlotEditorWidget.*`: slot/channel authoring UI
 - `ui/ParameterPanel.*`: numeric material parameter UI
 
@@ -466,10 +567,13 @@ Important implementation modules:
 
 `build.bat`:
 
+- Accepts `debug` or `release` argument (defaults to `debug`)
+- Delegates to `builddebug.bat` or `buildrelease.bat`
 - Validates `VCPKG_ROOT`
 - Locates Visual Studio via `vswhere` when needed
 - Uses Ninja when available, otherwise falls back to NMake Makefiles
 - Configures the build in `build/`
+- Auto-cleans CMake cache when platform triplet changes
 
 CMake presets:
 
@@ -477,7 +581,13 @@ CMake presets:
 - `debug` configure preset for Debug
 - `release` and `debug` build presets
 
-### 11.3 Packaged output
+### 11.3 Shader compilation
+
+- HLSL shaders are precompiled to `.cso` files during build via `dxc.exe`
+- Compiled shader objects are copied to the output directory alongside the executable
+- Shader source files live in `src/renderer/` with shared includes in `src/renderer/Common/`
+
+### 11.4 Packaged output
 
 The CMake target currently places the runtime package in:
 
@@ -493,13 +603,16 @@ Post-build steps currently do the following:
 
 ## 12. Dependencies
 
-| Library | Purpose | vcpkg Port |
-|---------|---------|------------|
-| Qt 6 Widgets | UI framework | qtbase |
-| nlohmann/json | JSON serialization | nlohmann-json |
-| spdlog | Logging | spdlog |
-| DirectXTex | DDS metadata, decode, encode, compression | directxtex |
-| stb_image | Raster image loading | stb |
+| Library | Purpose | Source |
+|---------|---------|--------|
+| Qt 6 Widgets | UI framework | vcpkg (qtbase) |
+| nlohmann/json | JSON serialization | vcpkg (nlohmann-json) |
+| spdlog | Logging | vcpkg (spdlog) |
+| DirectXTex | DDS metadata, decode, encode, compression | vcpkg (directxtex) |
+| stb_image | Raster image loading | vcpkg (stb) |
+| tinyexr | EXR image loading for HDRI | Vendored (v1.0.9, header-only) |
+| D3D12 / DXGI | GPU rendering (3D preview) | Windows SDK (system) |
+| d3dcompiler | HLSL shader compilation fallback | Windows SDK (system) |
 
 ## 13. CI/CD
 
@@ -522,3 +635,14 @@ Two workflows are configured:
 - Public headers use `#pragma once`.
 - Public APIs are documented with Doxygen-style comments in headers.
 - Core logic is kept separate from Qt UI widgets.
+
+## 15. Roadmap
+
+Planned features not yet implemented:
+
+- [ ] Import existing PBR mod (导入已有 PBR mod)
+- [ ] Built-in vanilla texture set conversion (内置 vanilla texture set 转换)
+- [ ] Export progress bar (导出进度条)
+- [ ] Skip unchanged textures on export (导出跳过状态没有改变的已有贴图)
+- [ ] Undo/redo
+- [ ] Localization support

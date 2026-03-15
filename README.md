@@ -11,26 +11,19 @@ Each texture set maps to one vanilla diffuse path and stores the textures, featu
 
 The application currently supports:
 
-- Creating projects in memory and saving/loading them as `.tpbr` JSON files
-- Managing multiple texture sets per project (add, rename, remove)
-- Importing texture slots from DDS and common raster formats (PNG, TGA, BMP, JPG)
-- Drag-and-drop import directly onto slot and channel targets, with thumbnail preview
-- Authoring RMAOS either as a pre-packed texture or as separate Roughness/Metallic/AO/Specular inputs
-- Packing split RMAOS channels into a DDS during export
-- Editing major True PBR feature flags: emissive, parallax, subsurface, foliage, multilayer, coat options, fuzz, glint, hair
-- Editing the corresponding material parameters in the UI
-- Choosing DDS compression per export slot (BC7, BC3, BC6H, BC5, BC4, BC1, RGBA8 with sRGB/Linear variants)
-- Alpha mode detection (None, Opaque, Transparent) to gate compression options
-- Vanilla texture match modes: Auto, Match Diffuse, Match Normal
-- Copy-through optimization: source DDS files already in the target format are copied without re-encoding
-- Previewing imported textures with zoom, pan, and per-channel isolation (R/G/B/A)
-- Click any slot's texture to preview it in the viewer
-- Batch import: scan a folder and auto-assign textures by suffix (_n, _rmaos, _g, _p, _roughness, etc.)
-- Pre-export validation: resolution mismatches, missing slots, slot conflicts, non-power-of-two warnings
-- Exporting DDS textures into the correct `textures/pbr/...` layout and generating a PGPatcher JSON file
-- PGPatcher JSON with `rename`, `lock_*`, `match_normal`, explicit `slotN` overrides, and conditional feature fields
+- Project save/load (`.tpbr` JSON), multi-texture-set management
+- Drag-and-drop texture import (DDS, PNG, TGA, BMP, JPG) with per-slot Import/Clear
+- RMAOS authoring: packed or split-channel with auto-packing on export
+- Full True PBR feature editing: emissive, parallax, subsurface, coat, fuzz, glint, hair, etc.
+- Per-slot DDS compression, export size override, and slot path override
+- 2D preview with zoom, pan, and per-channel isolation
+- 3D material preview (D3D12 Cook-Torrance PBR): IBL with HDRI, skybox, TAA, HDR output, GT7 tone mapping, ACEScg pipeline
+- Batch import by filename suffix
+- Pre-export validation (resolution, missing slots, conflicts)
+- Landscape texture set support (TXST EDIDs)
+- PGPatcher JSON and DDS texture export
 
-The application does not currently provide batch import, undo/redo, channel-isolated preview, 3D material preview, or localization.
+The application does not currently provide undo/redo or localization.
 
 ## Texture Slots
 
@@ -139,10 +132,12 @@ Recommended baseline for this project:
 
 ```bat
 set VCPKG_ROOT=C:\path\to\vcpkg
-build.bat
+build.bat            # Release build (default)
+build.bat debug      # Debug build
+build.bat release    # Explicit release build
 ```
 
-The script configures the project in `build/` and builds the distributable into `dist/TruePBR-Manager/`. That folder is also populated with required runtime DLLs, Qt platform plugins, and `LICENSE`.
+The script configures the project in `build/` and builds the distributable into `dist/TruePBR-Manager/`. That folder is also populated with required runtime DLLs, Qt platform plugins, precompiled shaders, and `LICENSE`.
 
 ### CMake Presets
 
@@ -178,14 +173,20 @@ Managed through vcpkg:
 | nlohmann/json | Project and export JSON serialization |
 | spdlog | Logging |
 | stb_image | Raster image loading |
+Additional dependencies:
 
+| Library | Purpose | Source |
+|---------|---------|--------|
+| tinyexr | EXR image loading for HDRI | Vendored (v1.0.9) |
+| D3D12 / DXGI | GPU rendering (3D preview) | Windows SDK |
 ## Project Layout
 
 ```text
 src/
 ├── app/        MainWindow and application shell
-├── core/       Project model, texture import, RMAOS packing, JSON export, mod export
-├── ui/         Texture set list, slot editor, feature toggles, parameter editor, export dialog, preview
+├── core/       Project model, texture import, RMAOS packing, JSON export, mod export, landscape export
+├── renderer/   D3D12 GPU backend, IBL pipeline, mesh generation, HLSL shaders
+├── ui/         Texture set list, slot editor, feature toggles, parameter editor, 3D preview widget
 └── utils/      DDS helpers, image loading, file helpers, logging
 ```
 
@@ -194,33 +195,25 @@ src/
 - Projects are saved as JSON with the `.tpbr` extension.
 - RMAOS source mode is persisted per texture set as either packed or split-channel mode.
 - Export compression can be overridden per slot and is stored in the project file.
+- Export size can be overridden per slot (power-of-two downscale).
+- Slot path overrides allow custom PGPatcher `slotN` export paths per texture set.
 - Alpha mode is detected during import and influences available compression options (BC1 requires no alpha).
 - Source DDS files already matching the target compression format and mipmap count are copied without re-encoding.
-- Preview currently shows the first available diffuse texture, otherwise the normal map.
+- 2D preview shows the diffuse texture by default; click any slot to preview it with channel isolation.
+- 3D preview uses a rewritten D3D12 renderer with double-buffered frames, async texture upload queue, and GPU compute IBL pipeline.
+- Shaders are precompiled to `.cso` during build; the renderer works in ACEScg color space throughout.
 - PGPatcher JSON uses `rename` when the texture set name differs from the vanilla stem, and emits explicit `slotN` paths only when the generated path differs from PGPatcher's convention-based inference.
 
 ## Roadmap
 
-- [x] Project create/save/load
-- [x] Texture slot import with metadata and alpha detection
-- [x] Drag-and-drop import for slots and RMAOS channels
-- [x] Split-channel RMAOS packing on export
-- [x] Feature toggle editing
-- [x] Parameter editing (base, emissive, parallax, subsurface, coat, fuzz, glint)
-- [x] DDS export with per-slot compression selection (10 format options)
-- [x] Copy-through DDS optimization
-- [x] PGPatcher JSON export with rename, lock, match_normal, and slotN support
-- [x] Vanilla texture match modes (Auto/Diffuse/Normal)
-- [x] Basic preview with zoom and pan
-- [x] Per-channel preview (R/G/B/A isolation) for RMAOS and other textures
-- [x] Batch import with suffix auto-detection
-- [x] Pre-export validation with error/warning reporting
-- [x] Landscape support (optional PBRTextureSets JSON per EDID)
-- [x] D3D12 PBR material preview (Cook-Torrance, 4 mesh shapes, orbit camera)
-- [x] Vertex color parameter UI
-- [x] CI/CD with GitHub Actions (build + release packaging)
+Planned features:
+
+- [ ] Import existing PBR mod
+- [ ] Built-in vanilla texture set conversion
+- [ ] Export progress bar
+- [ ] Skip unchanged textures on export
 - [ ] Undo/redo
-- [ ] Localization
+- [ ] Localization support
 
 ## References
 
