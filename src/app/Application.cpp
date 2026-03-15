@@ -1,6 +1,7 @@
 #include "Application.h"
 #include "MainWindow.h"
 #include "utils/Log.h"
+#include "Version.h"
 
 namespace tpbr
 {
@@ -8,7 +9,7 @@ namespace tpbr
 Application::Application(int& argc, char** argv) : m_app(argc, argv)
 {
     m_app.setApplicationName("TruePBR Manager");
-    m_app.setApplicationVersion("0.1.0");
+    m_app.setApplicationVersion(TRUEPBR_VERSION_STRING);
     m_app.setOrganizationName("TruePBR");
 
     initLogging();
@@ -30,7 +31,8 @@ void Application::initLogging()
     Log::init(spdlog::level::debug, spdlog::level::trace);
 #endif
 
-    SPDLOG_INFO("TruePBR Manager v{}", m_app.applicationVersion().toStdString());
+    SPDLOG_INFO("TruePBR Manager v{} ({}  {})",
+                TRUEPBR_VERSION_STRING, TRUEPBR_GIT_HASH, TRUEPBR_BUILD_TIMESTAMP);
 }
 
 void Application::initStyle()

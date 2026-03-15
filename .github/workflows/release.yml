@@ -17,6 +17,32 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Extract version from tag
+        id: version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $ver = $tag -replace '^v', ''
+          echo "VERSION=$ver" >> $env:GITHUB_OUTPUT
+          echo "TAG=$tag" >> $env:GITHUB_OUTPUT
+
+      - name: Verify CMake version matches tag
+        shell: pwsh
+        run: |
+          $cmake = Get-Content CMakeLists.txt -Raw
+          if ($cmake -match 'project\(TruePBR-Manager\s+VERSION\s+(\S+)') {
+            $cmakeVer = $Matches[1]
+            $tagVer = "${{ steps.version.outputs.VERSION }}"
+            if ($cmakeVer -ne $tagVer) {
+              Write-Error "Version mismatch: CMakeLists.txt has $cmakeVer but tag is v$tagVer"
+              exit 1
+            }
+            Write-Host "Version verified: $cmakeVer"
+          } else {
+            Write-Error "Could not parse version from CMakeLists.txt"
+            exit 1
+          }
+
       - name: Setup CMake and Ninja
         uses: lukka/get-cmake@latest
 
@@ -40,15 +66,16 @@ jobs:
       - name: Create release archive
         shell: pwsh
         run: |
-          $archiveName = "TruePBR-Manager-${{ github.ref_name }}-windows-x64.zip"
+          $archiveName = "TruePBR-Manager-${{ steps.version.outputs.TAG }}-windows-x64.zip"
           if (Test-Path release) {
             Remove-Item release -Recurse -Force
           }
           New-Item -ItemType Directory -Path release | Out-Null
           Compress-Archive -Path dist/TruePBR-Manager/* -DestinationPath (Join-Path release $archiveName)
 
-      - name: Upload release asset
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          name: TruePBR Manager ${{ steps.version.outputs.TAG }}
           files: release/*.zip
           generate_release_notes: true

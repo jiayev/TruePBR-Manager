@@ -131,6 +131,7 @@ find_package(Stb REQUIRED)
 
 target_include_directories(TruePBR-Manager PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_BINARY_DIR}/generated
     ${Stb_INCLUDE_DIR}
 )
 
@@ -377,7 +378,8 @@ option(TRUEPBR_PACK "Create a zip archive of the dist folder after build" OFF)
 
 if(TRUEPBR_PACK)
     set(PACK_DIR "${CMAKE_SOURCE_DIR}/dist/package")
-    set(PACK_NAME "TruePBR-Manager-${PROJECT_VERSION}")
+    string(TIMESTAMP _PACK_TS "%Y%m%d%H%M%S" UTC)
+    set(PACK_NAME "TruePBR-Manager-v${PROJECT_VERSION}-${_PACK_TS}")
     set(PACK_STAGING_BASE "${CMAKE_BINARY_DIR}/_pack_staging")
     set(STAGING_DIR "${PACK_STAGING_BASE}/TruePBR-Manager")
 

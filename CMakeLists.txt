@@ -9,4 +9,24 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
+# --- Version info: git hash + build timestamp ---
+execute_process(
+    COMMAND git rev-parse --short HEAD
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    OUTPUT_VARIABLE GIT_HASH
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+if(NOT GIT_HASH)
+    set(GIT_HASH "unknown")
+endif()
+
+string(TIMESTAMP BUILD_TIMESTAMP "%Y-%m-%d %H:%M:%S" UTC)
+
+configure_file(
+    "${CMAKE_SOURCE_DIR}/src/Version.h.in"
+    "${CMAKE_BINARY_DIR}/generated/Version.h"
+    @ONLY
+)
+
 add_subdirectory(src)
