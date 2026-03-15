@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace tpbr
@@ -102,6 +103,12 @@ const char* textureMatchModeDisplayName(TextureMatchMode mode);
 
 /// Parse a serialized vanilla match mode key.
 bool tryParseTextureMatchMode(const std::string& value, TextureMatchMode& mode);
+
+/// Generate a list of export size options based on a texture's native size.
+/// Returns pairs of (width, height) including the original and several
+/// power-of-two scales above and below. The first entry is always the
+/// original size.
+std::vector<std::pair<int,int>> generateExportSizeOptions(int nativeWidth, int nativeHeight);
 
 // ─── Texture Entry ──────────────────────────────────────────
 
@@ -204,6 +211,10 @@ struct PBRTextureSet
     /// If non-empty, exporter generates PBRTextureSets/<edid>.json for each.
     /// The textures are shared with NIF export — no separate landscape texture output.
     std::vector<std::string> landscapeEdids;
+
+    /// Optional per-slot export size overrides. When set, the texture will be
+    /// resized to this resolution during export. {0,0} means use original size.
+    std::map<PBRTextureSlot, std::pair<int,int>> exportSize;
 
     /// Optional per-slot path overrides. When set, the exporter uses the given
     /// full relative path (e.g. "textures\\pbr\\custom\\tex.dds") as a PGPatcher

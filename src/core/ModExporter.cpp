@@ -251,17 +251,39 @@ fs::path ModExporter::buildOutputPath(const fs::path& modFolder, const PBRTextur
     return modFolder / relative.parent_path() / filename;
 }
 
+/// Nearest-neighbor resize for RGBA pixel data.
+static void resizeRGBA(const std::vector<uint8_t>& src, int srcW, int srcH,
+                       std::vector<uint8_t>& dst, int dstW, int dstH)
+{
+    dst.resize(static_cast<size_t>(dstW) * dstH * 4);
+    for (int y = 0; y < dstH; ++y)
+    {
+        int srcY = y * srcH / dstH;
+        for (int x = 0; x < dstW; ++x)
+        {
+            int srcX = x * srcW / dstW;
+            size_t srcIdx = (static_cast<size_t>(srcY) * srcW + srcX) * 4;
+            size_t dstIdx = (static_cast<size_t>(y) * dstW + x) * 4;
+            dst[dstIdx + 0] = src[srcIdx + 0];
+            dst[dstIdx + 1] = src[srcIdx + 1];
+            dst[dstIdx + 2] = src[srcIdx + 2];
+            dst[dstIdx + 3] = src[srcIdx + 3];
+        }
+    }
+}
+
 /// Export a single texture to DDS. If the source is already DDS, copy as-is.
 /// If the source is PNG/TGA/BMP, convert to the appropriate DDS format for the slot.
 static bool exportSingleTexture(const TextureEntry& entry, const fs::path& outputPath,
-                                DDSCompressionMode compressionMode)
+                                DDSCompressionMode compressionMode, int targetWidth = 0, int targetHeight = 0)
 {
     fs::create_directories(outputPath.parent_path());
 
     if (FileUtils::getExtensionLower(entry.sourcePath) == ".dds")
     {
         DDSUtils::DDSInfo info;
-        if (DDSUtils::getDDSInfo(entry.sourcePath, info) && info.mipLevels > 1 &&
+        if (targetWidth <= 0 && targetHeight <= 0 &&
+            DDSUtils::getDDSInfo(entry.sourcePath, info) && info.mipLevels > 1 &&
             ddsFormatMatchesCompressionMode(info.dxgiFormat, compressionMode))
         {
             spdlog::info("ModExporter: copying DDS without re-encoding {} -> {}", entry.sourcePath.string(),
@@ -277,6 +299,18 @@ static bool exportSingleTexture(const TextureEntry& entry, const fs::path& outpu
     {
         spdlog::error("ModExporter: failed to load {}", entry.sourcePath.string());
         return false;
+    }
+
+    // Resize if a target size is specified and differs from the loaded size
+    if (targetWidth > 0 && targetHeight > 0 && (targetWidth != width || targetHeight != height))
+    {
+        spdlog::info("ModExporter: resizing {} from {}x{} to {}x{}", entry.sourcePath.filename().string(), width,
+                     height, targetWidth, targetHeight);
+        std::vector<uint8_t> resized;
+        resizeRGBA(rgbaPixels, width, height, resized, targetWidth, targetHeight);
+        rgbaPixels = std::move(resized);
+        width = targetWidth;
+        height = targetHeight;
     }
 
     return saveTextureWithCompression(outputPath, entry.slot, width, height, rgbaPixels, compressionMode);
@@ -303,7 +337,16 @@ bool ModExporter::exportTextures(const PBRTextureSet& textureSet, const fs::path
             continue;
         }
 
-        if (!exportSingleTexture(entry, outPath, compressionMode))
+        // Check for export size override
+        int targetW = 0, targetH = 0;
+        auto sizeIt = textureSet.exportSize.find(slot);
+        if (sizeIt != textureSet.exportSize.end())
+        {
+            targetW = sizeIt->second.first;
+            targetH = sizeIt->second.second;
+        }
+
+        if (!exportSingleTexture(entry, outPath, compressionMode, targetW, targetH))
         {
             spdlog::error("ModExporter: failed to export {} -> {}", entry.sourcePath.string(), outPath.string());
             allOk = false;
@@ -332,7 +375,16 @@ bool ModExporter::exportTextures(const PBRTextureSet& textureSet, const fs::path
 
         auto rmaosPath = buildOutputPath(modFolder, textureSet, PBRTextureSlot::RMAOS);
         auto compressionMode = exportCompressionForSlot(textureSet, PBRTextureSlot::RMAOS);
-        if (!ChannelPacker::packRMAOS(channelPaths, rmaosPath, compressionMode))
+
+        int rmaosTargetW = 0, rmaosTargetH = 0;
+        auto rmaosSizeIt = textureSet.exportSize.find(PBRTextureSlot::RMAOS);
+        if (rmaosSizeIt != textureSet.exportSize.end())
+        {
+            rmaosTargetW = rmaosSizeIt->second.first;
+            rmaosTargetH = rmaosSizeIt->second.second;
+        }
+
+        if (!ChannelPacker::packRMAOS(channelPaths, rmaosPath, compressionMode, rmaosTargetW, rmaosTargetH))
         {
             spdlog::error("ModExporter: RMAOS packing failed for {}", textureSet.name);
             allOk = false;

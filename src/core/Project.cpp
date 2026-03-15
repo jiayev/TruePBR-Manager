@@ -328,6 +328,17 @@ static json textureSetToJson(const PBRTextureSet& ts)
     }
     j["export_compression"] = compressionObj;
 
+    // Export size overrides
+    if (!ts.exportSize.empty())
+    {
+        json sizeObj = json::object();
+        for (const auto& [slot, size] : ts.exportSize)
+        {
+            sizeObj[slotToString(slot)] = json::array({size.first, size.second});
+        }
+        j["export_size"] = sizeObj;
+    }
+
     // Channel maps
     json chArr = json::object();
     for (const auto& [ch, entry] : ts.channelMaps)
@@ -423,6 +434,17 @@ static PBRTextureSet textureSetFromJson(const json& j)
         for (auto& [key, val] : j["channel_maps"].items())
         {
             ts.channelMaps[channelFromString(key)] = channelMapEntryFromJson(val);
+        }
+    }
+
+    if (j.contains("export_size") && j["export_size"].is_object())
+    {
+        for (auto& [key, val] : j["export_size"].items())
+        {
+            if (val.is_array() && val.size() == 2)
+            {
+                ts.exportSize[slotFromString(key)] = {val[0].get<int>(), val[1].get<int>()};
+            }
         }
     }
 

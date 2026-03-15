@@ -501,10 +501,16 @@ void SlotEditorWidget::addSlotRow(PBRTextureSlot slot, const QString& label, boo
     row.compressionCombo->setToolTip(tr("Select the DDS compression used during export"));
     populateCompressionCombo(row.compressionCombo, slot);
 
+    row.exportSizeCombo = new QComboBox(row.container);
+    row.exportSizeCombo->setMinimumWidth(120);
+    row.exportSizeCombo->setToolTip(tr("Select the export resolution for this texture"));
+    row.exportSizeCombo->setEnabled(false);
+
     layout->addWidget(row.labelWidget);
     layout->addWidget(row.dropZone, 1);
     layout->addWidget(row.importButton);
     layout->addWidget(row.clearButton);
+    layout->addWidget(row.exportSizeCombo);
     layout->addWidget(row.compressionCombo);
 
     row.container->setVisible(visible);
@@ -528,6 +534,21 @@ void SlotEditorWidget::addSlotRow(PBRTextureSlot slot, const QString& label, boo
 
                 const auto mode = static_cast<DDSCompressionMode>(combo->itemData(index).toInt());
                 emit exportCompressionChanged(slot, mode);
+            });
+
+    connect(row.exportSizeCombo, &QComboBox::currentIndexChanged, this,
+            [this, slot, combo = row.exportSizeCombo](int index)
+            {
+                if (index < 0)
+                {
+                    return;
+                }
+
+                const auto sizeData = combo->itemData(index).toList();
+                if (sizeData.size() == 2)
+                {
+                    emit exportSizeChanged(slot, sizeData[0].toInt(), sizeData[1].toInt());
+                }
             });
 
     // ── Path Override Row ──────────────────────────────────
@@ -702,10 +723,72 @@ void SlotEditorWidget::setTextureSet(const PBRTextureSet& ts)
                 detailText = tr("%1 x %2").arg(textureIt->second.width).arg(textureIt->second.height);
             }
             row.dropZone->setFile(textureIt->second.sourcePath, detailText);
+
+            // Populate export size combo
+            row.exportSizeCombo->blockSignals(true);
+            row.exportSizeCombo->clear();
+            if (textureIt->second.width > 0 && textureIt->second.height > 0)
+            {
+                const auto sizeOptions =
+                    generateExportSizeOptions(textureIt->second.width, textureIt->second.height);
+                for (const auto& [w, h] : sizeOptions)
+                {
+                    QString label = tr("%1 x %2").arg(w).arg(h);
+                    if (w == textureIt->second.width && h == textureIt->second.height)
+                    {
+                        label += tr(" (original)");
+                    }
+                    QVariantList sizeData;
+                    sizeData << w << h;
+                    row.exportSizeCombo->addItem(label, sizeData);
+                }
+
+                // Select the stored export size, or default to original
+                auto sizeIt = ts.exportSize.find(slot);
+                int selectedIndex = -1;
+                if (sizeIt != ts.exportSize.end() && sizeIt->second.first > 0 && sizeIt->second.second > 0)
+                {
+                    for (int i = 0; i < row.exportSizeCombo->count(); ++i)
+                    {
+                        auto data = row.exportSizeCombo->itemData(i).toList();
+                        if (data.size() == 2 && data[0].toInt() == sizeIt->second.first &&
+                            data[1].toInt() == sizeIt->second.second)
+                        {
+                            selectedIndex = i;
+                            break;
+                        }
+                    }
+                }
+                if (selectedIndex < 0)
+                {
+                    // Default: select original size
+                    for (int i = 0; i < row.exportSizeCombo->count(); ++i)
+                    {
+                        auto data = row.exportSizeCombo->itemData(i).toList();
+                        if (data.size() == 2 && data[0].toInt() == textureIt->second.width &&
+                            data[1].toInt() == textureIt->second.height)
+                        {
+                            selectedIndex = i;
+                            break;
+                        }
+                    }
+                }
+                row.exportSizeCombo->setCurrentIndex(selectedIndex >= 0 ? selectedIndex : 0);
+                row.exportSizeCombo->setEnabled(true);
+            }
+            else
+            {
+                row.exportSizeCombo->setEnabled(false);
+            }
+            row.exportSizeCombo->blockSignals(false);
         }
         else
         {
             row.dropZone->clear();
+            row.exportSizeCombo->blockSignals(true);
+            row.exportSizeCombo->clear();
+            row.exportSizeCombo->setEnabled(false);
+            row.exportSizeCombo->blockSignals(false);
         }
 
         // Update path override state

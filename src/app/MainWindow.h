@@ -57,6 +57,7 @@ class MainWindow : public QMainWindow
     void onMatchTextureChanged(const QString& newPath);
     void onMatchTextureModeChanged(TextureMatchMode mode);
     void onExportCompressionChanged(PBRTextureSlot slot, DDSCompressionMode mode);
+    void onExportSizeChanged(PBRTextureSlot slot, int width, int height);
     void onFeaturesChanged(const PBRFeatureFlags& flags);
     void onParametersChanged(const PBRParameters& params);
     void onLandscapeEdidsChanged(const QStringList& edids);

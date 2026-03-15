@@ -1,5 +1,8 @@
 #include "PBRTextureSet.h"
 
+#include <algorithm>
+#include <cstdint>
+
 namespace tpbr
 {
 
@@ -273,6 +276,52 @@ bool tryParseTextureMatchMode(const std::string& value, TextureMatchMode& mode)
     }
 
     return false;
+}
+
+std::vector<std::pair<int,int>> generateExportSizeOptions(int nativeWidth, int nativeHeight)
+{
+    std::vector<std::pair<int,int>> options;
+
+    if (nativeWidth <= 0 || nativeHeight <= 0)
+        return options;
+
+    // Always include the original size first
+    options.emplace_back(nativeWidth, nativeHeight);
+
+    // Generate scaled variants: x0.25, x0.5, x2, x4
+    // Only include sizes where both dimensions are >= 1
+    const int scales[] = {4, 2}; // divisors for downscale
+    const int upscales[] = {2, 4}; // multipliers for upscale
+
+    for (int div : scales)
+    {
+        int w = nativeWidth / div;
+        int h = nativeHeight / div;
+        if (w >= 1 && h >= 1)
+        {
+            options.emplace_back(w, h);
+        }
+    }
+
+    for (int mul : upscales)
+    {
+        int w = nativeWidth * mul;
+        int h = nativeHeight * mul;
+        // Cap at 8192 (reasonable max for game textures)
+        if (w <= 8192 && h <= 8192)
+        {
+            options.emplace_back(w, h);
+        }
+    }
+
+    // Sort by total pixel count (ascending)
+    std::sort(options.begin(), options.end(),
+              [](const auto& a, const auto& b)
+              {
+                  return static_cast<int64_t>(a.first) * a.second < static_cast<int64_t>(b.first) * b.second;
+              });
+
+    return options;
 }
 
 } // namespace tpbr

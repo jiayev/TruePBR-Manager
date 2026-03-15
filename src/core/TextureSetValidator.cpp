@@ -15,7 +15,6 @@ std::vector<ValidationIssue> TextureSetValidator::validate(const PBRTextureSet& 
     std::vector<ValidationIssue> issues;
     checkMatchTexture(ts, issues);
     checkRequiredSlots(ts, issues);
-    checkResolutionConsistency(ts, issues);
     checkPowerOfTwo(ts, issues);
     checkFeatureTextures(ts, issues);
     checkSlotConflicts(ts, issues);

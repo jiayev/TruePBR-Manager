@@ -606,6 +606,7 @@ void MainWindow::setupCentralWidget()
     connect(m_slotEditor, &SlotEditorWidget::matchTextureChanged, this, &MainWindow::onMatchTextureChanged);
     connect(m_slotEditor, &SlotEditorWidget::matchTextureModeChanged, this, &MainWindow::onMatchTextureModeChanged);
     connect(m_slotEditor, &SlotEditorWidget::exportCompressionChanged, this, &MainWindow::onExportCompressionChanged);
+    connect(m_slotEditor, &SlotEditorWidget::exportSizeChanged, this, &MainWindow::onExportSizeChanged);
     connect(m_featurePanel, &FeatureTogglePanel::featuresChanged, this, &MainWindow::onFeaturesChanged);
     connect(m_paramPanel, &ParameterPanel::parametersChanged, this, &MainWindow::onParametersChanged);
     connect(m_slotEditor, &SlotEditorWidget::landscapeEdidsChanged, this, &MainWindow::onLandscapeEdidsChanged);
@@ -1206,6 +1207,25 @@ void MainWindow::onExportCompressionChanged(PBRTextureSlot slot, DDSCompressionM
 
     m_project.textureSets[m_currentSetIndex].exportCompression[slot] = mode;
     spdlog::debug("Export compression updated: {} -> {}", slotDisplayName(slot), compressionModeKey(mode));
+}
+
+void MainWindow::onExportSizeChanged(PBRTextureSlot slot, int width, int height)
+{
+    if (m_currentSetIndex < 0)
+        return;
+
+    auto& ts = m_project.textureSets[m_currentSetIndex];
+    auto texIt = ts.textures.find(slot);
+    if (texIt != ts.textures.end() && width == texIt->second.width && height == texIt->second.height)
+    {
+        // Original size selected — remove override
+        ts.exportSize.erase(slot);
+    }
+    else
+    {
+        ts.exportSize[slot] = {width, height};
+    }
+    spdlog::debug("Export size updated: {} -> {}x{}", slotDisplayName(slot), width, height);
 }
 
 void MainWindow::onFeaturesChanged(const PBRFeatureFlags& flags)

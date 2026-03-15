@@ -77,6 +77,9 @@ class SlotEditorWidget : public QWidget
     void matchTextureModeChanged(TextureMatchMode mode);
     void exportCompressionChanged(PBRTextureSlot slot, DDSCompressionMode mode);
 
+    /// Emitted when a slot's export size changes. {0,0} means use original size.
+    void exportSizeChanged(PBRTextureSlot slot, int width, int height);
+
     /// Emitted when a file is dropped onto a texture slot
     void fileDroppedOnSlot(PBRTextureSlot slot, const QString& filePath);
     /// Emitted when a file is dropped onto a channel row
@@ -118,6 +121,7 @@ class SlotEditorWidget : public QWidget
         QPushButton* importButton = nullptr;
         QPushButton* clearButton = nullptr;
         QComboBox* compressionCombo = nullptr;
+        QComboBox* exportSizeCombo = nullptr;
         QWidget* container = nullptr;
         QCheckBox* pathOverrideCheckbox = nullptr;
         QLineEdit* pathOverrideEdit = nullptr;
