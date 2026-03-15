@@ -9,7 +9,7 @@ on:
       - 'v*'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   prek:
@@ -19,9 +19,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
 
       - name: Run prek
         uses: j178/prek-action@v1
+        with:
+          autofix: true
 
   build-windows:
     name: Windows Build
