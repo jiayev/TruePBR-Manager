@@ -727,8 +727,7 @@ void SlotEditorWidget::setTextureSet(const PBRTextureSet& ts)
             {
                 if (chEntry.width > 0 && chEntry.height > 0)
                 {
-                    if (static_cast<int64_t>(chEntry.width) * chEntry.height >
-                        static_cast<int64_t>(nativeW) * nativeH)
+                    if (static_cast<int64_t>(chEntry.width) * chEntry.height > static_cast<int64_t>(nativeW) * nativeH)
                     {
                         nativeW = chEntry.width;
                         nativeH = chEntry.height;

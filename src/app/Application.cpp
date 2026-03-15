@@ -31,8 +31,7 @@ void Application::initLogging()
     Log::init(spdlog::level::debug, spdlog::level::trace);
 #endif
 
-    SPDLOG_INFO("TruePBR Manager v{} ({}  {})",
-                TRUEPBR_VERSION_STRING, TRUEPBR_GIT_HASH, TRUEPBR_BUILD_TIMESTAMP);
+    SPDLOG_INFO("TruePBR Manager v{} ({}  {})", TRUEPBR_VERSION_STRING, TRUEPBR_GIT_HASH, TRUEPBR_BUILD_TIMESTAMP);
 }
 
 void Application::initStyle()

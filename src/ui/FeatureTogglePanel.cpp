@@ -46,8 +46,9 @@ void FeatureTogglePanel::setFeatures(const PBRFeatureFlags& f)
 {
     // Block signals to avoid writing partially-updated flags back to the model
     // when switching between texture sets.
-    QCheckBox* all[] = {m_emissive, m_parallax,    m_subsurface, m_subsurfaceFoliage, m_multilayer, m_coatNormal,
-                        m_coatDiffuse, m_coatParallax, m_fuzz,   m_glint,             m_hair};
+    QCheckBox* all[] = {m_emissive,   m_parallax,   m_subsurface,  m_subsurfaceFoliage,
+                        m_multilayer, m_coatNormal, m_coatDiffuse, m_coatParallax,
+                        m_fuzz,       m_glint,      m_hair};
     for (auto* cb : all)
         cb->blockSignals(true);
 

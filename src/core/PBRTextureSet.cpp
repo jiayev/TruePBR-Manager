@@ -278,9 +278,9 @@ bool tryParseTextureMatchMode(const std::string& value, TextureMatchMode& mode)
     return false;
 }
 
-std::vector<std::pair<int,int>> generateExportSizeOptions(int nativeWidth, int nativeHeight)
+std::vector<std::pair<int, int>> generateExportSizeOptions(int nativeWidth, int nativeHeight)
 {
-    std::vector<std::pair<int,int>> options;
+    std::vector<std::pair<int, int>> options;
 
     if (nativeWidth <= 0 || nativeHeight <= 0)
         return options;
@@ -290,7 +290,7 @@ std::vector<std::pair<int,int>> generateExportSizeOptions(int nativeWidth, int n
 
     // Generate scaled variants: x0.25, x0.5, x2, x4
     // Only include sizes where both dimensions are >= 1
-    const int scales[] = {4, 2}; // divisors for downscale
+    const int scales[] = {4, 2};   // divisors for downscale
     const int upscales[] = {2, 4}; // multipliers for upscale
 
     for (int div : scales)
@@ -315,11 +315,8 @@ std::vector<std::pair<int,int>> generateExportSizeOptions(int nativeWidth, int n
     }
 
     // Sort by total pixel count (ascending)
-    std::sort(options.begin(), options.end(),
-              [](const auto& a, const auto& b)
-              {
-                  return static_cast<int64_t>(a.first) * a.second < static_cast<int64_t>(b.first) * b.second;
-              });
+    std::sort(options.begin(), options.end(), [](const auto& a, const auto& b)
+              { return static_cast<int64_t>(a.first) * a.second < static_cast<int64_t>(b.first) * b.second; });
 
     return options;
 }

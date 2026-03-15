@@ -91,17 +91,22 @@ bool IBLPipeline::init(ID3D12Device* device)
     //   [0] root constants b0   [1] SRV table t0   [2] UAV table u0   + static sampler s0
     // For BRDF LUT (no SRV, no sampler):
     //   [0] root constants b0   [1] UAV table u0
-    if (!createRootSignatureAndPSO(device, "EquirectToCube", equirectData.data(), equirectData.size(), 1, 1, 1, m_equirectRS, m_equirectPSO))
+    if (!createRootSignatureAndPSO(device, "EquirectToCube", equirectData.data(), equirectData.size(), 1, 1, 1,
+                                   m_equirectRS, m_equirectPSO))
         return false;
-    if (!createRootSignatureAndPSO(device, "Prefilter", prefilterData.data(), prefilterData.size(), 1, 1, 1, m_prefilterRS, m_prefilterPSO, 5))
+    if (!createRootSignatureAndPSO(device, "Prefilter", prefilterData.data(), prefilterData.size(), 1, 1, 1,
+                                   m_prefilterRS, m_prefilterPSO, 5))
         return false;
-    if (!createRootSignatureAndPSO(device, "BrdfLut", brdfLutData.data(), brdfLutData.size(), 0, 1, 0, m_brdfLutRS, m_brdfLutPSO))
+    if (!createRootSignatureAndPSO(device, "BrdfLut", brdfLutData.data(), brdfLutData.size(), 0, 1, 0, m_brdfLutRS,
+                                   m_brdfLutPSO))
         return false;
     // DiffuseIrradiance: 1 SRV (cubemap) + 1 UAV (structured output) + 1 sampler
-    if (!createRootSignatureAndPSO(device, "DiffuseIrradiance", diffuseIrradianceData.data(), diffuseIrradianceData.size(), 1, 1, 1,
-                                   m_diffuseIrradianceRS, m_diffuseIrradiancePSO))
+    if (!createRootSignatureAndPSO(device, "DiffuseIrradiance", diffuseIrradianceData.data(),
+                                   diffuseIrradianceData.size(), 1, 1, 1, m_diffuseIrradianceRS,
+                                   m_diffuseIrradiancePSO))
         return false;
-    if (!createRootSignatureAndPSO(device, "MipGen", mipGenData.data(), mipGenData.size(), 1, 1, 1, m_mipGenRS, m_mipGenPSO))
+    if (!createRootSignatureAndPSO(device, "MipGen", mipGenData.data(), mipGenData.size(), 1, 1, 1, m_mipGenRS,
+                                   m_mipGenPSO))
         return false;
 
     // Create transient command infrastructure
@@ -1193,21 +1198,39 @@ void IBLPipeline::convertPixelsToACEScg(float* rgba, int w, int h, HDRIColorSpac
     {
     case HDRIColorSpace::Rec709:
         // Linear Rec.709 (D65) → ACEScg (Bradford D65→ACES white)
-        m[0] = 0.61319; m[1] = 0.33951; m[2] = 0.04737;
-        m[3] = 0.07021; m[4] = 0.91634; m[5] = 0.01345;
-        m[6] = 0.02062; m[7] = 0.10957; m[8] = 0.86981;
+        m[0] = 0.61319;
+        m[1] = 0.33951;
+        m[2] = 0.04737;
+        m[3] = 0.07021;
+        m[4] = 0.91634;
+        m[5] = 0.01345;
+        m[6] = 0.02062;
+        m[7] = 0.10957;
+        m[8] = 0.86981;
         break;
     case HDRIColorSpace::ACES2065_1:
         // AP0 → AP1 (same white point, no adaptation needed)
-        m[0] =  1.4514393161; m[1] = -0.2365107469; m[2] = -0.2149285693;
-        m[3] = -0.0765537734; m[4] =  1.1762296998; m[5] = -0.0996759264;
-        m[6] =  0.0083161484; m[7] = -0.0060324498; m[8] =  0.9977163014;
+        m[0] = 1.4514393161;
+        m[1] = -0.2365107469;
+        m[2] = -0.2149285693;
+        m[3] = -0.0765537734;
+        m[4] = 1.1762296998;
+        m[5] = -0.0996759264;
+        m[6] = 0.0083161484;
+        m[7] = -0.0060324498;
+        m[8] = 0.9977163014;
         break;
     case HDRIColorSpace::Rec2020:
         // Rec.2020 (D65) → ACEScg = Rec709ToACEScg × Rec2020ToRec709
-        m[0] = 0.97495; m[1] = 0.01955; m[2] = 0.00548;
-        m[3] = 0.00225; m[4] = 0.99559; m[5] = 0.00228;
-        m[6] = 0.00479; m[7] = 0.02453; m[8] = 0.97080;
+        m[0] = 0.97495;
+        m[1] = 0.01955;
+        m[2] = 0.00548;
+        m[3] = 0.00225;
+        m[4] = 0.99559;
+        m[5] = 0.00228;
+        m[6] = 0.00479;
+        m[7] = 0.02453;
+        m[8] = 0.97080;
         break;
     default:
         return;

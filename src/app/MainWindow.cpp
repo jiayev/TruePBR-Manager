@@ -603,7 +603,8 @@ void MainWindow::setupCentralWidget()
                     m_hdrCB->setToolTip(tr("HDR not available — enable HDR in Windows Display Settings"));
                 else
                 {
-                    m_hdrCB->setToolTip(tr("Enable HDR output (scRGB, peak %.0f nits)").arg(static_cast<double>(hdrInfo.maxLuminance)));
+                    m_hdrCB->setToolTip(
+                        tr("Enable HDR output (scRGB, peak %.0f nits)").arg(static_cast<double>(hdrInfo.maxLuminance)));
                     m_peakBrightnessSlider->setMaximum(static_cast<int>(hdrInfo.maxLuminance));
                 }
             });
@@ -1252,8 +1253,7 @@ void MainWindow::onExportSizeChanged(PBRTextureSlot slot, int width, int height)
         for (const auto& [ch, chEntry] : ts.channelMaps)
         {
             if (chEntry.width > 0 && chEntry.height > 0 &&
-                static_cast<int64_t>(chEntry.width) * chEntry.height >
-                    static_cast<int64_t>(nativeW) * nativeH)
+                static_cast<int64_t>(chEntry.width) * chEntry.height > static_cast<int64_t>(nativeW) * nativeH)
             {
                 nativeW = chEntry.width;
                 nativeH = chEntry.height;

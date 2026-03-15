@@ -48,7 +48,8 @@ void TextureSetValidator::checkRequiredSlots(const PBRTextureSet& ts, std::vecto
     bool hasSplitChannels = !ts.channelMaps.empty();
     if (ts.rmaosSourceMode == RMAOSSourceMode::PackedTexture && !hasPackedRmaos)
     {
-        issues.push_back({ValidationSeverity::Error, "Missing required texture: RMAOS (packed mode selected but no RMAOS texture assigned)."});
+        issues.push_back({ValidationSeverity::Error,
+                          "Missing required texture: RMAOS (packed mode selected but no RMAOS texture assigned)."});
     }
     if (ts.rmaosSourceMode == RMAOSSourceMode::SeparateChannels && !hasSplitChannels)
     {
@@ -77,9 +78,8 @@ void TextureSetValidator::checkResolutionConsistency(const PBRTextureSet& ts, st
         if (entry.width != refWidth || entry.height != refHeight)
         {
             issues.push_back({ValidationSeverity::Warning,
-                               std::format("{} resolution ({}x{}) differs from {} ({}x{}).",
-                                           slotDisplayName(slot), entry.width, entry.height,
-                                           refName, refWidth, refHeight)});
+                              std::format("{} resolution ({}x{}) differs from {} ({}x{}).", slotDisplayName(slot),
+                                          entry.width, entry.height, refName, refWidth, refHeight)});
         }
     }
 }
@@ -94,9 +94,9 @@ void TextureSetValidator::checkPowerOfTwo(const PBRTextureSet& ts, std::vector<V
         if (!isPowerOfTwo(entry.width) || !isPowerOfTwo(entry.height))
         {
             issues.push_back({ValidationSeverity::Warning,
-                               std::format("{} has non-power-of-two resolution ({}x{}). "
-                                           "This may cause issues with DDS compression and GPU performance.",
-                                           slotDisplayName(slot), entry.width, entry.height)});
+                              std::format("{} has non-power-of-two resolution ({}x{}). "
+                                          "This may cause issues with DDS compression and GPU performance.",
+                                          slotDisplayName(slot), entry.width, entry.height)});
         }
     }
 }
@@ -107,9 +107,8 @@ void TextureSetValidator::checkFeatureTextures(const PBRTextureSet& ts, std::vec
     {
         if (feature && ts.textures.find(slot) == ts.textures.end())
         {
-            issues.push_back({ValidationSeverity::Warning,
-                               std::format("{} is enabled but {} texture is not assigned.",
-                                           featureName, slotDisplayName(slot))});
+            issues.push_back({ValidationSeverity::Warning, std::format("{} is enabled but {} texture is not assigned.",
+                                                                       featureName, slotDisplayName(slot))});
         }
     };
 
@@ -127,8 +126,9 @@ void TextureSetValidator::checkSlotConflicts(const PBRTextureSet& ts, std::vecto
     bool hasFuzz = ts.textures.find(PBRTextureSlot::Fuzz) != ts.textures.end();
     if (hasCNR && hasFuzz)
     {
-        issues.push_back({ValidationSeverity::Error,
-                           "Coat Normal Roughness and Fuzz both assigned — they share NIF slot TX06 and cannot coexist."});
+        issues.push_back(
+            {ValidationSeverity::Error,
+             "Coat Normal Roughness and Fuzz both assigned — they share NIF slot TX06 and cannot coexist."});
     }
 
     // TX07 is shared by Subsurface and CoatColor
@@ -137,14 +137,15 @@ void TextureSetValidator::checkSlotConflicts(const PBRTextureSet& ts, std::vecto
     if (hasSS && hasCoat)
     {
         issues.push_back({ValidationSeverity::Error,
-                           "Subsurface and Coat Color both assigned — they share NIF slot TX07 and cannot coexist."});
+                          "Subsurface and Coat Color both assigned — they share NIF slot TX07 and cannot coexist."});
     }
 
     // Feature conflict: fuzz and coat_normal are mutually exclusive
     if (ts.features.fuzz && ts.features.coatNormal)
     {
-        issues.push_back({ValidationSeverity::Warning,
-                           "Fuzz and Coat Normal are both enabled — they use the same NIF slot (TX06). Only one will be exported."});
+        issues.push_back(
+            {ValidationSeverity::Warning,
+             "Fuzz and Coat Normal are both enabled — they use the same NIF slot (TX06). Only one will be exported."});
     }
 }
 

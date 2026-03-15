@@ -216,14 +216,22 @@ std::optional<PBRTextureSlot> TextureImporter::detectSlotFromSuffix(const std::s
     auto lower = toLower(stem);
 
     // Order matters — check longer suffixes first
-    if (lower.ends_with("_rmaos"))  return PBRTextureSlot::RMAOS;
-    if (lower.ends_with("_cnr"))    return PBRTextureSlot::CoatNormalRoughness;
-    if (lower.ends_with("_n"))      return PBRTextureSlot::Normal;
-    if (lower.ends_with("_msn"))    return PBRTextureSlot::Normal;
-    if (lower.ends_with("_g"))      return PBRTextureSlot::Emissive;
-    if (lower.ends_with("_p"))      return PBRTextureSlot::Displacement;
-    if (lower.ends_with("_f"))      return PBRTextureSlot::Fuzz;
-    if (lower.ends_with("_s"))      return PBRTextureSlot::Subsurface;
+    if (lower.ends_with("_rmaos"))
+        return PBRTextureSlot::RMAOS;
+    if (lower.ends_with("_cnr"))
+        return PBRTextureSlot::CoatNormalRoughness;
+    if (lower.ends_with("_n"))
+        return PBRTextureSlot::Normal;
+    if (lower.ends_with("_msn"))
+        return PBRTextureSlot::Normal;
+    if (lower.ends_with("_g"))
+        return PBRTextureSlot::Emissive;
+    if (lower.ends_with("_p"))
+        return PBRTextureSlot::Displacement;
+    if (lower.ends_with("_f"))
+        return PBRTextureSlot::Fuzz;
+    if (lower.ends_with("_s"))
+        return PBRTextureSlot::Subsurface;
 
     return std::nullopt; // Could be diffuse (no suffix) but needs caller to decide
 }
@@ -232,10 +240,14 @@ std::optional<ChannelMap> TextureImporter::detectChannelFromSuffix(const std::st
 {
     auto lower = toLower(stem);
 
-    if (lower.ends_with("_roughness") || lower.ends_with("_rough"))  return ChannelMap::Roughness;
-    if (lower.ends_with("_metallic") || lower.ends_with("_metal"))   return ChannelMap::Metallic;
-    if (lower.ends_with("_ao") || lower.ends_with("_occlusion"))     return ChannelMap::AO;
-    if (lower.ends_with("_specular") || lower.ends_with("_spec"))    return ChannelMap::Specular;
+    if (lower.ends_with("_roughness") || lower.ends_with("_rough"))
+        return ChannelMap::Roughness;
+    if (lower.ends_with("_metallic") || lower.ends_with("_metal"))
+        return ChannelMap::Metallic;
+    if (lower.ends_with("_ao") || lower.ends_with("_occlusion"))
+        return ChannelMap::AO;
+    if (lower.ends_with("_specular") || lower.ends_with("_spec"))
+        return ChannelMap::Specular;
 
     return std::nullopt;
 }

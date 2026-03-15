@@ -108,7 +108,7 @@ bool tryParseTextureMatchMode(const std::string& value, TextureMatchMode& mode);
 /// Returns pairs of (width, height) including the original and several
 /// power-of-two scales above and below. The first entry is always the
 /// original size.
-std::vector<std::pair<int,int>> generateExportSizeOptions(int nativeWidth, int nativeHeight);
+std::vector<std::pair<int, int>> generateExportSizeOptions(int nativeWidth, int nativeHeight);
 
 // ─── Texture Entry ──────────────────────────────────────────
 
@@ -214,7 +214,7 @@ struct PBRTextureSet
 
     /// Optional per-slot export size overrides. When set, the texture will be
     /// resized to this resolution during export. {0,0} means use original size.
-    std::map<PBRTextureSlot, std::pair<int,int>> exportSize;
+    std::map<PBRTextureSlot, std::pair<int, int>> exportSize;
 
     /// Optional per-slot path overrides. When set, the exporter uses the given
     /// full relative path (e.g. "textures\\pbr\\custom\\tex.dds") as a PGPatcher

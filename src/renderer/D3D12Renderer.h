@@ -27,10 +27,10 @@ class IBLPipeline;
 /// HDR display capability information.
 struct HDRDisplayInfo
 {
-    bool hdrSupported = false;           // OS-level HDR enabled on this output
-    float minLuminance = 0.0f;           // Display min luminance (nits)
-    float maxLuminance = 0.0f;           // Display max luminance (nits)
-    float maxFullFrameLuminance = 0.0f;  // Display max full-frame luminance (nits)
+    bool hdrSupported = false;          // OS-level HDR enabled on this output
+    float minLuminance = 0.0f;          // Display min luminance (nits)
+    float maxLuminance = 0.0f;          // Display max luminance (nits)
+    float maxFullFrameLuminance = 0.0f; // Display max full-frame luminance (nits)
 };
 
 /// Scene constant buffer data (matches cbuffer SceneCB in shader) — 256-byte aligned.
@@ -53,9 +53,9 @@ struct SceneCBData
     DirectX::XMFLOAT4 zh3Data[5];    // 80 bytes
     DirectX::XMFLOAT4X4 invViewProj; // 64 bytes
     // HDR parameters (16 bytes)
-    uint32_t hdrEnabled;             // 0 = SDR, 1 = HDR (scRGB output)
-    float paperWhiteNits;            // SDR white-point brightness in nits (default 200)
-    float peakBrightnessNits;        // Display peak brightness in nits
+    uint32_t hdrEnabled;      // 0 = SDR, 1 = HDR (scRGB output)
+    float paperWhiteNits;     // SDR white-point brightness in nits (default 200)
+    float peakBrightnessNits; // Display peak brightness in nits
     float _padHDR;
     // TAA parameters
     DirectX::XMFLOAT4X4 prevViewProj; // 64 bytes — previous frame's view*proj for reprojection
@@ -191,17 +191,29 @@ class D3D12Renderer
     void setExposure(float ev);
 
     /// Get current exposure compensation in EV.
-    float getExposure() const { return m_exposureEV; }
+    float getExposure() const
+    {
+        return m_exposureEV;
+    }
 
     /// Returns true if HDR output is currently active.
-    bool isHDREnabled() const { return m_hdrEnabled; }
+    bool isHDREnabled() const
+    {
+        return m_hdrEnabled;
+    }
 
     /// Returns true if VSync is currently enabled.
-    bool isVSyncEnabled() const { return m_vsyncEnabled; }
+    bool isVSyncEnabled() const
+    {
+        return m_vsyncEnabled;
+    }
 
     /// Enable or disable Temporal Anti-Aliasing.
     void setTAAEnabled(bool enabled);
-    bool isTAAEnabled() const { return m_taaEnabled; }
+    bool isTAAEnabled() const
+    {
+        return m_taaEnabled;
+    }
 
     /// Render one frame.
     void render();
@@ -312,8 +324,8 @@ class D3D12Renderer
     // HDR state
     bool m_hdrEnabled = false;
     float m_paperWhiteNits = 200.0f;
-    float m_peakBrightnessNits = 0.0f;  // 0 = use display max
-    float m_exposureEV = 0.0f;          // Exposure compensation in EV
+    float m_peakBrightnessNits = 0.0f; // 0 = use display max
+    float m_exposureEV = 0.0f;         // Exposure compensation in EV
     HDRDisplayInfo m_hdrInfo;
 
     // Descriptor heaps
@@ -363,7 +375,7 @@ class D3D12Renderer
     ComPtr<ID3D12PipelineState> m_taaResolvePSO;
 
     // Intermediate render targets
-    ComPtr<ID3D12Resource> m_hdrColorBuffer;           // R16G16B16A16_FLOAT scene color
+    ComPtr<ID3D12Resource> m_hdrColorBuffer;            // R16G16B16A16_FLOAT scene color
     ComPtr<ID3D12Resource> m_velocityBuffer;            // R16G16_FLOAT motion vectors
     std::array<ComPtr<ID3D12Resource>, 2> m_taaHistory; // Ping-pong TAA history
     uint32_t m_taaHistoryIndex = 0;                     // Current write target (0 or 1)

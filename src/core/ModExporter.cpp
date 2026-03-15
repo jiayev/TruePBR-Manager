@@ -252,8 +252,8 @@ fs::path ModExporter::buildOutputPath(const fs::path& modFolder, const PBRTextur
 }
 
 /// Nearest-neighbor resize for RGBA pixel data.
-static void resizeRGBA(const std::vector<uint8_t>& src, int srcW, int srcH,
-                       std::vector<uint8_t>& dst, int dstW, int dstH)
+static void resizeRGBA(const std::vector<uint8_t>& src, int srcW, int srcH, std::vector<uint8_t>& dst, int dstW,
+                       int dstH)
 {
     dst.resize(static_cast<size_t>(dstW) * dstH * 4);
     for (int y = 0; y < dstH; ++y)
@@ -282,9 +282,8 @@ static bool exportSingleTexture(const TextureEntry& entry, const fs::path& outpu
     if (FileUtils::getExtensionLower(entry.sourcePath) == ".dds")
     {
         DDSUtils::DDSInfo info;
-        if (targetWidth <= 0 && targetHeight <= 0 &&
-            DDSUtils::getDDSInfo(entry.sourcePath, info) && info.mipLevels > 1 &&
-            ddsFormatMatchesCompressionMode(info.dxgiFormat, compressionMode))
+        if (targetWidth <= 0 && targetHeight <= 0 && DDSUtils::getDDSInfo(entry.sourcePath, info) &&
+            info.mipLevels > 1 && ddsFormatMatchesCompressionMode(info.dxgiFormat, compressionMode))
         {
             spdlog::info("ModExporter: copying DDS without re-encoding {} -> {}", entry.sourcePath.string(),
                          outputPath.string());

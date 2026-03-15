@@ -81,7 +81,7 @@ bool D3D12Renderer::init(HWND hwnd, uint32_t width, uint32_t height)
         {
             BOOL allowTearing = FALSE;
             if (SUCCEEDED(factory5->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING, &allowTearing,
-                                                       sizeof(allowTearing))))
+                                                        sizeof(allowTearing))))
             {
                 m_tearingSupported = (allowTearing == TRUE);
             }
@@ -672,8 +672,7 @@ bool D3D12Renderer::recreatePSOs()
     // ToneMap PSO (output format depends on HDR mode)
     {
         std::vector<uint8_t> tmVS, tmPS;
-        if (!loadCSO(shaderDir / "ToneMapShader_VS.cso", tmVS) ||
-            !loadCSO(shaderDir / "ToneMapShader_PS.cso", tmPS))
+        if (!loadCSO(shaderDir / "ToneMapShader_VS.cso", tmVS) || !loadCSO(shaderDir / "ToneMapShader_PS.cso", tmPS))
         {
             spdlog::error("Failed to load ToneMap shader CSOs during recreate");
             return false;
@@ -1588,7 +1587,7 @@ XMFLOAT2 D3D12Renderer::haltonJitter(uint32_t frameIndex)
 
 bool D3D12Renderer::createIntermediateTargets(uint32_t width, uint32_t height)
 {
-    m_hdrColorRtvIndex = FrameCount;     // RTV slot right after swap chain
+    m_hdrColorRtvIndex = FrameCount; // RTV slot right after swap chain
     m_velocityRtvIndex = FrameCount + 1;
 
     D3D12_HEAP_PROPERTIES heapProps{};
@@ -2064,73 +2063,73 @@ void D3D12Renderer::render()
 
     if (m_taaEnabled)
     {
-    // 6a. TAA Resolve (compute pass)
-    uint32_t writeIdx = m_taaHistoryIndex;
-    uint32_t readIdx = 1 - writeIdx;
+        // 6a. TAA Resolve (compute pass)
+        uint32_t writeIdx = m_taaHistoryIndex;
+        uint32_t readIdx = 1 - writeIdx;
 
-    // Barrier batch 1: scene targets to SRV, TAA write target to UAV
-    {
-        D3D12_RESOURCE_BARRIER barriers[3] = {};
-        barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        barriers[0].Transition.pResource = m_hdrColorBuffer.Get();
-        barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-        barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        barriers[1].Transition.pResource = m_velocityBuffer.Get();
-        barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-        barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        barriers[2].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        barriers[2].Transition.pResource = m_taaHistory[writeIdx].Get();
-        barriers[2].Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-        barriers[2].Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        m_commandList->ResourceBarrier(3, barriers);
-    }
+        // Barrier batch 1: scene targets to SRV, TAA write target to UAV
+        {
+            D3D12_RESOURCE_BARRIER barriers[3] = {};
+            barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barriers[0].Transition.pResource = m_hdrColorBuffer.Get();
+            barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+            barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+            barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barriers[1].Transition.pResource = m_velocityBuffer.Get();
+            barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+            barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+            barriers[2].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barriers[2].Transition.pResource = m_taaHistory[writeIdx].Get();
+            barriers[2].Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+            barriers[2].Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+            m_commandList->ResourceBarrier(3, barriers);
+        }
 
-    // Set TAA compute root signature and dispatch
-    m_commandList->SetComputeRootSignature(m_taaComputeRootSig.Get());
-    m_commandList->SetDescriptorHeaps(1, heaps);
+        // Set TAA compute root signature and dispatch
+        m_commandList->SetComputeRootSignature(m_taaComputeRootSig.Get());
+        m_commandList->SetDescriptorHeaps(1, heaps);
 
-    // Root constants: {width, height, blendFactor, isFirstFrame}
-    struct TAAConstants
-    {
-        uint32_t width;
-        uint32_t height;
-        float blendFactor;
-        uint32_t isFirstFrame;
-    } taaCB;
-    taaCB.width = m_width;
-    taaCB.height = m_height;
-    taaCB.blendFactor = 0.1f;
-    taaCB.isFirstFrame = m_taaHistoryValid ? 0 : 1;
-    m_commandList->SetComputeRoot32BitConstants(0, 4, &taaCB, 0);
+        // Root constants: {width, height, blendFactor, isFirstFrame}
+        struct TAAConstants
+        {
+            uint32_t width;
+            uint32_t height;
+            float blendFactor;
+            uint32_t isFirstFrame;
+        } taaCB;
+        taaCB.width = m_width;
+        taaCB.height = m_height;
+        taaCB.blendFactor = 0.1f;
+        taaCB.isFirstFrame = m_taaHistoryValid ? 0 : 1;
+        m_commandList->SetComputeRoot32BitConstants(0, 4, &taaCB, 0);
 
-    // SRV table: t0=hdrColor, t1=velocity (contiguous at postProcessSrvBase)
-    m_commandList->SetComputeRootDescriptorTable(1, m_srvHeap.gpuHandle(m_postProcessSrvBase));
-    // SRV table: t2=history read
-    m_commandList->SetComputeRootDescriptorTable(2, m_srvHeap.gpuHandle(m_postProcessSrvBase + 2 + readIdx));
-    // UAV table: u0=history write
-    m_commandList->SetComputeRootDescriptorTable(3, m_srvHeap.gpuHandle(m_postProcessSrvBase + 4 + writeIdx));
+        // SRV table: t0=hdrColor, t1=velocity (contiguous at postProcessSrvBase)
+        m_commandList->SetComputeRootDescriptorTable(1, m_srvHeap.gpuHandle(m_postProcessSrvBase));
+        // SRV table: t2=history read
+        m_commandList->SetComputeRootDescriptorTable(2, m_srvHeap.gpuHandle(m_postProcessSrvBase + 2 + readIdx));
+        // UAV table: u0=history write
+        m_commandList->SetComputeRootDescriptorTable(3, m_srvHeap.gpuHandle(m_postProcessSrvBase + 4 + writeIdx));
 
-    m_commandList->SetPipelineState(m_taaResolvePSO.Get());
-    UINT dispatchX = (m_width + 7) / 8;
-    UINT dispatchY = (m_height + 7) / 8;
-    m_commandList->Dispatch(dispatchX, dispatchY, 1);
+        m_commandList->SetPipelineState(m_taaResolvePSO.Get());
+        UINT dispatchX = (m_width + 7) / 8;
+        UINT dispatchY = (m_height + 7) / 8;
+        m_commandList->Dispatch(dispatchX, dispatchY, 1);
 
-    // Barrier batch 2: TAA write → PS SRV, swap chain → RT
-    {
-        D3D12_RESOURCE_BARRIER barriers[2] = {};
-        barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        barriers[0].Transition.pResource = m_taaHistory[writeIdx].Get();
-        barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-        barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
-        barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-        barriers[1].Transition.pResource = m_renderTargets[backBufferIdx].Get();
-        barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
-        barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-        m_commandList->ResourceBarrier(2, barriers);
-    }
+        // Barrier batch 2: TAA write → PS SRV, swap chain → RT
+        {
+            D3D12_RESOURCE_BARRIER barriers[2] = {};
+            barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barriers[0].Transition.pResource = m_taaHistory[writeIdx].Get();
+            barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+            barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+            barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+            barriers[1].Transition.pResource = m_renderTargets[backBufferIdx].Get();
+            barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+            barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+            m_commandList->ResourceBarrier(2, barriers);
+        }
 
-    toneMapSrvIndex = m_postProcessSrvBase + 2 + writeIdx; // resolved TAA color
+        toneMapSrvIndex = m_postProcessSrvBase + 2 + writeIdx; // resolved TAA color
 
     } // end if (m_taaEnabled)
     else
@@ -2509,8 +2508,8 @@ HDRDisplayInfo D3D12Renderer::queryHDRSupport() const
                     DXGI_OUTPUT_DESC1 d1{};
                     if (SUCCEEDED(out6->GetDesc1(&d1)))
                     {
-                        spdlog::debug("queryHDRSupport: adapter {} output {} colorSpace={} maxLum={:.0f}",
-                                      ai, oi, static_cast<int>(d1.ColorSpace), d1.MaxLuminance);
+                        spdlog::debug("queryHDRSupport: adapter {} output {} colorSpace={} maxLum={:.0f}", ai, oi,
+                                      static_cast<int>(d1.ColorSpace), d1.MaxLuminance);
                         if (d1.ColorSpace == DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020)
                         {
                             output = adapterOutput;
@@ -2549,8 +2548,8 @@ HDRDisplayInfo D3D12Renderer::queryHDRSupport() const
     }
 
     spdlog::info("queryHDRSupport: ColorSpace={}, BitsPerColor={}, MaxLum={:.0f}, MinLum={:.4f}, MaxFullFrame={:.0f}",
-                 static_cast<int>(desc1.ColorSpace), desc1.BitsPerColor,
-                 desc1.MaxLuminance, desc1.MinLuminance, desc1.MaxFullFrameLuminance);
+                 static_cast<int>(desc1.ColorSpace), desc1.BitsPerColor, desc1.MaxLuminance, desc1.MinLuminance,
+                 desc1.MaxFullFrameLuminance);
 
     info.minLuminance = desc1.MinLuminance;
     info.maxLuminance = desc1.MaxLuminance;
