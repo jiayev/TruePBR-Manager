@@ -151,6 +151,23 @@ endif()
 
 set(DIST_DIR "${CMAKE_SOURCE_DIR}/dist/TruePBR-Manager")
 
+# Transitive DLLs that Qt links at runtime but doesn't expose via
+# INTERFACE_LINK_LIBRARIES (so TARGET_RUNTIME_DLLS misses them, and
+# windeployqt doesn't deploy them either).
+get_target_property(_qt_core_dll Qt6::Core IMPORTED_LOCATION_RELEASE)
+if(NOT _qt_core_dll)
+    get_target_property(_qt_core_dll Qt6::Core IMPORTED_LOCATION)
+endif()
+get_filename_component(_VCPKG_BIN_DIR "${_qt_core_dll}" DIRECTORY)
+
+set(_QT_TRANSITIVE_DLLS
+    "${_VCPKG_BIN_DIR}/double-conversion.dll"
+    "${_VCPKG_BIN_DIR}/libpng16.dll"
+    "${_VCPKG_BIN_DIR}/md4c.dll"
+    "${_VCPKG_BIN_DIR}/pcre2-16.dll"
+    "${_VCPKG_BIN_DIR}/zlib1.dll"
+)
+
 set_target_properties(TruePBR-Manager PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${DIST_DIR}"
     RUNTIME_OUTPUT_DIRECTORY_DEBUG "${DIST_DIR}"
@@ -168,6 +185,13 @@ if(WIN32)
             "${DIST_DIR}"
         COMMAND_EXPAND_LISTS
         COMMENT "Copying runtime DLLs to dist/..."
+    )
+    # Qt's transitive DLLs (not captured by TARGET_RUNTIME_DLLS)
+    add_custom_command(TARGET TruePBR-Manager POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${_QT_TRANSITIVE_DLLS}
+            "${DIST_DIR}"
+        COMMENT "Copying Qt transitive DLLs to dist/..."
     )
 endif()
 
@@ -336,7 +360,7 @@ if(TRUEPBR_PACK)
     # so WORKING_DIRECTORY is valid on the very first build
     file(MAKE_DIRECTORY "${PACK_STAGING_BASE}")
 
-    # Collect optional commands
+    # Collect optional commands (windeployqt, HDRIs)
     set(_PACK_EXTRA_COMMANDS)
 
     if(WINDEPLOYQT_EXECUTABLE)
@@ -358,7 +382,7 @@ if(TRUEPBR_PACK)
     endif()
 
     add_custom_target(pack ALL
-        # 1. Clean and recreate staging subdirectory (keep the base for CWD)
+        # 1. Clean and recreate staging
         COMMAND ${CMAKE_COMMAND} -E rm -rf "${STAGING_DIR}"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${STAGING_DIR}"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${STAGING_DIR}/shaders"
@@ -367,21 +391,25 @@ if(TRUEPBR_PACK)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "$<TARGET_FILE:TruePBR-Manager>"
             "${STAGING_DIR}/"
-        # 3. Copy runtime DLLs
+        # 3. Copy runtime DLLs (direct link dependencies)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             $<TARGET_RUNTIME_DLLS:TruePBR-Manager>
             "${STAGING_DIR}/"
-        # 4. Copy LICENSE
+        # 4. Qt transitive DLLs (not captured by TARGET_RUNTIME_DLLS)
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${_QT_TRANSITIVE_DLLS}
+            "${STAGING_DIR}/"
+        # 5. Copy LICENSE
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${CMAKE_SOURCE_DIR}/LICENSE"
             "${STAGING_DIR}/LICENSE"
-        # 5. Copy shaders
+        # 6. Copy compiled shaders
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${DIST_DIR}/shaders"
             "${STAGING_DIR}/shaders"
-        # 6. Optional: windeployqt + HDRIs
+        # 7. Optional: windeployqt + HDRIs
         ${_PACK_EXTRA_COMMANDS}
-        # 7. Pack
+        # 8. Pack
         COMMAND ${CMAKE_COMMAND} -E make_directory "${PACK_DIR}"
         COMMAND ${CMAKE_COMMAND} -E tar cf "${PACK_DIR}/${PACK_NAME}.zip" --format=zip -- "TruePBR-Manager"
         WORKING_DIRECTORY "${PACK_STAGING_BASE}"
