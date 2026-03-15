@@ -1939,9 +1939,13 @@ void D3D12Renderer::render()
     m_commandList->Reset(frame.commandAllocator.Get(), m_pipelineState.Get());
 
     // 3. Compute TAA jitter (convert sub-pixel offset to NDC)
-    XMFLOAT2 jitter = haltonJitter(static_cast<uint32_t>(m_frameNumber));
-    jitter.x *= 2.0f / static_cast<float>(m_width);
-    jitter.y *= -2.0f / static_cast<float>(m_height);
+    XMFLOAT2 jitter = {0.0f, 0.0f};
+    if (m_taaEnabled)
+    {
+        jitter = haltonJitter(static_cast<uint32_t>(m_frameNumber));
+        jitter.x *= 2.0f / static_cast<float>(m_width);
+        jitter.y *= -2.0f / static_cast<float>(m_height);
+    }
 
     // 4. Update this frame's constant buffers
     float aspect = static_cast<float>(m_width) / static_cast<float>(m_height);
@@ -2047,7 +2051,13 @@ void D3D12Renderer::render()
     m_commandList->IASetIndexBuffer(&m_indexBufferView);
     m_commandList->DrawIndexedInstanced(m_indexCount, 1, 0, 0, 0);
 
-    // 6. TAA Resolve (compute pass)
+    // 6. Post-process: TAA Resolve (compute) + ToneMap
+    UINT backBufferIdx = m_swapChain->GetCurrentBackBufferIndex();
+    uint32_t toneMapSrvIndex; // SRV index to feed into tone map
+
+    if (m_taaEnabled)
+    {
+    // 6a. TAA Resolve (compute pass)
     uint32_t writeIdx = m_taaHistoryIndex;
     uint32_t readIdx = 1 - writeIdx;
 
@@ -2099,8 +2109,7 @@ void D3D12Renderer::render()
     UINT dispatchY = (m_height + 7) / 8;
     m_commandList->Dispatch(dispatchX, dispatchY, 1);
 
-    // 7. Barrier batch 2: TAA write → PS SRV, swap chain → RT
-    UINT backBufferIdx = m_swapChain->GetCurrentBackBufferIndex();
+    // Barrier batch 2: TAA write → PS SRV, swap chain → RT
     {
         D3D12_RESOURCE_BARRIER barriers[2] = {};
         barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
@@ -2114,7 +2123,27 @@ void D3D12Renderer::render()
         m_commandList->ResourceBarrier(2, barriers);
     }
 
-    // 8. Tone-map pass (fullscreen triangle → swap chain)
+    toneMapSrvIndex = m_postProcessSrvBase + 2 + writeIdx; // resolved TAA color
+
+    } // end if (m_taaEnabled)
+    else
+    {
+        // TAA disabled: transition HDR color to PS SRV for direct tone mapping
+        D3D12_RESOURCE_BARRIER barriers[2] = {};
+        barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barriers[0].Transition.pResource = m_hdrColorBuffer.Get();
+        barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barriers[1].Transition.pResource = m_renderTargets[backBufferIdx].Get();
+        barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+        barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        m_commandList->ResourceBarrier(2, barriers);
+
+        toneMapSrvIndex = m_postProcessSrvBase; // HDR color SRV directly
+    }
+
+    // 7. Tone-map pass (fullscreen triangle → swap chain)
     auto swapRtv = m_rtvHeap.cpuHandle(backBufferIdx);
     m_commandList->OMSetRenderTargets(1, &swapRtv, FALSE, nullptr);
     m_commandList->RSSetViewports(1, &viewport);
@@ -2137,15 +2166,17 @@ void D3D12Renderer::render()
     tmCB._pad = 0.0f;
     m_commandList->SetGraphicsRoot32BitConstants(0, 4, &tmCB, 0);
 
-    // SRV table: t0 = resolved TAA color (the buffer we just wrote)
-    m_commandList->SetGraphicsRootDescriptorTable(1, m_srvHeap.gpuHandle(m_postProcessSrvBase + 2 + writeIdx));
+    // SRV table: t0 = resolved color source
+    m_commandList->SetGraphicsRootDescriptorTable(1, m_srvHeap.gpuHandle(toneMapSrvIndex));
 
     m_commandList->SetPipelineState(m_toneMapPSO.Get());
     m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     m_commandList->DrawInstanced(3, 1, 0, 0);
 
-    // 9. Barrier batch 3: restore states for next frame
+    // 8. Barrier batch: restore states for next frame
+    if (m_taaEnabled)
     {
+        uint32_t writeIdx = m_taaHistoryIndex;
         D3D12_RESOURCE_BARRIER barriers[4] = {};
         // swap chain → present
         barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
@@ -2169,19 +2200,34 @@ void D3D12Renderer::render()
         barriers[3].Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
         m_commandList->ResourceBarrier(4, barriers);
     }
+    else
+    {
+        D3D12_RESOURCE_BARRIER barriers[2] = {};
+        // swap chain → present
+        barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barriers[0].Transition.pResource = m_renderTargets[backBufferIdx].Get();
+        barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+        // HDR color → RENDER_TARGET (for next frame)
+        barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barriers[1].Transition.pResource = m_hdrColorBuffer.Get();
+        barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        m_commandList->ResourceBarrier(2, barriers);
+    }
 
     m_commandList->Close();
 
-    // 10. Execute
+    // 9. Execute
     ID3D12CommandList* lists[] = {m_commandList.Get()};
     m_directQueue->ExecuteCommandLists(1, lists);
 
-    // 11. Signal fence for this frame context
+    // 10. Signal fence for this frame context
     ++m_directFenceValue;
     frame.fenceValue = m_directFenceValue;
     m_directQueue->Signal(m_directFence.Get(), m_directFenceValue);
 
-    // 12. Present
+    // 11. Present
     {
         const UINT syncInterval = m_vsyncEnabled ? 1 : 0;
         const UINT presentFlags = (!m_vsyncEnabled && m_tearingSupported) ? DXGI_PRESENT_ALLOW_TEARING : 0;
@@ -2189,9 +2235,12 @@ void D3D12Renderer::render()
     }
 
     // Update TAA state for next frame
-    XMStoreFloat4x4(&m_prevViewProj, view * proj);
-    m_taaHistoryValid = true;
-    m_taaHistoryIndex = 1 - m_taaHistoryIndex; // Ping-pong
+    if (m_taaEnabled)
+    {
+        XMStoreFloat4x4(&m_prevViewProj, view * proj);
+        m_taaHistoryValid = true;
+        m_taaHistoryIndex = 1 - m_taaHistoryIndex; // Ping-pong
+    }
 
     // Advance frame counter
     ++m_frameNumber;
@@ -2476,6 +2525,13 @@ HDRDisplayInfo D3D12Renderer::queryHDRSupport() const
 void D3D12Renderer::setVSync(bool enabled)
 {
     m_vsyncEnabled = enabled;
+}
+
+void D3D12Renderer::setTAAEnabled(bool enabled)
+{
+    m_taaEnabled = enabled;
+    if (!enabled)
+        invalidateTAAHistory();
 }
 
 void D3D12Renderer::setHDREnabled(bool enabled)

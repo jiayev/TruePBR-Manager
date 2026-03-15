@@ -186,6 +186,17 @@ void MaterialPreviewWidget::setVSync(bool enabled)
         m_renderer->setVSync(enabled);
 }
 
+void MaterialPreviewWidget::setTAAEnabled(bool enabled)
+{
+    if (m_renderer)
+        m_renderer->setTAAEnabled(enabled);
+}
+
+bool MaterialPreviewWidget::isTAAEnabled() const
+{
+    return m_renderer ? m_renderer->isTAAEnabled() : true;
+}
+
 void MaterialPreviewWidget::setHDREnabled(bool enabled)
 {
     if (!m_renderer)

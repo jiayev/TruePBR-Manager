@@ -48,6 +48,8 @@ class MaterialPreviewWidget : public QWidget
     // ── HDR / Frame Rate ──
     HDRDisplayInfo queryHDRSupport() const;
     void setVSync(bool enabled);
+    void setTAAEnabled(bool enabled);
+    bool isTAAEnabled() const;
     void setHDREnabled(bool enabled);
     void setPaperWhiteNits(float nits);
     void setPeakBrightnessNits(float nits);

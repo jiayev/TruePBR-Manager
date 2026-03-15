@@ -107,6 +107,7 @@ class MainWindow : public QMainWindow
     QCheckBox* m_multiBounceAOCB = nullptr;
     QCheckBox* m_specularOcclusionCB = nullptr;
     QCheckBox* m_vsyncCB = nullptr;
+    QCheckBox* m_taaCB = nullptr;
     QCheckBox* m_hdrCB = nullptr;
     QSlider* m_paperWhiteSlider = nullptr;
     QLabel* m_paperWhiteLabel = nullptr;

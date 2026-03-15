@@ -294,6 +294,11 @@ void MainWindow::setupCentralWidget()
     m_vsyncCB->setToolTip(tr("Vertical sync (off = uncapped frame rate with tearing support)"));
     displayOptsLayout->addWidget(m_vsyncCB);
 
+    m_taaCB = new QCheckBox(tr("TAA"), displayOptsRow);
+    m_taaCB->setChecked(true);
+    m_taaCB->setToolTip(tr("Temporal Anti-Aliasing"));
+    displayOptsLayout->addWidget(m_taaCB);
+
     m_hdrCB = new QCheckBox(tr("HDR"), displayOptsRow);
     m_hdrCB->setChecked(false);
     m_hdrCB->setToolTip(tr("Enable HDR output (scRGB) — requires Windows HDR enabled"));
@@ -329,8 +334,10 @@ void MainWindow::setupCentralWidget()
     auto updateDisplayOpts = [this]()
     {
         m_materialPreview->setVSync(m_vsyncCB->isChecked());
+        m_materialPreview->setTAAEnabled(m_taaCB->isChecked());
     };
     connect(m_vsyncCB, &QCheckBox::toggled, this, updateDisplayOpts);
+    connect(m_taaCB, &QCheckBox::toggled, this, updateDisplayOpts);
 
     connect(m_hdrCB, &QCheckBox::toggled, this,
             [this](bool checked)

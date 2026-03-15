@@ -193,6 +193,10 @@ class D3D12Renderer
     /// Returns true if VSync is currently enabled.
     bool isVSyncEnabled() const { return m_vsyncEnabled; }
 
+    /// Enable or disable Temporal Anti-Aliasing.
+    void setTAAEnabled(bool enabled);
+    bool isTAAEnabled() const { return m_taaEnabled; }
+
     /// Render one frame.
     void render();
 
@@ -285,6 +289,9 @@ class D3D12Renderer
 
     // VSync / frame rate
     bool m_vsyncEnabled = true;
+
+    // TAA toggle
+    bool m_taaEnabled = true;
 
     // HDR state
     bool m_hdrEnabled = false;
