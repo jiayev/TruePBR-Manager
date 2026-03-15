@@ -16,6 +16,10 @@ set(CORE_SOURCES
     core/LandscapeExporter.cpp
     core/TextureSetValidator.h
     core/TextureSetValidator.cpp
+    core/TranslationManager.h
+    core/TranslationManager.cpp
+    core/AppSettings.h
+    core/AppSettings.cpp
 )
 
 set(UI_SOURCES
@@ -247,6 +251,15 @@ add_custom_command(TARGET TruePBR-Manager POST_BUILD
         "${CMAKE_SOURCE_DIR}/LICENSE"
         "${DIST_DIR}/LICENSE"
     COMMENT "Copying LICENSE to dist/..."
+)
+
+# Copy translation files
+add_custom_command(TARGET TruePBR-Manager POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${DIST_DIR}/translations"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_SOURCE_DIR}/translations"
+        "${DIST_DIR}/translations"
+    COMMENT "Copying translation files to dist/..."
 )
 
 # ── Offline HLSL → CSO compilation via FXC ─────────────────────────────

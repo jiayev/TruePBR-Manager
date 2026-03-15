@@ -4,6 +4,7 @@
 
 #include <DirectXMath.h>
 
+#include <cstdlib>
 #include <fstream>
 
 #pragma comment(lib, "d3d12.lib")
@@ -140,15 +141,22 @@ bool D3D12Renderer::createDevice()
 {
     UINT dxgiFlags = 0;
 
-#ifndef NDEBUG
-    ComPtr<ID3D12Debug> debug;
-    if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug))))
+    // D3D12 debug layer can destabilise some GPU drivers (heap corruption on
+    // startup).  Enable it only when explicitly requested via the environment
+    // variable TRUEPBR_D3D_DEBUG=1.
     {
-        debug->EnableDebugLayer();
-        dxgiFlags |= DXGI_CREATE_FACTORY_DEBUG;
-        spdlog::info("D3D12 debug layer enabled");
+        const char* envVal = std::getenv("TRUEPBR_D3D_DEBUG");
+        if (envVal && std::string(envVal) == "1")
+        {
+            ComPtr<ID3D12Debug> debug;
+            if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debug))))
+            {
+                debug->EnableDebugLayer();
+                dxgiFlags |= DXGI_CREATE_FACTORY_DEBUG;
+                spdlog::info("D3D12 debug layer enabled (TRUEPBR_D3D_DEBUG=1)");
+            }
+        }
     }
-#endif
 
     if (FAILED(CreateDXGIFactory2(dxgiFlags, IID_PPV_ARGS(&m_factory))))
     {

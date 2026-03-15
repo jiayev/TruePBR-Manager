@@ -6,6 +6,7 @@
 #include <QDragEnterEvent>
 #include <QCheckBox>
 #include <QDropEvent>
+#include <QEvent>
 #include <QFrame>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -317,6 +318,18 @@ void DropZoneLabel::paintEvent(QPaintEvent* /*event*/)
     }
 }
 
+void DropZoneLabel::changeEvent(QEvent* event)
+{
+    if (event->type() == QEvent::LanguageChange)
+    {
+        setToolTip(tr("Click to browse or drop an image here"));
+        if (m_thumbnail.isNull())
+            setText(tr("(drop image here)"));
+        update();
+    }
+    QLabel::changeEvent(event);
+}
+
 // ─── SlotEditorWidget ──────────────────────────────────────
 
 SlotEditorWidget::SlotEditorWidget(QWidget* parent) : QWidget(parent)
@@ -330,15 +343,15 @@ void SlotEditorWidget::setupUI()
 
     // ── Match Texture Path ─────────────────────────────────
     auto* matchLayout = new QHBoxLayout();
-    auto* matchLabel = new QLabel(tr("Vanilla Match:"), this);
-    matchLabel->setFixedWidth(100);
+    m_matchLabel = new QLabel(tr("Vanilla Match:"), this);
+    m_matchLabel->setFixedWidth(100);
     m_matchTextureEdit = new QLineEdit(this);
     m_matchTextureEdit->setPlaceholderText(tr("e.g. architecture\\whiterun\\wrwoodplank01 or wrwoodplank01_n"));
     m_matchModeCombo = new QComboBox(this);
     m_matchModeCombo->addItem(tr("Auto"), static_cast<int>(TextureMatchMode::Auto));
     m_matchModeCombo->addItem(tr("Match Diffuse"), static_cast<int>(TextureMatchMode::Diffuse));
     m_matchModeCombo->addItem(tr("Match Normal"), static_cast<int>(TextureMatchMode::Normal));
-    matchLayout->addWidget(matchLabel);
+    matchLayout->addWidget(m_matchLabel);
     matchLayout->addWidget(m_matchTextureEdit, 1);
     matchLayout->addWidget(m_matchModeCombo);
     mainLayout->addLayout(matchLayout);
@@ -369,12 +382,12 @@ void SlotEditorWidget::setupUI()
     auto* rmaosModeLayout = new QHBoxLayout(m_rmaosModeContainer);
     rmaosModeLayout->setContentsMargins(0, 2, 0, 2);
     rmaosModeLayout->setSpacing(10);
-    auto* rmaosModeLabel = new QLabel(tr("RMAOS Source:"), m_rmaosModeContainer);
-    rmaosModeLabel->setFixedWidth(100);
+    m_rmaosModeLabel = new QLabel(tr("RMAOS Source:"), m_rmaosModeContainer);
+    m_rmaosModeLabel->setFixedWidth(100);
     m_packedRmaosRadio = new QRadioButton(tr("Packed RMAOS"), m_rmaosModeContainer);
     m_splitRmaosRadio = new QRadioButton(tr("Split Channels"), m_rmaosModeContainer);
     m_packedRmaosRadio->setChecked(true);
-    rmaosModeLayout->addWidget(rmaosModeLabel);
+    rmaosModeLayout->addWidget(m_rmaosModeLabel);
     rmaosModeLayout->addWidget(m_packedRmaosRadio);
     rmaosModeLayout->addWidget(m_splitRmaosRadio);
     rmaosModeLayout->addStretch();
@@ -447,12 +460,12 @@ void SlotEditorWidget::setupUI()
     auto* landscapeLayout = new QVBoxLayout(m_landscapeSection);
     landscapeLayout->setContentsMargins(8, 8, 8, 8);
 
-    auto* landscapeHint = new QLabel(tr("One TXST EDID per line (e.g. LandscapeDirt02).\n"
-                                        "Leave empty if this texture set is not used for landscape."),
-                                     m_landscapeSection);
-    landscapeHint->setWordWrap(true);
-    landscapeHint->setStyleSheet("QLabel { color: #999; font-size: 11px; }");
-    landscapeLayout->addWidget(landscapeHint);
+    m_landscapeHintLabel = new QLabel(tr("One TXST EDID per line (e.g. LandscapeDirt02).\n"
+                                         "Leave empty if this texture set is not used for landscape."),
+                                      m_landscapeSection);
+    m_landscapeHintLabel->setWordWrap(true);
+    m_landscapeHintLabel->setStyleSheet("QLabel { color: #999; font-size: 11px; }");
+    landscapeLayout->addWidget(m_landscapeHintLabel);
 
     m_landscapeEdidEdit = new QPlainTextEdit(m_landscapeSection);
     m_landscapeEdidEdit->setMaximumHeight(80);
@@ -855,6 +868,85 @@ void SlotEditorWidget::setTextureSet(const PBRTextureSet& ts)
     }
 
     updateSlots(ts.features);
+}
+
+void SlotEditorWidget::changeEvent(QEvent* event)
+{
+    if (event->type() == QEvent::LanguageChange)
+        retranslateUi();
+    QWidget::changeEvent(event);
+}
+
+void SlotEditorWidget::retranslateUi()
+{
+    m_matchLabel->setText(tr("Vanilla Match:"));
+    m_matchTextureEdit->setPlaceholderText(tr("e.g. architecture\\whiterun\\wrwoodplank01 or wrwoodplank01_n"));
+    m_matchModeCombo->setItemText(0, tr("Auto"));
+    m_matchModeCombo->setItemText(1, tr("Match Diffuse"));
+    m_matchModeCombo->setItemText(2, tr("Match Normal"));
+
+    m_rmaosModeLabel->setText(tr("RMAOS Source:"));
+    m_packedRmaosRadio->setText(tr("Packed RMAOS"));
+    m_splitRmaosRadio->setText(tr("Split Channels"));
+
+    // Slot row labels
+    auto setSlotLabel = [this](PBRTextureSlot slot, const QString& text)
+    {
+        auto it = m_slotRows.find(slot);
+        if (it != m_slotRows.end())
+        {
+            it->second.labelWidget->setText(text);
+            it->second.importButton->setText(tr("Import"));
+            it->second.clearButton->setText(tr("Clear"));
+            it->second.clearButton->setToolTip(tr("Remove this texture (revert to default)"));
+            it->second.compressionCombo->setToolTip(tr("Select the DDS compression used during export"));
+            it->second.exportSizeCombo->setToolTip(tr("Select the export resolution for this texture"));
+            it->second.pathOverrideCheckbox->setText(tr("Override Path"));
+            it->second.pathOverrideCheckbox->setToolTip(
+                tr("Override the export path for this slot (PGPatcher slot command)"));
+            it->second.pathOverrideEdit->setPlaceholderText(tr("e.g. textures\\pbr\\architecture\\custom\\mytex.dds"));
+        }
+    };
+
+    setSlotLabel(PBRTextureSlot::Diffuse, tr("Albedo"));
+    setSlotLabel(PBRTextureSlot::Normal, tr("Normal"));
+    setSlotLabel(PBRTextureSlot::RMAOS, tr("RMAOS"));
+    setSlotLabel(PBRTextureSlot::Emissive, tr("Emissive"));
+    setSlotLabel(PBRTextureSlot::Displacement, tr("Displacement"));
+    setSlotLabel(PBRTextureSlot::Subsurface, tr("Subsurface"));
+    setSlotLabel(PBRTextureSlot::CoatNormalRoughness, tr("Coat Normal+Rough"));
+    setSlotLabel(PBRTextureSlot::Fuzz, tr("Fuzz"));
+    setSlotLabel(PBRTextureSlot::CoatColor, tr("Coat Color+Strength"));
+
+    // Channel section title
+    if (auto* group = qobject_cast<QGroupBox*>(m_channelSection))
+        group->setTitle(tr("RMAOS Individual Channels (optional)"));
+
+    // Channel row labels
+    auto setChannelLabel = [this](ChannelMap ch, const QString& text)
+    {
+        auto it = m_channelRows.find(ch);
+        if (it != m_channelRows.end())
+        {
+            it->second.labelWidget->setText(text);
+            it->second.importButton->setText(tr("Import"));
+            it->second.clearButton->setText(tr("Clear"));
+            it->second.clearButton->setToolTip(tr("Remove this channel map"));
+        }
+    };
+
+    setChannelLabel(ChannelMap::Roughness, tr("Roughness (R)"));
+    setChannelLabel(ChannelMap::Metallic, tr("Metallic (G)"));
+    setChannelLabel(ChannelMap::AO, tr("AO (B)"));
+    setChannelLabel(ChannelMap::Specular, tr("Specular (A)"));
+
+    // Landscape section
+    if (auto* group = qobject_cast<QGroupBox*>(m_landscapeSection))
+        group->setTitle(tr("Landscape EDIDs (optional)"));
+
+    m_landscapeHintLabel->setText(tr("One TXST EDID per line (e.g. LandscapeDirt02).\n"
+                                     "Leave empty if this texture set is not used for landscape."));
+    m_landscapeEdidEdit->setPlaceholderText(tr("LandscapeDirt02\nLandscapeGrass01"));
 }
 
 } // namespace tpbr

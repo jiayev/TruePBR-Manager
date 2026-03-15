@@ -22,8 +22,9 @@ The application currently supports:
 - Pre-export validation (resolution, missing slots, conflicts)
 - Landscape texture set support (TXST EDIDs)
 - PGPatcher JSON and DDS texture export
+- Localization: auto-detects system language, supports runtime language switching, and hot-reloads translation files during development
 
-The application does not currently provide undo/redo or localization.
+The application does not currently provide undo/redo.
 
 ## Texture Slots
 
@@ -184,10 +185,11 @@ Additional dependencies:
 ```text
 src/
 ├── app/        MainWindow and application shell
-├── core/       Project model, texture import, RMAOS packing, JSON export, mod export, landscape export
+├── core/       Project model, texture import, RMAOS packing, JSON export, mod export, landscape export, translation manager, app settings
 ├── renderer/   D3D12 GPU backend, IBL pipeline, mesh generation, HLSL shaders
 ├── ui/         Texture set list, slot editor, feature toggles, parameter editor, 3D preview widget
 └── utils/      DDS helpers, image loading, file helpers, logging
+translations/   JSON translation files (en.json, zh_CN.json, ...)
 ```
 
 ## Implementation Notes
@@ -198,6 +200,8 @@ src/
 - Export size can be overridden per slot (power-of-two downscale).
 - Slot path overrides allow custom PGPatcher `slotN` export paths per texture set.
 - Alpha mode is detected during import and influences available compression options (BC1 requires no alpha).
+- Translations use a custom JSON format loaded by `TranslationManager`. Place `<locale>.json` files in the `translations/` directory next to the executable. The application auto-detects the system language and supports runtime switching via the menu bar.
+- Application-level settings (language, window geometry, last project directory) are persisted in `TruePBR-Manager.ini` next to the executable via `AppSettings`.
 - Source DDS files already matching the target compression format and mipmap count are copied without re-encoding.
 - 2D preview shows the diffuse texture by default; click any slot to preview it with channel isolation.
 - 3D preview uses a rewritten D3D12 renderer with double-buffered frames, async texture upload queue, and GPU compute IBL pipeline.
@@ -213,7 +217,8 @@ Planned features:
 - [ ] Export progress bar
 - [ ] Skip unchanged textures on export
 - [ ] Undo/redo
-- [ ] Localization support
+- [ ] Persist 3D preview settings in AppSettings
+- [ ] Recent projects list
 
 ## References
 

@@ -1,5 +1,6 @@
 #include "TexturePreviewWidget.h"
 
+#include <QEvent>
 #include <QGraphicsPixmapItem>
 #include <QGraphicsScene>
 #include <QHBoxLayout>
@@ -181,6 +182,11 @@ QImage TexturePreviewWidget::extractChannel(const QImage& source, PreviewChannel
     }
 
     return result;
+}
+
+void TexturePreviewWidget::changeEvent(QEvent* event)
+{
+    QWidget::changeEvent(event);
 }
 
 } // namespace tpbr

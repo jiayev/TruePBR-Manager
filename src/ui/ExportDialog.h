@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QDialog>
+#include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
 
@@ -22,6 +23,12 @@ class ExportDialog : public QDialog
     QPushButton* m_browseBtn = nullptr;
     QPushButton* m_exportBtn = nullptr;
     QPushButton* m_cancelBtn = nullptr;
+    QLabel* m_descLabel = nullptr;
+
+    void retranslateUi();
+
+  protected:
+    void changeEvent(QEvent* event) override;
 };
 
 } // namespace tpbr

@@ -1,5 +1,6 @@
 #include "TextureSetPanel.h"
 
+#include <QEvent>
 #include <QHBoxLayout>
 #include <QSignalBlocker>
 #include <QVBoxLayout>
@@ -76,6 +77,20 @@ void TextureSetPanel::setCurrentIndex(int index)
 int TextureSetPanel::currentIndex() const
 {
     return m_listWidget->currentRow();
+}
+
+void TextureSetPanel::changeEvent(QEvent* event)
+{
+    if (event->type() == QEvent::LanguageChange)
+        retranslateUi();
+    QWidget::changeEvent(event);
+}
+
+void TextureSetPanel::retranslateUi()
+{
+    m_addButton->setText(tr("Add"));
+    m_renameButton->setText(tr("Rename"));
+    m_removeButton->setText(tr("Remove"));
 }
 
 } // namespace tpbr

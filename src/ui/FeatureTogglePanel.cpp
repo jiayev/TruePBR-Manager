@@ -1,5 +1,6 @@
 #include "FeatureTogglePanel.h"
 
+#include <QEvent>
 #include <QGroupBox>
 #include <QVBoxLayout>
 
@@ -83,6 +84,28 @@ PBRFeatureFlags FeatureTogglePanel::getFeatures() const
     f.glint = m_glint->isChecked();
     f.hair = m_hair->isChecked();
     return f;
+}
+
+void FeatureTogglePanel::changeEvent(QEvent* event)
+{
+    if (event->type() == QEvent::LanguageChange)
+        retranslateUi();
+    QWidget::changeEvent(event);
+}
+
+void FeatureTogglePanel::retranslateUi()
+{
+    m_emissive->setText(tr("Emissive / Glow"));
+    m_parallax->setText(tr("Parallax (Displacement)"));
+    m_subsurface->setText(tr("Subsurface Scattering"));
+    m_subsurfaceFoliage->setText(tr("Two-Sided Foliage"));
+    m_multilayer->setText(tr("Multilayer Parallax"));
+    m_coatNormal->setText(tr("Coat Normal"));
+    m_coatDiffuse->setText(tr("Coat Diffuse Color"));
+    m_coatParallax->setText(tr("Coat Parallax"));
+    m_fuzz->setText(tr("Fuzz (Cloth/Velvet)"));
+    m_glint->setText(tr("Glint (Sparkle)"));
+    m_hair->setText(tr("Hair Model"));
 }
 
 } // namespace tpbr

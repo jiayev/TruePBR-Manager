@@ -1,5 +1,6 @@
 #include "ExportDialog.h"
 
+#include <QEvent>
 #include <QFileDialog>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -15,7 +16,8 @@ ExportDialog::ExportDialog(QWidget* parent) : QDialog(parent)
 
     auto* layout = new QVBoxLayout(this);
 
-    layout->addWidget(new QLabel(tr("Select the target mod folder:"), this));
+    m_descLabel = new QLabel(tr("Select the target mod folder:"), this);
+    layout->addWidget(m_descLabel);
 
     auto* pathLayout = new QHBoxLayout();
     m_pathEdit = new QLineEdit(this);
@@ -47,6 +49,22 @@ ExportDialog::ExportDialog(QWidget* parent) : QDialog(parent)
 QString ExportDialog::modFolderPath() const
 {
     return m_pathEdit->text();
+}
+
+void ExportDialog::changeEvent(QEvent* event)
+{
+    if (event->type() == QEvent::LanguageChange)
+        retranslateUi();
+    QDialog::changeEvent(event);
+}
+
+void ExportDialog::retranslateUi()
+{
+    setWindowTitle(tr("Export to Mod Folder"));
+    m_descLabel->setText(tr("Select the target mod folder:"));
+    m_browseBtn->setText(tr("Browse..."));
+    m_exportBtn->setText(tr("Export"));
+    m_cancelBtn->setText(tr("Cancel"));
 }
 
 } // namespace tpbr

@@ -78,6 +78,8 @@ class MaterialPreviewWidget : public QWidget
   private:
     void initRenderer();
     void updateLight();
+    void retranslateUi();
+    void changeEvent(QEvent* event) override;
 
     std::unique_ptr<D3D12Renderer> m_renderer;
     QComboBox* m_shapeCombo = nullptr;

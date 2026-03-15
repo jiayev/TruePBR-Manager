@@ -1,9 +1,11 @@
 #include "MainWindow.h"
 
+#include "core/AppSettings.h"
 #include "core/JsonExporter.h"
 #include "core/ModExporter.h"
 #include "core/TextureImporter.h"
 #include "core/TextureSetValidator.h"
+#include "core/TranslationManager.h"
 #include "ui/FeatureTogglePanel.h"
 #include "ui/ParameterPanel.h"
 #include "ui/SlotEditorWidget.h"
@@ -103,6 +105,14 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     setWindowTitle(tr("TruePBR Manager"));
     resize(1280, 800);
 
+    // Restore saved window geometry
+    auto geom = AppSettings::instance().windowGeometry();
+    if (!geom.isEmpty())
+        restoreGeometry(geom);
+    auto state = AppSettings::instance().windowState();
+    if (!state.isEmpty())
+        restoreState(state);
+
     m_project.name = "Untitled";
 
     setupMenuBar();
@@ -111,22 +121,31 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     refreshUI();
 }
 
-MainWindow::~MainWindow() = default;
+MainWindow::~MainWindow()
+{
+    AppSettings::instance().setWindowGeometry(saveGeometry());
+    AppSettings::instance().setWindowState(saveState());
+}
 
 // ─── Menu Bar ──────────────────────────────────────────────
 
 void MainWindow::setupMenuBar()
 {
-    auto* fileMenu = menuBar()->addMenu(tr("&File"));
-    fileMenu->addAction(tr("&New Project"), this, &MainWindow::onNewProject, QKeySequence::New);
-    fileMenu->addAction(tr("&Open Project"), this, &MainWindow::onOpenProject, QKeySequence::Open);
-    fileMenu->addAction(tr("&Save Project"), this, &MainWindow::onSaveProject, QKeySequence::Save);
-    fileMenu->addAction(tr("Save Project &As..."), this, &MainWindow::onSaveProjectAs, QKeySequence::SaveAs);
-    fileMenu->addAction(tr("Project &Name..."), this, &MainWindow::onRenameProject);
-    fileMenu->addSeparator();
-    fileMenu->addAction(tr("&Batch Import Folder..."), this, &MainWindow::onBatchImport);
-    fileMenu->addSeparator();
-    fileMenu->addAction(tr("E&xit"), this, &QWidget::close, QKeySequence::Quit);
+    m_fileMenu = menuBar()->addMenu(tr("&File"));
+    m_newProjectAction = m_fileMenu->addAction(tr("&New Project"), this, &MainWindow::onNewProject, QKeySequence::New);
+    m_openProjectAction =
+        m_fileMenu->addAction(tr("&Open Project"), this, &MainWindow::onOpenProject, QKeySequence::Open);
+    m_saveProjectAction =
+        m_fileMenu->addAction(tr("&Save Project"), this, &MainWindow::onSaveProject, QKeySequence::Save);
+    m_saveAsAction =
+        m_fileMenu->addAction(tr("Save Project &As..."), this, &MainWindow::onSaveProjectAs, QKeySequence::SaveAs);
+    m_projectNameAction = m_fileMenu->addAction(tr("Project &Name..."), this, &MainWindow::onRenameProject);
+    m_fileMenu->addSeparator();
+    m_batchImportAction = m_fileMenu->addAction(tr("&Batch Import Folder..."), this, &MainWindow::onBatchImport);
+    m_fileMenu->addSeparator();
+    m_exitAction = m_fileMenu->addAction(tr("E&xit"), this, &QWidget::close, QKeySequence::Quit);
+
+    setupLanguageMenu();
 }
 
 // ─── Central Widget ────────────────────────────────────────
@@ -137,13 +156,13 @@ void MainWindow::setupCentralWidget()
     auto* rootLayout = new QVBoxLayout(rootWidget);
 
     auto* exportRow = new QHBoxLayout();
-    auto* exportLabel = new QLabel(tr("Export Folder:"), rootWidget);
-    exportLabel->setFixedWidth(100);
+    m_exportLabel = new QLabel(tr("Export Folder:"), rootWidget);
+    m_exportLabel->setFixedWidth(100);
     m_exportPathEdit = new QLineEdit(rootWidget);
     m_exportPathEdit->setPlaceholderText(tr("Select the target mod folder"));
     m_exportBrowseBtn = new QPushButton(tr("Browse..."), rootWidget);
     m_exportBtn = new QPushButton(tr("Export Mod"), rootWidget);
-    exportRow->addWidget(exportLabel);
+    exportRow->addWidget(m_exportLabel);
     exportRow->addWidget(m_exportPathEdit, 1);
     exportRow->addWidget(m_exportBrowseBtn);
     exportRow->addWidget(m_exportBtn);
@@ -237,7 +256,8 @@ void MainWindow::setupCentralWidget()
     controlLayout->setContentsMargins(4, 2, 4, 2);
     controlLayout->setSpacing(6);
 
-    controlLayout->addWidget(new QLabel(tr("Light:"), m_3dControlBar));
+    m_lightLabel = new QLabel(tr("Light:"), m_3dControlBar);
+    controlLayout->addWidget(m_lightLabel);
 
     m_lightIntensitySlider = new QSlider(Qt::Horizontal, m_3dControlBar);
     m_lightIntensitySlider->setRange(0, 100);
@@ -255,7 +275,8 @@ void MainWindow::setupCentralWidget()
     m_lightColorBtn->setStyleSheet("QPushButton { background: #ffffff; border: 1px solid #888; }");
     controlLayout->addWidget(m_lightColorBtn);
 
-    controlLayout->addWidget(new QLabel(tr("EV:"), m_3dControlBar));
+    m_evLabel = new QLabel(tr("EV:"), m_3dControlBar);
+    controlLayout->addWidget(m_evLabel);
 
     m_exposureSlider = new QSlider(Qt::Horizontal, m_3dControlBar);
     m_exposureSlider->setRange(-30, 30);
@@ -316,7 +337,8 @@ void MainWindow::setupCentralWidget()
     m_hdrCB->setToolTip(tr("Enable HDR output (scRGB) — requires Windows HDR enabled"));
     displayOptsLayout->addWidget(m_hdrCB);
 
-    displayOptsLayout->addWidget(new QLabel(tr("Paper White:"), displayOptsRow));
+    m_paperWhiteTextLabel = new QLabel(tr("Paper White:"), displayOptsRow);
+    displayOptsLayout->addWidget(m_paperWhiteTextLabel);
     m_paperWhiteSlider = new QSlider(Qt::Horizontal, displayOptsRow);
     m_paperWhiteSlider->setRange(80, 400);
     m_paperWhiteSlider->setValue(200);
@@ -328,7 +350,8 @@ void MainWindow::setupCentralWidget()
     m_paperWhiteLabel->setFixedWidth(32);
     displayOptsLayout->addWidget(m_paperWhiteLabel);
 
-    displayOptsLayout->addWidget(new QLabel(tr("Peak:"), displayOptsRow));
+    m_peakTextLabel = new QLabel(tr("Peak:"), displayOptsRow);
+    displayOptsLayout->addWidget(m_peakTextLabel);
     m_peakBrightnessSlider = new QSlider(Qt::Horizontal, displayOptsRow);
     m_peakBrightnessSlider->setRange(200, 2000);
     m_peakBrightnessSlider->setValue(1000);
@@ -435,14 +458,16 @@ void MainWindow::setupCentralWidget()
     iblLayout->setContentsMargins(4, 2, 4, 2);
     iblLayout->setSpacing(6);
 
-    iblLayout->addWidget(new QLabel(tr("HDRI:"), iblRow));
+    m_hdriLabel = new QLabel(tr("HDRI:"), iblRow);
+    iblLayout->addWidget(m_hdriLabel);
 
     m_hdriCombo = new QComboBox(iblRow);
     m_hdriCombo->addItem(tr("(None)"), QString());
     m_hdriCombo->setMinimumWidth(150);
     iblLayout->addWidget(m_hdriCombo);
 
-    iblLayout->addWidget(new QLabel(tr("IBL:"), iblRow));
+    m_iblLabel = new QLabel(tr("IBL:"), iblRow);
+    iblLayout->addWidget(m_iblLabel);
 
     m_iblIntensitySlider = new QSlider(Qt::Horizontal, iblRow);
     m_iblIntensitySlider->setRange(0, 50);
@@ -463,7 +488,8 @@ void MainWindow::setupCentralWidget()
     iblParamsLayout->setContentsMargins(4, 2, 4, 2);
     iblParamsLayout->setSpacing(6);
 
-    iblParamsLayout->addWidget(new QLabel(tr("Prefilter Res:"), iblParamsRow));
+    m_prefilterResLabel = new QLabel(tr("Prefilter Res:"), iblParamsRow);
+    iblParamsLayout->addWidget(m_prefilterResLabel);
     m_iblResCombo = new QComboBox(iblParamsRow);
     m_iblResCombo->addItem("32", 32);
     m_iblResCombo->addItem("64", 64);
@@ -475,7 +501,8 @@ void MainWindow::setupCentralWidget()
     m_iblResCombo->setToolTip(tr("Prefiltered cubemap face resolution"));
     iblParamsLayout->addWidget(m_iblResCombo);
 
-    iblParamsLayout->addWidget(new QLabel(tr("Samples:"), iblParamsRow));
+    m_samplesLabel = new QLabel(tr("Samples:"), iblParamsRow);
+    iblParamsLayout->addWidget(m_samplesLabel);
     m_iblSamplesCombo = new QComboBox(iblParamsRow);
     m_iblSamplesCombo->addItem("64", 64);
     m_iblSamplesCombo->addItem("128", 128);
@@ -662,11 +689,12 @@ void MainWindow::onNewProject()
 
 void MainWindow::onOpenProject()
 {
-    auto path = QFileDialog::getOpenFileName(this, tr("Open Project"), QString(),
+    auto path = QFileDialog::getOpenFileName(this, tr("Open Project"), AppSettings::instance().lastProjectDir(),
                                              tr("TruePBR Project (*.tpbr);;All Files (*)"));
     if (path.isEmpty())
         return;
 
+    AppSettings::instance().setLastProjectDir(QFileInfo(path).absolutePath());
     m_project = Project::load(path.toStdString());
     m_projectFilePath = path.toStdString();
     m_currentSetIndex = -1;
@@ -729,7 +757,11 @@ QString MainWindow::promptProjectSavePath() const
     }
     else
     {
-        suggestedPath = defaultProjectName(m_project) + QStringLiteral(".tpbr");
+        QString dir = AppSettings::instance().lastProjectDir();
+        if (dir.isEmpty())
+            suggestedPath = defaultProjectName(m_project) + QStringLiteral(".tpbr");
+        else
+            suggestedPath = dir + "/" + defaultProjectName(m_project) + QStringLiteral(".tpbr");
     }
 
     QString path = QFileDialog::getSaveFileName(const_cast<MainWindow*>(this), tr("Save Project"), suggestedPath,
@@ -762,6 +794,7 @@ bool MainWindow::saveProjectToPath(const QString& path)
     }
 
     m_projectFilePath = path.toStdString();
+    AppSettings::instance().setLastProjectDir(QFileInfo(path).absolutePath());
     refreshUI();
     statusBar()->showMessage(tr("Saved: %1").arg(path));
     return true;
@@ -1639,6 +1672,138 @@ void MainWindow::refresh3DPreview()
     }
 
     statusBar()->showMessage(tr("3D Preview: %1").arg(QString::fromStdString(ts.name)));
+}
+
+// ─── Language Menu ─────────────────────────────────────────
+
+void MainWindow::setupLanguageMenu()
+{
+    m_languageMenu = menuBar()->addMenu(tr("&Language"));
+    m_languageGroup = new QActionGroup(this);
+    m_languageGroup->setExclusive(true);
+
+    rebuildLanguageMenu();
+
+    auto& tm = TranslationManager::instance();
+    connect(&tm, &TranslationManager::availableLanguagesChanged, this, &MainWindow::rebuildLanguageMenu);
+}
+
+void MainWindow::rebuildLanguageMenu()
+{
+    m_languageMenu->clear();
+
+    auto& tm = TranslationManager::instance();
+    const auto& langs = tm.availableLanguages();
+    const QString current = tm.currentLocale();
+
+    // Delete old action group and create a new one
+    delete m_languageGroup;
+    m_languageGroup = new QActionGroup(this);
+    m_languageGroup->setExclusive(true);
+
+    // English (always available, source strings)
+    auto* enAction = m_languageMenu->addAction("English");
+    enAction->setCheckable(true);
+    enAction->setChecked(current.compare("en", Qt::CaseInsensitive) == 0);
+    enAction->setData("en");
+    m_languageGroup->addAction(enAction);
+
+    for (const auto& lang : langs)
+    {
+        if (lang.locale.compare("en", Qt::CaseInsensitive) == 0)
+            continue;
+
+        auto* action = m_languageMenu->addAction(lang.name);
+        action->setCheckable(true);
+        action->setChecked(lang.locale.compare(current, Qt::CaseInsensitive) == 0);
+        action->setData(lang.locale);
+        m_languageGroup->addAction(action);
+    }
+
+    connect(m_languageGroup, &QActionGroup::triggered, this,
+            [](QAction* action) { TranslationManager::instance().switchLanguage(action->data().toString()); });
+}
+
+// ─── Retranslation ─────────────────────────────────────────
+
+void MainWindow::changeEvent(QEvent* event)
+{
+    if (event->type() == QEvent::LanguageChange)
+    {
+        retranslateUi();
+    }
+    QMainWindow::changeEvent(event);
+}
+
+void MainWindow::retranslateUi()
+{
+    // Window title
+    setWindowTitle(tr("TruePBR Manager - %1").arg(defaultProjectName(m_project)));
+
+    // File menu
+    m_fileMenu->setTitle(tr("&File"));
+    m_newProjectAction->setText(tr("&New Project"));
+    m_openProjectAction->setText(tr("&Open Project"));
+    m_saveProjectAction->setText(tr("&Save Project"));
+    m_saveAsAction->setText(tr("Save Project &As..."));
+    m_projectNameAction->setText(tr("Project &Name..."));
+    m_batchImportAction->setText(tr("&Batch Import Folder..."));
+    m_exitAction->setText(tr("E&xit"));
+
+    // Language menu title
+    m_languageMenu->setTitle(tr("&Language"));
+
+    // Export row
+    m_exportLabel->setText(tr("Export Folder:"));
+    m_exportPathEdit->setPlaceholderText(tr("Select the target mod folder"));
+    m_exportBrowseBtn->setText(tr("Browse..."));
+    m_exportBtn->setText(tr("Export Mod"));
+
+    // Preview mode buttons
+    m_preview2DBtn->setText(tr("2D"));
+    m_preview3DBtn->setText(tr("3D"));
+
+    // 3D control bar labels
+    m_lightLabel->setText(tr("Light:"));
+    m_lightIntensitySlider->setToolTip(tr("Light Intensity"));
+    m_lightColorBtn->setToolTip(tr("Light Color"));
+    m_evLabel->setText(tr("EV:"));
+    m_exposureSlider->setToolTip(tr("Exposure Compensation (EV)"));
+
+    // Render options
+    m_horizonOcclusionCB->setText(tr("Horizon Occlusion"));
+    m_horizonOcclusionCB->setToolTip(tr("Attenuate specular IBL below geometric horizon"));
+    m_multiBounceAOCB->setText(tr("MultiBounce AO"));
+    m_multiBounceAOCB->setToolTip(tr("Multi-bounce ambient occlusion (Jimenez 2016)"));
+    m_specularOcclusionCB->setText(tr("Specular Occlusion"));
+    m_specularOcclusionCB->setToolTip(tr("AO-based specular occlusion"));
+
+    // Display options
+    m_vsyncCB->setText(tr("VSync"));
+    m_vsyncCB->setToolTip(tr("Vertical sync (off = uncapped frame rate with tearing support)"));
+    m_taaCB->setText(tr("TAA"));
+    m_taaCB->setToolTip(tr("Temporal Anti-Aliasing"));
+    m_hdrCB->setText(tr("HDR"));
+    m_hdrCB->setToolTip(tr("Enable HDR output (scRGB) — requires Windows HDR enabled"));
+    m_paperWhiteTextLabel->setText(tr("Paper White:"));
+    m_paperWhiteSlider->setToolTip(tr("Paper white brightness in nits (SDR reference white)"));
+    m_peakTextLabel->setText(tr("Peak:"));
+    m_peakBrightnessSlider->setToolTip(tr("Peak brightness in nits (0 = use display maximum)"));
+
+    // IBL row
+    m_hdriLabel->setText(tr("HDRI:"));
+    m_hdriCombo->setItemText(0, tr("(None)"));
+    m_iblLabel->setText(tr("IBL:"));
+    m_iblIntensitySlider->setToolTip(tr("IBL Intensity"));
+
+    // IBL params row
+    m_prefilterResLabel->setText(tr("Prefilter Res:"));
+    m_iblResCombo->setToolTip(tr("Prefiltered cubemap face resolution"));
+    m_samplesLabel->setText(tr("Samples:"));
+    m_iblSamplesCombo->setToolTip(tr("GGX importance samples per texel for specular prefiltering"));
+
+    // Placeholders – update only if currently visible
+    updateEditorState();
 }
 
 } // namespace tpbr

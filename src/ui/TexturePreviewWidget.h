@@ -54,6 +54,9 @@ class TexturePreviewWidget : public QWidget
 
     QImage m_sourceImage; // Original full RGBA image
     PreviewChannel m_currentChannel = PreviewChannel::All;
+
+  protected:
+    void changeEvent(QEvent* event) override;
 };
 
 } // namespace tpbr

@@ -45,6 +45,7 @@ class DropZoneLabel : public QLabel
     void dropEvent(QDropEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
     void paintEvent(QPaintEvent* event) override;
+    void changeEvent(QEvent* event) override;
 
   private:
     QPixmap m_thumbnail;
@@ -143,6 +144,14 @@ class SlotEditorWidget : public QWidget
     QWidget* m_channelSection = nullptr;
     QPlainTextEdit* m_landscapeEdidEdit = nullptr;
     QWidget* m_landscapeSection = nullptr;
+    QLabel* m_matchLabel = nullptr;
+    QLabel* m_rmaosModeLabel = nullptr;
+    QLabel* m_landscapeHintLabel = nullptr;
+
+    void retranslateUi();
+
+  protected:
+    void changeEvent(QEvent* event) override;
 };
 
 } // namespace tpbr

@@ -36,6 +36,10 @@ class TextureSetPanel : public QWidget
     QPushButton* m_removeButton = nullptr;
 
     void setupUI();
+    void retranslateUi();
+
+  protected:
+    void changeEvent(QEvent* event) override;
 };
 
 } // namespace tpbr

@@ -1,5 +1,6 @@
 #include "ParameterPanel.h"
 
+#include <QEvent>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -58,13 +59,13 @@ void ParameterPanel::setupUI()
     };
 
     // ── Base Parameters (always visible) ───────────────────
-    auto* baseGroup = new QGroupBox(tr("Base"), this);
-    auto* baseLayout = new QFormLayout(baseGroup);
+    m_baseGroup = new QGroupBox(tr("Base"), this);
+    auto* baseLayout = new QFormLayout(m_baseGroup);
     makeSpin(m_specularLevel, 0.0, 1.0, 0.01, 0.04);
     makeSpin(m_roughnessScale, 0.0, 5.0, 0.1, 1.0);
     baseLayout->addRow(tr("Specular Level"), m_specularLevel);
     baseLayout->addRow(tr("Roughness Scale"), m_roughnessScale);
-    mainLayout->addWidget(baseGroup);
+    mainLayout->addWidget(m_baseGroup);
 
     // ── Parallax Section ───────────────────────────────────
     m_parallaxSection = new QGroupBox(tr("Parallax"), this);
@@ -237,6 +238,58 @@ PBRParameters ParameterPanel::getParameters() const
     p.vertexColorSatMult = static_cast<float>(m_vertexColorSatMult->value());
 
     return p;
+}
+
+void ParameterPanel::changeEvent(QEvent* event)
+{
+    if (event->type() == QEvent::LanguageChange)
+        retranslateUi();
+    QWidget::changeEvent(event);
+}
+
+void ParameterPanel::retranslateUi()
+{
+    // Helper to relabel a QFormLayout row by its field widget
+    auto relabelRow = [](QWidget* field, const QString& text)
+    {
+        if (auto* form = qobject_cast<QFormLayout*>(field->parentWidget()->layout()))
+        {
+            if (auto* label = qobject_cast<QLabel*>(form->labelForField(field)))
+                label->setText(text);
+        }
+    };
+
+    m_baseGroup->setTitle(tr("Base"));
+    relabelRow(m_specularLevel, tr("Specular Level"));
+    relabelRow(m_roughnessScale, tr("Roughness Scale"));
+
+    m_parallaxSection->setTitle(tr("Parallax"));
+    relabelRow(m_displacementScale, tr("Displacement Scale"));
+
+    m_emissiveSection->setTitle(tr("Emissive"));
+    relabelRow(m_emissiveScale, tr("Emissive Scale"));
+
+    m_subsurfaceSection->setTitle(tr("Subsurface"));
+    relabelRow(m_subsurfaceOpacity, tr("Opacity"));
+
+    m_coatSection->setTitle(tr("Multilayer / Coat"));
+    relabelRow(m_coatStrength, tr("Coat Strength"));
+    relabelRow(m_coatRoughness, tr("Coat Roughness"));
+    relabelRow(m_coatSpecularLevel, tr("Coat Specular Level"));
+
+    m_fuzzSection->setTitle(tr("Fuzz"));
+    relabelRow(m_fuzzWeight, tr("Weight"));
+
+    m_glintSection->setTitle(tr("Glint"));
+    relabelRow(m_glintScreenSpaceScale, tr("Screen Space Scale"));
+    relabelRow(m_glintLogMicrofacetDensity, tr("Log Microfacet Density"));
+    relabelRow(m_glintMicrofacetRoughness, tr("Microfacet Roughness"));
+    relabelRow(m_glintDensityRandomization, tr("Density Randomization"));
+
+    m_vertexColorSection->setTitle(tr("Vertex Color"));
+    m_vertexColorsEnabled->setText(tr("Enable Vertex Colors"));
+    relabelRow(m_vertexColorLumMult, tr("Luminance Multiplier"));
+    relabelRow(m_vertexColorSatMult, tr("Saturation Multiplier"));
 }
 
 } // namespace tpbr

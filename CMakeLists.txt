@@ -4,6 +4,10 @@ project(TruePBR-Manager VERSION 0.1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# vcpkg x64-windows ships only release libraries (/MD).
+# Force release CRT in all configurations to avoid CRT mismatch heap corruption.
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
+
 # Qt auto-processing
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)

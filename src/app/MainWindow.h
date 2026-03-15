@@ -2,11 +2,13 @@
 
 #include "core/Project.h"
 
+#include <QActionGroup>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QLabel>
 #include <QMainWindow>
 #include <QLineEdit>
+#include <QMenu>
 #include <QPushButton>
 #include <QSlider>
 #include <QStackedWidget>
@@ -67,6 +69,10 @@ class MainWindow : public QMainWindow
     void setupMenuBar();
     void setupCentralWidget();
     void setupStatusBar();
+    void setupLanguageMenu();
+    void rebuildLanguageMenu();
+    void retranslateUi();
+    void changeEvent(QEvent* event) override;
     bool saveProjectToPath(const QString& path);
     QString promptProjectSavePath() const;
     void updateEditorState();
@@ -120,6 +126,29 @@ class MainWindow : public QMainWindow
     float m_lightColorB = 1.0f;
     QLabel* m_editorPlaceholder = nullptr;
     QLabel* m_previewPlaceholder = nullptr;
+
+    // Menu bar items (for retranslation)
+    QMenu* m_fileMenu = nullptr;
+    QMenu* m_languageMenu = nullptr;
+    QActionGroup* m_languageGroup = nullptr;
+    QAction* m_newProjectAction = nullptr;
+    QAction* m_openProjectAction = nullptr;
+    QAction* m_saveProjectAction = nullptr;
+    QAction* m_saveAsAction = nullptr;
+    QAction* m_projectNameAction = nullptr;
+    QAction* m_batchImportAction = nullptr;
+    QAction* m_exitAction = nullptr;
+
+    // Inline labels that need retranslation
+    QLabel* m_exportLabel = nullptr;
+    QLabel* m_lightLabel = nullptr;
+    QLabel* m_evLabel = nullptr;
+    QLabel* m_hdriLabel = nullptr;
+    QLabel* m_iblLabel = nullptr;
+    QLabel* m_prefilterResLabel = nullptr;
+    QLabel* m_samplesLabel = nullptr;
+    QLabel* m_paperWhiteTextLabel = nullptr;
+    QLabel* m_peakTextLabel = nullptr;
 };
 
 } // namespace tpbr

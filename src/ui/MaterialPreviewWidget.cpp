@@ -1,6 +1,7 @@
 #include "MaterialPreviewWidget.h"
 #include "utils/Log.h"
 
+#include <QEvent>
 #include <QMouseEvent>
 #include <QResizeEvent>
 #include <QVBoxLayout>
@@ -57,6 +58,24 @@ MaterialPreviewWidget::MaterialPreviewWidget(QWidget* parent) : QWidget(parent)
 MaterialPreviewWidget::~MaterialPreviewWidget()
 {
     m_renderTimer->stop();
+}
+
+void MaterialPreviewWidget::changeEvent(QEvent* event)
+{
+    if (event->type() == QEvent::LanguageChange)
+        retranslateUi();
+    QWidget::changeEvent(event);
+}
+
+void MaterialPreviewWidget::retranslateUi()
+{
+    int currentIndex = m_shapeCombo->currentIndex();
+    m_shapeCombo->blockSignals(true);
+    m_shapeCombo->setItemText(0, tr("Sphere"));
+    m_shapeCombo->setItemText(1, tr("Plane"));
+    m_shapeCombo->setItemText(2, tr("Cube"));
+    m_shapeCombo->setItemText(3, tr("Rounded Cube"));
+    m_shapeCombo->blockSignals(false);
 }
 
 void MaterialPreviewWidget::initRenderer()

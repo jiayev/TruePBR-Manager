@@ -1,5 +1,6 @@
 #include "Application.h"
 #include "MainWindow.h"
+#include "core/TranslationManager.h"
 #include "utils/Log.h"
 #include "Version.h"
 
@@ -41,6 +42,8 @@ void Application::initStyle()
 
 int Application::run()
 {
+    TranslationManager::instance().init();
+
     MainWindow window;
     window.show();
     return m_app.exec();

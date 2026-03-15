@@ -37,6 +37,10 @@ class FeatureTogglePanel : public QWidget
 
     void setupUI();
     void onAnyToggled();
+    void retranslateUi();
+
+  protected:
+    void changeEvent(QEvent* event) override;
 };
 
 } // namespace tpbr

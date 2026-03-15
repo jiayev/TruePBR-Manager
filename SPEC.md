@@ -126,10 +126,34 @@ Primary references:
 - Textures are shared with NIF export — no separate landscape texture output
 - This is an additive option, not a separate type: the same set can serve both NIF and Landscape
 
-### 3.10 Known current limitations
+### 3.10 Localization
+
+- JSON-based translation system via `TranslationManager` singleton and `JsonTranslator` (subclass of `QTranslator`)
+- Translation files stored in `translations/` directory next to the executable (source-tree fallback for development builds)
+- Each JSON file declares `locale`, `name`, and a `translations` map keyed by fully-qualified class context (`"tpbr::ClassName"`)
+- Shipped languages: English (`en.json`), Simplified Chinese (`zh_CN.json`)
+- Automatic locale detection on startup using system language with Chinese-family fallback (`zh_CN`, `zh_TW`, `zh_HK` → `zh_CN`)
+- Runtime language switching from the menu bar; triggers `QEvent::LanguageChange` to retranslate all widgets
+- All translatable UI widgets implement `retranslateUi()` and `changeEvent()` overrides
+- Hot-reload: `QTimer`-based 2-second polling detects file changes and reloads translations without restart
+- Adding a new language requires only dropping a new `<locale>.json` file into the `translations/` directory
+
+### 3.11 Application settings persistence
+
+- `AppSettings` (singleton) persists project-independent preferences via `QSettings` in INI format
+- Settings file: `TruePBR-Manager.ini` next to the executable
+- Currently persisted settings:
+  - `General/language`: selected UI locale (restored on startup instead of re-detecting system language)
+  - `MainWindow/geometry`: window position and size
+  - `MainWindow/state`: toolbar and dock widget layout
+  - `Paths/lastProjectDir`: last directory used for open/save project dialogs
+  - `Paths/lastExportPath`: last used export folder
+- Window geometry and state are saved on close and restored on launch
+- Language preference is saved whenever the user switches language via the menu
+
+### 3.12 Known current limitations
 
 - No undo/redo
-- No localization support
 
 ## 4. Texture Slot Model
 
@@ -527,6 +551,7 @@ TruePBR-Manager/
 ├── SPEC.md
 ├── docs/
 ├── resources/
+├── translations/   JSON translation files (en.json, zh_CN.json)
 └── src/
     ├── app/
     ├── core/
@@ -546,6 +571,8 @@ Important implementation modules:
 - `core/ModExporter.*`: DDS and JSON export orchestration
 - `core/LandscapeExporter.*`: Landscape TXST JSON generation
 - `core/TextureSetValidator.*`: pre-export validation checks
+- `core/TranslationManager.*`: JSON-based i18n, locale detection, hot-reload
+- `core/AppSettings.*`: persistent application settings (INI format via QSettings)
 - `renderer/D3D12Renderer.*`: D3D12 GPU backend, double-buffered rendering
 - `renderer/D3D12UploadQueue.*`: async texture upload via copy queue
 - `renderer/DescriptorHeap.*`: descriptor heap allocation helper
@@ -645,4 +672,5 @@ Planned features not yet implemented:
 - [ ] Export progress bar (导出进度条)
 - [ ] Skip unchanged textures on export (导出跳过状态没有改变的已有贴图)
 - [ ] Undo/redo
-- [ ] Localization support
+- [ ] Persist 3D preview settings (camera, lighting, HDRI, render flags) in AppSettings
+- [ ] Recent projects list
