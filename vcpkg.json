@@ -1,12 +1,16 @@
 {
     "name": "truepbr-manager",
-    "version-string": "0.1.0",
+    "version-string": "0.1.1",
     "builtin-baseline": "389d14fa0e0692f36967e9eb5499e909317644d5",
     "dependencies": [
         {
             "name": "qtbase",
             "default-features": false,
-            "features": ["widgets", "png", "jpeg"]
+            "features": [
+                "widgets",
+                "png",
+                "jpeg"
+            ]
         },
         "nlohmann-json",
         "spdlog",

@@ -1,0 +1,68 @@
+name: Auto Tag on Version Bump
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'CMakeLists.txt'
+      - 'vcpkg.json'
+
+permissions:
+  contents: write
+
+jobs:
+  auto-tag:
+    name: Create Tag on Version Bump
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need full history to check existing tags
+
+      - name: Extract version from CMakeLists.txt
+        id: cmake_ver
+        run: |
+          ver=$(grep -oP 'project\(TruePBR-Manager\s+VERSION\s+\K[0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt)
+          echo "VERSION=$ver" >> "$GITHUB_OUTPUT"
+          echo "Detected CMake version: $ver"
+
+      - name: Extract version from vcpkg.json
+        id: vcpkg_ver
+        run: |
+          ver=$(python3 -c "import json; print(json.load(open('vcpkg.json'))['version-string'])")
+          echo "VERSION=$ver" >> "$GITHUB_OUTPUT"
+          echo "Detected vcpkg version: $ver"
+
+      - name: Verify versions are in sync
+        run: |
+          cmake_ver="${{ steps.cmake_ver.outputs.VERSION }}"
+          vcpkg_ver="${{ steps.vcpkg_ver.outputs.VERSION }}"
+          if [ "$cmake_ver" != "$vcpkg_ver" ]; then
+            echo "::error::Version mismatch! CMakeLists.txt=$cmake_ver, vcpkg.json=$vcpkg_ver"
+            exit 1
+          fi
+          echo "Versions are in sync: $cmake_ver"
+
+      - name: Check if tag already exists
+        id: check_tag
+        run: |
+          tag="v${{ steps.cmake_ver.outputs.VERSION }}"
+          if git rev-parse "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "EXISTS=true" >> "$GITHUB_OUTPUT"
+            echo "Tag $tag already exists, skipping."
+          else
+            echo "EXISTS=false" >> "$GITHUB_OUTPUT"
+            echo "Tag $tag does not exist, will create."
+          fi
+
+      - name: Create and push tag
+        if: steps.check_tag.outputs.EXISTS == 'false'
+        run: |
+          tag="v${{ steps.cmake_ver.outputs.VERSION }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$tag" -m "Release $tag"
+          git push origin "$tag"

@@ -37,10 +37,30 @@ jobs:
         with:
           msg: "style: auto-fix pre-commit issues"
 
+  version-sync:
+    name: Verify Version Sync
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check CMakeLists.txt and vcpkg.json versions match
+        run: |
+          cmake_ver=$(grep -oP 'project\(TruePBR-Manager\s+VERSION\s+\K[0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt)
+          vcpkg_ver=$(python3 -c "import json; print(json.load(open('vcpkg.json'))['version-string'])")
+          echo "CMakeLists.txt version: $cmake_ver"
+          echo "vcpkg.json version:     $vcpkg_ver"
+          if [ "$cmake_ver" != "$vcpkg_ver" ]; then
+            echo "::error::Version mismatch! CMakeLists.txt=$cmake_ver, vcpkg.json=$vcpkg_ver. Run: python scripts/bump_version.py <new_version>"
+            exit 1
+          fi
+          echo "Versions are in sync."
+
   build-windows:
     name: Windows Build
     runs-on: windows-latest
-    needs: prek
+    needs: [prek, version-sync]
 
     steps:
       - name: Checkout
