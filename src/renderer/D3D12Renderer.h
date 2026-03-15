@@ -187,6 +187,12 @@ class D3D12Renderer
     /// Set the peak brightness in nits. 0 = use display-reported maximum.
     void setPeakBrightnessNits(float nits);
 
+    /// Set exposure compensation in EV (exposure value). 0 = no change, +1 = 2× brighter.
+    void setExposure(float ev);
+
+    /// Get current exposure compensation in EV.
+    float getExposure() const { return m_exposureEV; }
+
     /// Returns true if HDR output is currently active.
     bool isHDREnabled() const { return m_hdrEnabled; }
 
@@ -297,6 +303,7 @@ class D3D12Renderer
     bool m_hdrEnabled = false;
     float m_paperWhiteNits = 200.0f;
     float m_peakBrightnessNits = 0.0f;  // 0 = use display max
+    float m_exposureEV = 0.0f;          // Exposure compensation in EV
     HDRDisplayInfo m_hdrInfo;
 
     // Descriptor heaps

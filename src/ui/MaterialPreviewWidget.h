@@ -53,6 +53,7 @@ class MaterialPreviewWidget : public QWidget
     void setHDREnabled(bool enabled);
     void setPaperWhiteNits(float nits);
     void setPeakBrightnessNits(float nits);
+    void setExposure(float ev);
     bool isHDREnabled() const;
     bool isVSyncEnabled() const;
 

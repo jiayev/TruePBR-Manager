@@ -217,6 +217,12 @@ void MaterialPreviewWidget::setPeakBrightnessNits(float nits)
         m_renderer->setPeakBrightnessNits(nits);
 }
 
+void MaterialPreviewWidget::setExposure(float ev)
+{
+    if (m_renderer)
+        m_renderer->setExposure(ev);
+}
+
 bool MaterialPreviewWidget::isHDREnabled() const
 {
     return m_renderer ? m_renderer->isHDREnabled() : false;

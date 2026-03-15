@@ -255,6 +255,18 @@ void MainWindow::setupCentralWidget()
     m_lightColorBtn->setStyleSheet("QPushButton { background: #ffffff; border: 1px solid #888; }");
     controlLayout->addWidget(m_lightColorBtn);
 
+    controlLayout->addWidget(new QLabel(tr("EV:"), m_3dControlBar));
+
+    m_exposureSlider = new QSlider(Qt::Horizontal, m_3dControlBar);
+    m_exposureSlider->setRange(-30, 30);
+    m_exposureSlider->setValue(0); // default 0.0 EV
+    m_exposureSlider->setToolTip(tr("Exposure Compensation (EV)"));
+    controlLayout->addWidget(m_exposureSlider, 1);
+
+    m_exposureLabel = new QLabel("0.0", m_3dControlBar);
+    m_exposureLabel->setFixedWidth(32);
+    controlLayout->addWidget(m_exposureLabel);
+
     m_3dControlBar->setVisible(false);
     previewLayout->addWidget(m_3dControlBar);
 
@@ -391,6 +403,14 @@ void MainWindow::setupCentralWidget()
                 float intensity = static_cast<float>(value) / 10.0f;
                 m_lightIntensityLabel->setText(QString::number(intensity, 'f', 1));
                 m_materialPreview->setLightIntensity(intensity);
+            });
+
+    connect(m_exposureSlider, &QSlider::valueChanged, this,
+            [this](int value)
+            {
+                float ev = static_cast<float>(value) / 10.0f;
+                m_exposureLabel->setText(QString::number(ev, 'f', 1));
+                m_materialPreview->setExposure(ev);
             });
 
     connect(m_lightColorBtn, &QPushButton::clicked, this,

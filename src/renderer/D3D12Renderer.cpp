@@ -2158,12 +2158,12 @@ void D3D12Renderer::render()
         uint32_t hdrEnabled;
         float paperWhiteNits;
         float peakBrightnessNits;
-        float _pad;
+        float exposureEV;
     } tmCB;
     tmCB.hdrEnabled = m_hdrEnabled ? 1 : 0;
     tmCB.paperWhiteNits = m_paperWhiteNits;
     tmCB.peakBrightnessNits = effectivePeakNits();
-    tmCB._pad = 0.0f;
+    tmCB.exposureEV = m_exposureEV;
     m_commandList->SetGraphicsRoot32BitConstants(0, 4, &tmCB, 0);
 
     // SRV table: t0 = resolved color source
@@ -2563,6 +2563,11 @@ void D3D12Renderer::setPaperWhiteNits(float nits)
 void D3D12Renderer::setPeakBrightnessNits(float nits)
 {
     m_peakBrightnessNits = std::max(nits, 0.0f); // 0 = use display max
+}
+
+void D3D12Renderer::setExposure(float ev)
+{
+    m_exposureEV = std::clamp(ev, -5.0f, 5.0f);
 }
 
 void D3D12Renderer::rebuildSwapChainAndPSO()

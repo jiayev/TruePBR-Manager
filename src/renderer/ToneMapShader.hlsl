@@ -8,7 +8,7 @@ cbuffer ToneMapCB : register(b0)
     uint   g_HDREnabled;
     float  g_PaperWhiteNits;
     float  g_PeakBrightnessNits;
-    float  _pad0;
+    float  g_ExposureEV;
 };
 
 // ─── Textures & Samplers ───────────────────────────────────
@@ -47,6 +47,7 @@ float4 ToneMapPS(VSOutput input) : SV_TARGET
 {
     float4 hdr = g_HDRColor.Sample(g_PointSampler, input.uv);
     float3 color = max(hdr.rgb, float3(0, 0, 0));
+    color *= exp2(g_ExposureEV);
 
     [branch] if (g_HDREnabled)
     {
