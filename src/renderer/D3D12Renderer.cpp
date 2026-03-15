@@ -1465,6 +1465,12 @@ void D3D12Renderer::setLightIntensity(float intensity)
     m_lightIntensity = intensity;
 }
 
+void D3D12Renderer::unloadIBL()
+{
+    m_iblLoaded = false;
+    m_iblIntensity = 1.0f;
+}
+
 void D3D12Renderer::setIBLIntensity(float intensity)
 {
     m_iblIntensity = intensity;

@@ -153,6 +153,12 @@ bool MaterialPreviewWidget::loadIBL(const std::filesystem::path& hdriPath)
     return false;
 }
 
+void MaterialPreviewWidget::unloadIBL()
+{
+    if (m_renderer)
+        m_renderer->unloadIBL();
+}
+
 void MaterialPreviewWidget::setIBLIntensity(float intensity)
 {
     if (m_renderer)

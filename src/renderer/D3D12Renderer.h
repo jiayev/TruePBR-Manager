@@ -156,6 +156,9 @@ class D3D12Renderer
     /// Load IBL environment from file. Processes HDRI via GPU compute shaders.
     bool loadIBL(const std::filesystem::path& hdriPath);
 
+    /// Unload the current IBL environment, reverting to default background.
+    void unloadIBL();
+
     /// Set IBL intensity (0 = disabled, default 1.0 when IBL loaded).
     void setIBLIntensity(float intensity);
 

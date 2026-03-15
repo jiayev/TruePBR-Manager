@@ -507,7 +507,7 @@ void MainWindow::setupCentralWidget()
                 QString path = m_hdriCombo->itemData(index).toString();
                 if (path.isEmpty())
                 {
-                    m_materialPreview->setIBLIntensity(0);
+                    m_materialPreview->unloadIBL();
                     statusBar()->showMessage(tr("IBL disabled"));
                 }
                 else

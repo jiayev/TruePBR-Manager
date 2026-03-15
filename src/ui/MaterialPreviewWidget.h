@@ -36,6 +36,9 @@ class MaterialPreviewWidget : public QWidget
     /// Load an IBL environment from an HDRI file.
     bool loadIBL(const std::filesystem::path& hdriPath);
 
+    /// Unload the current IBL environment.
+    void unloadIBL();
+
     /// Set IBL intensity.
     void setIBLIntensity(float intensity);
 
