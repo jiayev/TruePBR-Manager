@@ -24,6 +24,9 @@ struct IBLResult
     int prefilteredSize = 0;
     int prefilteredMipLevels = 0;
 
+    ComPtr<ID3D12Resource> skyboxCubemap; // Full-resolution intermediate cubemap for skybox display
+    int skyboxCubemapSize = 0;
+
     ComPtr<ID3D12Resource> brdfLut; // 2D R32G32_FLOAT
     int brdfLutSize = 0;
 
@@ -95,7 +98,7 @@ class IBLPipeline
     void runDiffuseIrradiance(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ID3D12Resource* cubemap,
                               ID3D12Resource* zh3OutBuf, int cubeSize, int cubeMipLevels, DescriptorHeap& heap);
 
-    /// Compute UE-aligned roughness for a given prefilter mip level.
+    /// Compute roughness for a given prefilter mip level.
     static float computeRoughnessFromMip(int mip, int maxMip);
 
     bool m_initialized = false;

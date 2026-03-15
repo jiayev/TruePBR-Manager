@@ -438,11 +438,13 @@ void MainWindow::setupCentralWidget()
 
     iblParamsLayout->addWidget(new QLabel(tr("Prefilter Res:"), iblParamsRow));
     m_iblResCombo = new QComboBox(iblParamsRow);
+    m_iblResCombo->addItem("32", 32);
     m_iblResCombo->addItem("64", 64);
     m_iblResCombo->addItem("128", 128);
     m_iblResCombo->addItem("256", 256);
     m_iblResCombo->addItem("512", 512);
-    m_iblResCombo->setCurrentIndex(2); // default 256
+    m_iblResCombo->addItem("1024", 1024);
+    m_iblResCombo->setCurrentIndex(3); // default 256
     m_iblResCombo->setToolTip(tr("Prefiltered cubemap face resolution"));
     iblParamsLayout->addWidget(m_iblResCombo);
 

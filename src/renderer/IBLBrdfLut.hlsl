@@ -3,7 +3,7 @@
 //
 // Visibility function: Smith height-correlated GGX (Heitz 2014)
 // Alpha mapping: a = roughness^2, a2 = roughness^4 (standard GGX remapping)
-// Aligned with UE PreIntegratedGF generation.
+// Generates the standard split-sum BRDF integration LUT.
 
 cbuffer BrdfLutCB : register(b0)
 {
@@ -56,7 +56,7 @@ void CSMain(uint3 dispatchID : SV_DispatchThreadID)
     V.y = 0;
     V.z = NdotV;
 
-    // Alpha mapping: a2 = roughness^4 (standard GGX remapping, matches UE)
+    // Alpha mapping: a2 = roughness^4 (standard GGX remapping)
     float a = roughness * roughness;
     float a2 = a * a;
 

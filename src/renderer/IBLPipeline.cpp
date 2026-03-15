@@ -377,7 +377,11 @@ IBLResult IBLPipeline::process(ID3D12Device* device, ID3D12CommandQueue* directQ
     executeAndWait(m_cmdList.Get(), directQueue, m_fence.Get(), m_fenceEvent, m_fenceValue);
 
     // ── 2. Create output resources ─────────────────────────
-    int cubemapSize = std::min(prefilteredSize * 2, 1024);
+    // Intermediate cubemap size: derived from HDRI source resolution, independent of prefilter size.
+    // equirectH covers 180° vertically, so each cube face (~90°) maps to roughly equirectH/2.
+    int cubemapSize = std::clamp(equirectH / 2, 256, 2048);
+    // Round down to nearest power of two for clean mip chains
+    cubemapSize = 1 << static_cast<int>(std::log2(cubemapSize));
 
     // Intermediate cubemap (equirect → cubemap): UAV writable, then SRV readable
     // Create with full mip chain for filtered importance sampling (firefly suppression)
@@ -431,7 +435,7 @@ IBLResult IBLPipeline::process(ID3D12Device* device, ID3D12CommandQueue* directQ
     m_cmdList->Reset(m_cmdAllocator.Get(), nullptr);
     runEquirectToCubemap(device, m_cmdList.Get(), equirectTex.Get(), cubemapTex.Get(), cubemapSize, computeHeap);
 
-    // Generate mip chain for the intermediate cubemap (wide 9-tap filter, UE-aligned)
+    // Generate mip chain for the intermediate cubemap (wide 9-tap filter)
     // This function handles all per-subresource transitions internally.
     // On return, all subresources are in NON_PIXEL_SHADER_RESOURCE state.
     runCubemapMipGen(device, m_cmdList.Get(), cubemapTex.Get(), cubemapSize, cubemapMipCount, computeHeap);
@@ -480,8 +484,19 @@ IBLResult IBLPipeline::process(ID3D12Device* device, ID3D12CommandQueue* directQ
     barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     m_cmdList->ResourceBarrier(1, &barrier);
 
+    // Transition intermediate cubemap (NON_PIXEL_SHADER_RESOURCE → PIXEL_SHADER_RESOURCE) for skybox
+    barrier.Transition.pResource = cubemapTex.Get();
+    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+    m_cmdList->ResourceBarrier(1, &barrier);
+
     executeAndWait(m_cmdList.Get(), directQueue, m_fence.Get(), m_fenceEvent, m_fenceValue);
     spdlog::info("IBLPipeline: prefilter done ({}x{}, {} mips)", prefilteredSize, prefilteredSize, maxMips);
+
+    // Save intermediate cubemap for skybox display
+    result.skyboxCubemap = std::move(cubemapTex);
+    result.skyboxCubemapSize = cubemapSize;
 
     // Pass 4: BRDF LUT
     m_cmdAllocator->Reset();
@@ -636,12 +651,11 @@ void IBLPipeline::runDiffuseIrradiance(ID3D12Device* device, ID3D12GraphicsComma
 }
 
 // ═════════════════════════════════════════════════════════════
-// UE-aligned roughness ↔ mip mapping
+// Roughness ↔ mip mapping
 // ═════════════════════════════════════════════════════════════
 
 float IBLPipeline::computeRoughnessFromMip(int mip, int maxMip)
 {
-    // UE: ComputeReflectionCaptureRoughnessFromMip
     // REFLECTION_CAPTURE_ROUGHEST_MIP = 1
     // REFLECTION_CAPTURE_ROUGHNESS_MIP_SCALE = 1.2
     // LevelFrom1x1 = maxMip - 1 - mip
@@ -768,7 +782,7 @@ void IBLPipeline::runPrefilter(ID3D12Device* device, ID3D12GraphicsCommandList* 
         if (groups == 0)
             groups = 1;
 
-        // Adaptive sample count (UE-aligned):
+        // Adaptive sample count:
         //   roughness < 0.01: mirror copy (handled in shader, sampleCount unused)
         //   roughness < 0.1:  32 samples
         //   roughness > 0.99: cosine hemisphere (handled in shader)
@@ -824,7 +838,7 @@ void IBLPipeline::runPrefilter(ID3D12Device* device, ID3D12GraphicsCommandList* 
 }
 
 // ═══════════════════════════════════════════════════════════
-// Cubemap Mip Generation (wide 9-tap filter, UE-aligned)
+// Cubemap Mip Generation (wide 9-tap filter)
 // ═══════════════════════════════════════════════════════════
 
 void IBLPipeline::runCubemapMipGen(ID3D12Device* device, ID3D12GraphicsCommandList* cmdList, ID3D12Resource* cubemap,

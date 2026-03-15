@@ -1,5 +1,5 @@
 // Skybox shader — renders HDRI environment as background
-// Full-screen triangle from SV_VertexID, samples prefiltered cubemap at mip 0
+// Full-screen triangle from SV_VertexID, samples full-resolution cubemap
 
 // ─── Constant Buffer (must match SceneCB layout in PBRShader.hlsl) ─────
 
@@ -29,7 +29,7 @@ cbuffer SceneCB : register(b0)
 
 // ─── Textures & Samplers ───────────────────────────────────
 
-TextureCube g_PrefilteredMap : register(t3);
+TextureCube g_SkyboxMap : register(t9);
 SamplerState g_Sampler : register(s0);
 
 // ─── Structures ────────────────────────────────────────────
@@ -73,7 +73,7 @@ float4 SkyboxPS(SkyboxOutput input) : SV_TARGET
     float sn = sin(g_EnvRotation);
     dir = float3(cs * dir.x + sn * dir.z, dir.y, -sn * dir.x + cs * dir.z);
 
-    float3 color = g_PrefilteredMap.SampleLevel(g_Sampler, dir, 0).rgb;
+    float3 color = g_SkyboxMap.SampleLevel(g_Sampler, dir, 0).rgb;
     color *= g_IBLIntensity;
 
     // Tone mapping & output

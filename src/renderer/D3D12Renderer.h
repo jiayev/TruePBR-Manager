@@ -288,8 +288,8 @@ class D3D12Renderer
     DescriptorHeap m_srvHeap; // Shader-visible, CBV/SRV/UAV
 
     // SRV slot indices within m_srvHeap
-    // SRV slots: diffuse, normal, rmaos, prefiltered, brdfLut, emissive, feat0, feat1, glintNoise
-    static constexpr uint32_t SRVCount = 9;
+    // SRV slots: diffuse, normal, rmaos, prefiltered, brdfLut, emissive, feat0, feat1, glintNoise, skyboxCubemap
+    static constexpr uint32_t SRVCount = 10;
     uint32_t m_srvBaseIndex = 0; // First SRV slot index in heap
 
     // Depth
@@ -300,6 +300,7 @@ class D3D12Renderer
 
     // IBL resources
     ComPtr<ID3D12Resource> m_prefilteredCubemap;
+    ComPtr<ID3D12Resource> m_skyboxCubemap;
     ComPtr<ID3D12Resource> m_brdfLut;
     bool m_iblLoaded = false;
     float m_iblIntensity = 1.0f;

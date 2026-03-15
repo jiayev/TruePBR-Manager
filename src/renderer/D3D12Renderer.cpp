@@ -973,6 +973,13 @@ void D3D12Renderer::createDefaultIBL()
         std::vector<float> faces[6] = {face, face, face, face, face, face};
         uploadCubemap(3, m_prefilteredCubemap, faces, 1, 1);
     }
+    // Skybox: 1x1 dark grey dummy cubemap (slot 9)
+    {
+        float pref[] = {0.02f, 0.02f, 0.02f, 1.0f};
+        std::vector<float> face(pref, pref + 4);
+        std::vector<float> faces[6] = {face, face, face, face, face, face};
+        uploadCubemap(9, m_skyboxCubemap, faces, 1, 1);
+    }
     // BRDF LUT: default (0.5, 0.0)
     {
         float lut[] = {0.5f, 0.0f};
@@ -1735,6 +1742,7 @@ bool D3D12Renderer::loadIBL(const std::filesystem::path& hdriPath)
             // Transfer ownership and create SRVs
             std::memcpy(m_zh3Data, ibl.zh3Data, sizeof(m_zh3Data));
             m_prefilteredCubemap = std::move(ibl.prefilteredCubemap);
+            m_skyboxCubemap = std::move(ibl.skyboxCubemap);
             m_brdfLut = std::move(ibl.brdfLut);
             m_maxPrefilteredMip = ibl.prefilteredMipLevels - 1;
 
@@ -1754,6 +1762,15 @@ bool D3D12Renderer::loadIBL(const std::filesystem::path& hdriPath)
             lutSrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
             lutSrvDesc.Texture2D.MipLevels = 1;
             m_device->CreateShaderResourceView(m_brdfLut.Get(), &lutSrvDesc, m_srvHeap.cpuHandle(m_srvBaseIndex + 4));
+
+            // Create cubemap SRV for skybox (slot 9)
+            D3D12_SHADER_RESOURCE_VIEW_DESC skySrvDesc{};
+            skySrvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+            skySrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
+            skySrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            skySrvDesc.TextureCube.MipLevels = 1;
+            m_device->CreateShaderResourceView(m_skyboxCubemap.Get(), &skySrvDesc,
+                                               m_srvHeap.cpuHandle(m_srvBaseIndex + 9));
 
             m_iblLoaded = true;
             m_iblIntensity = 1.0f;
@@ -1791,6 +1808,7 @@ void D3D12Renderer::setIBLParams(int prefilteredSize, int prefilterSamples)
             {
                 std::memcpy(m_zh3Data, ibl.zh3Data, sizeof(m_zh3Data));
                 m_prefilteredCubemap = std::move(ibl.prefilteredCubemap);
+                m_skyboxCubemap = std::move(ibl.skyboxCubemap);
                 m_brdfLut = std::move(ibl.brdfLut);
                 m_maxPrefilteredMip = ibl.prefilteredMipLevels - 1;
 
@@ -1809,6 +1827,15 @@ void D3D12Renderer::setIBLParams(int prefilteredSize, int prefilterSamples)
                 lutSrvDesc.Texture2D.MipLevels = 1;
                 m_device->CreateShaderResourceView(m_brdfLut.Get(), &lutSrvDesc,
                                                    m_srvHeap.cpuHandle(m_srvBaseIndex + 4));
+
+                // Update skybox cubemap SRV (slot 9)
+                D3D12_SHADER_RESOURCE_VIEW_DESC skySrvDesc{};
+                skySrvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+                skySrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
+                skySrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+                skySrvDesc.TextureCube.MipLevels = 1;
+                m_device->CreateShaderResourceView(m_skyboxCubemap.Get(), &skySrvDesc,
+                                                   m_srvHeap.cpuHandle(m_srvBaseIndex + 9));
 
                 spdlog::info("D3D12Renderer: IBL reprocessed (GPU, prefSize={}, samples={})", prefilteredSize,
                              prefilterSamples);

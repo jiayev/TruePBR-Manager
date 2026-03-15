@@ -281,7 +281,7 @@ namespace PBR
 				weights.diffuse += material.FuzzColor * material.FuzzWeight;
 			}
 
-			// Use LUT-based EnvBRDF with UE F90 handling
+			// Use LUT-based EnvBRDF with F90 handling
 			weights.specular = BRDF::EnvBRDF(material.F0, envBRDF_AB);
 
 			// Energy conservation: use integrated specular reflectance from EnvBRDF

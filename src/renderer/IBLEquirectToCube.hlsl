@@ -14,7 +14,7 @@ SamplerState g_LinearSampler : register(s0);
 
 static const float PI = 3.14159265359;
 
-// Get direction vector for a cubemap texel — D3D / UE standard convention.
+// Get direction vector for a cubemap texel — D3D standard convention.
 // Must match hardware TextureCube SRV face mapping so UAV writes and SRV reads are consistent.
 float3 cubemapDirection(uint face, float u, float v)
 {

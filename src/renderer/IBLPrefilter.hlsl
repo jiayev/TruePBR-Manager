@@ -1,9 +1,7 @@
 // IBLPrefilter.hlsl — Prefilter cubemap for specular IBL
-// Filtered importance sampling (Karis 2014)
-// Algorithm aligned with Epic Games / Unreal Engine ReflectionEnvironmentShaders.usf
-// All math functions used are standard public-domain algorithms.
+// Filtered importance sampling (Karis 2014, public-domain algorithms).
 //
-// Roughness per mip is computed by C++ using UE's heuristic:
+// Roughness per mip is computed by C++ using the heuristic:
 //   roughness = exp2((1.0 - (maxMip - 1 - mip)) / 1.2)
 // Sample counts are adaptive: 32 for rough, 64 for smooth surfaces.
 
@@ -12,7 +10,7 @@ cbuffer PrefilterCB : register(b0)
     uint g_FaceIndex;
     uint g_OutputSize;     // Output face resolution for this mip
     uint g_SampleCount;    // Number of importance samples (32 or 64, set by C++)
-    float g_Roughness;     // Roughness for this mip level (computed by C++ via UE heuristic)
+    float g_Roughness;     // Roughness for this mip level (computed by C++)
     uint g_InputSize;      // Input cubemap face resolution (mip 0)
 };
 
@@ -24,7 +22,7 @@ static const float PI = 3.14159265359;
 
 // ── Cubemap face direction ──────────────────────────────────
 
-// D3D / UE standard convention — matches hardware TextureCube SRV face mapping.
+// D3D standard convention — matches hardware TextureCube SRV face mapping.
 float3 cubemapDirection(uint face, float u, float v)
 {
     float3 dir;

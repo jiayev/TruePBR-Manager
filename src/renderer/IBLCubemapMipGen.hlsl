@@ -1,5 +1,4 @@
 // IBLCubemapMipGen.hlsl — Cubemap mip chain generation with wide 9-tap filter
-// Aligned with Unreal Engine DownsampleCS (ReflectionEnvironmentShaders.usf)
 // Uses TextureCube SampleLevel for hardware filtering and seamless cubemap edge handling.
 // Dispatch: (dstSize+7)/8, (dstSize+7)/8, 6
 
@@ -17,7 +16,7 @@ SamplerState g_LinearSampler : register(s0);
 
 float3 getCubeFaceDir(uint face, float u, float v)
 {
-    // u,v in [-1,1] — D3D / UE standard convention.
+    // u,v in [-1,1] — D3D standard convention.
     // Must match hardware TextureCube SRV face mapping.
     float3 dir;
     switch (face)
@@ -53,7 +52,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     // Offset scale: 2 texels wide in the face UV space at destination resolution
     float SampleOffset = 2.0 * 2.0 / float(g_DstSize);
 
-    // 8 surrounding offsets — UE pattern: 4 diagonals at 0.7 distance + 4 axis at 1.0
+    // 8 surrounding offsets: 4 diagonals at 0.7 distance + 4 axis at 1.0
     float2 Offsets[8] =
     {
         float2(-1, -1) * 0.7,

@@ -2,7 +2,7 @@
 // Single-pass compute shader replacing IBLProjectSH + IBLReduceSH.
 // Samples cubemap uniformly on the sphere, then reduces via shared memory.
 //
-// Algorithm aligned with UE ComputeSkyEnvMapDiffuseIrradianceCS:
+// Algorithm:
 //   - Uniform sphere sampling on cubemap (not equirect pixels)
 //   - Shared memory parallel reduction (256 threads)
 //   - ZH3 extraction with luminance zonal axis

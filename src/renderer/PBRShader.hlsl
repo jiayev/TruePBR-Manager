@@ -250,7 +250,7 @@ float4 PSMain(PSInput input) : SV_TARGET
     {
         float NdotV_ibl = saturate(dot(N, V));
 
-        // Sample BRDF LUT for EnvBRDF (UE PreIntegratedGF)
+        // Sample BRDF LUT for EnvBRDF (PreIntegratedGF)
         float2 envBRDF_AB = g_BRDFLut.SampleLevel(g_ClampSampler, float2(NdotV_ibl, roughness), 0).rg;
 
         PBR::IndirectLobeWeights lobes = PBR::GetIndirectLobeWeights(N, V, mat, g_FeatureFlags, envBRDF_AB);
@@ -291,8 +291,8 @@ float4 PSMain(PSInput input) : SV_TARGET
         // Specular IBL: use lobe weights from GetIndirectLobeWeights
         float3 R = reflect(-V, N);
         float3 Rr = float3(envCs * R.x + envSn * R.z, R.y, -envSn * R.x + envCs * R.z);
-        // UE roughness-to-mip mapping (log2 heuristic)
-        float specMip = g_MaxPrefilteredMip - 1.0 - (1.0 - 1.2 * log2(max(roughness, 0.001)));
+        // Roughness-to-mip mapping (log2 heuristic)
+        float specMip = g_MaxPrefilteredMip - 1.0 + 1.2 * log2(max(roughness, 0.001));
         specMip = clamp(specMip, 0, g_MaxPrefilteredMip);
         float3 prefilteredColor = g_PrefilteredMap.SampleLevel(g_Sampler, Rr, specMip).rgb;
         float3 iblSpecular = prefilteredColor * lobes.specular;
@@ -300,7 +300,7 @@ float4 PSMain(PSInput input) : SV_TARGET
         // Coat specular IBL (separate mip due to different roughness)
         [branch] if (g_FeatureFlags & PBR::Flags::TwoLayer)
         {
-            float coatMip = g_MaxPrefilteredMip - 1.0 - (1.0 - 1.2 * log2(max(mat.CoatRoughness, 0.001)));
+            float coatMip = g_MaxPrefilteredMip - 1.0 + 1.2 * log2(max(mat.CoatRoughness, 0.001));
             coatMip = clamp(coatMip, 0, g_MaxPrefilteredMip);
             float3 coatPref = g_PrefilteredMap.SampleLevel(g_Sampler, Rr, coatMip).rgb;
             iblSpecular += coatPref * lobes.coatSpecular;
