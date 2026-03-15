@@ -12,9 +12,21 @@ permissions:
   contents: read
 
 jobs:
+  prek:
+    name: Pre-commit Checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run prek
+        uses: j178/prek-action@v1
+
   build-windows:
     name: Windows Build
     runs-on: windows-latest
+    needs: prek
 
     steps:
       - name: Checkout
