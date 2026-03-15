@@ -11,10 +11,11 @@
 ///   tpbr::Log::init();       // call once at startup (Application.cpp)
 ///   tpbr::Log::shutdown();   // call at exit
 
-// Set compile-time active level so SPDLOG_DEBUG / SPDLOG_TRACE macros work.
-// In Release builds, change to SPDLOG_LEVEL_INFO to strip debug logs at compile time.
+// SPDLOG_ACTIVE_LEVEL is set by CMake compile definitions per build config:
+//   Debug   -> SPDLOG_LEVEL_TRACE (0)  – all macros active
+//   Release -> SPDLOG_LEVEL_INFO  (2)  – TRACE/DEBUG macros stripped
 #ifndef SPDLOG_ACTIVE_LEVEL
-#define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_DEBUG
+#define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_INFO
 #endif
 
 #include <spdlog/spdlog.h>

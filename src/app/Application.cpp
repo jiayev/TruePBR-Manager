@@ -23,11 +23,11 @@ Application::~Application()
 void Application::initLogging()
 {
 #ifdef NDEBUG
-    // Release: console at info, file at debug (for crash diagnosis)
-    Log::init(spdlog::level::info, spdlog::level::debug);
+    // Release: normal logging – console & file at info level
+    Log::init(spdlog::level::info, spdlog::level::info);
 #else
-    // Debug: console at debug, file at debug
-    Log::init(spdlog::level::debug, spdlog::level::debug);
+    // Debug: advanced logging – console at debug, file at trace
+    Log::init(spdlog::level::debug, spdlog::level::trace);
 #endif
 
     SPDLOG_INFO("TruePBR Manager v{}", m_app.applicationVersion().toStdString());

@@ -119,6 +119,10 @@ add_executable(TruePBR-Manager WIN32
 )
 
 # Find packages
+# vcpkg x64-windows only ships release libraries, so map Debug config
+# to Release for all imported targets to avoid missing *d.dll errors.
+set(CMAKE_MAP_IMPORTED_CONFIG_DEBUG Release RelWithDebInfo "")
+
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
@@ -148,6 +152,12 @@ if(WIN32)
         _UNICODE
     )
 endif()
+
+# Log level: Debug builds get trace-level macros, Release gets info-level only
+target_compile_definitions(TruePBR-Manager PRIVATE
+    $<$<CONFIG:Debug>:SPDLOG_ACTIVE_LEVEL=0>
+    $<$<NOT:$<CONFIG:Debug>>:SPDLOG_ACTIVE_LEVEL=2>
+)
 
 # --- Output directly to dist/ ---
 # Put exe and DLLs straight into dist/TruePBR-Manager/ so there's no
@@ -208,6 +218,7 @@ find_program(WINDEPLOYQT_EXECUTABLE windeployqt
 if(WINDEPLOYQT_EXECUTABLE)
     add_custom_command(TARGET TruePBR-Manager POST_BUILD
         COMMAND "${WINDEPLOYQT_EXECUTABLE}"
+            --release
             --no-compiler-runtime
             --no-translations
             --no-opengl-sw
@@ -380,6 +391,7 @@ if(TRUEPBR_PACK)
     if(WINDEPLOYQT_EXECUTABLE)
         list(APPEND _PACK_EXTRA_COMMANDS
             COMMAND "${WINDEPLOYQT_EXECUTABLE}"
+                --release
                 --no-compiler-runtime
                 --no-translations
                 --no-opengl-sw

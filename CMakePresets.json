@@ -12,25 +12,27 @@
             "binaryDir": "${sourceDir}/build",
             "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
             "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release",
                 "VCPKG_TARGET_TRIPLET": "x64-windows"
+            }
+        },
+        {
+            "name": "release",
+            "displayName": "Release (vcpkg, pack)",
+            "inherits": "default",
+            "cacheVariables": {
+                "TRUEPBR_PACK": "ON"
             }
         },
         {
             "name": "debug",
             "displayName": "Debug (vcpkg)",
-            "binaryDir": "${sourceDir}/build",
-            "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug",
-                "VCPKG_TARGET_TRIPLET": "x64-windows"
-            }
+            "inherits": "default"
         }
     ],
     "buildPresets": [
         {
             "name": "release",
-            "configurePreset": "default",
+            "configurePreset": "release",
             "configuration": "Release"
         },
         {
