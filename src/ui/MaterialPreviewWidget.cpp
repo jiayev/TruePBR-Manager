@@ -43,6 +43,12 @@ MaterialPreviewWidget::MaterialPreviewWidget(QWidget* parent) : QWidget(parent)
             {
                 if (m_renderer && m_renderer->isInitialized())
                 {
+                    if (m_renderer->isDeviceLost())
+                    {
+                        m_renderTimer->stop();
+                        spdlog::error("MaterialPreviewWidget: D3D12 device lost, stopping render timer");
+                        return;
+                    }
                     m_renderer->render();
                 }
             });

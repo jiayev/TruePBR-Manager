@@ -1046,6 +1046,12 @@ void D3D12Renderer::createDefaultIBL()
 
 void D3D12Renderer::uploadTexture(int texIndex, int srvIndex, const uint8_t* rgba, int w, int h, bool srgb)
 {
+    if (m_deviceLost)
+        return;
+
+    // Flush GPU before replacing texture — the GPU may still be referencing the old resource
+    flushGPU();
+
     const DXGI_FORMAT texFormat = srgb ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
 
     // Create texture resource on DEFAULT heap
@@ -1067,6 +1073,7 @@ void D3D12Renderer::uploadTexture(int texIndex, int srvIndex, const uint8_t* rgb
     if (FAILED(hr))
     {
         spdlog::error("uploadTexture: CreateCommittedResource failed: 0x{:08X}", static_cast<unsigned>(hr));
+        checkDeviceLost();
         return;
     }
 
@@ -1541,7 +1548,7 @@ void D3D12Renderer::setIBLIntensity(float intensity)
 
 void D3D12Renderer::resize(uint32_t width, uint32_t height)
 {
-    if (!m_initialized || width == 0 || height == 0)
+    if (!m_initialized || m_deviceLost || width == 0 || height == 0)
         return;
 
     flushGPU();
@@ -1924,7 +1931,7 @@ void D3D12Renderer::invalidateTAAHistory()
 
 void D3D12Renderer::render()
 {
-    if (!m_initialized || m_width == 0 || m_height == 0)
+    if (!m_initialized || m_deviceLost || m_width == 0 || m_height == 0)
         return;
 
     // Determine current frame context (double-buffered)
@@ -2231,7 +2238,12 @@ void D3D12Renderer::render()
     {
         const UINT syncInterval = m_vsyncEnabled ? 1 : 0;
         const UINT presentFlags = (!m_vsyncEnabled && m_tearingSupported) ? DXGI_PRESENT_ALLOW_TEARING : 0;
-        m_swapChain->Present(syncInterval, presentFlags);
+        HRESULT hr = m_swapChain->Present(syncInterval, presentFlags);
+        if (hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET)
+        {
+            checkDeviceLost();
+            return;
+        }
     }
 
     // Update TAA state for next frame
@@ -2252,6 +2264,9 @@ void D3D12Renderer::render()
 
 void D3D12Renderer::waitForFrame(uint32_t frameIndex)
 {
+    if (m_deviceLost)
+        return;
+
     auto& frame = m_frames[frameIndex];
     if (frame.fenceValue == 0)
         return; // Never been submitted
@@ -2265,17 +2280,23 @@ void D3D12Renderer::waitForFrame(uint32_t frameIndex)
         {
             spdlog::warn("D3D12Renderer::waitForFrame: fence {} not reached (completed={})", frame.fenceValue,
                          m_directFence->GetCompletedValue());
+            checkDeviceLost();
         }
     }
 }
 
 void D3D12Renderer::flushGPU()
 {
-    if (!m_directFence)
+    if (!m_directFence || m_deviceLost)
         return;
 
     ++m_directFenceValue;
-    m_directQueue->Signal(m_directFence.Get(), m_directFenceValue);
+    HRESULT hr = m_directQueue->Signal(m_directFence.Get(), m_directFenceValue);
+    if (FAILED(hr))
+    {
+        checkDeviceLost();
+        return;
+    }
 
     if (m_directFence->GetCompletedValue() < m_directFenceValue)
     {
@@ -2288,13 +2309,28 @@ void D3D12Renderer::flushGPU()
         m_uploadQueue->flush();
 }
 
+bool D3D12Renderer::checkDeviceLost()
+{
+    if (m_deviceLost)
+        return true;
+
+    HRESULT reason = m_device->GetDeviceRemovedReason();
+    if (reason != S_OK)
+    {
+        m_deviceLost = true;
+        spdlog::error("D3D12 device lost! Reason: 0x{:08X}", static_cast<unsigned>(reason));
+        return true;
+    }
+    return false;
+}
+
 // ═══════════════════════════════════════════════════════════
 // IBL Loading (CPU fallback — IBLPipeline GPU compute is optional)
 // ═══════════════════════════════════════════════════════════
 
 bool D3D12Renderer::loadIBL(const std::filesystem::path& hdriPath)
 {
-    if (!m_initialized)
+    if (!m_initialized || m_deviceLost)
         return false;
 
     // Load HDRI file to CPU float RGBA pixels

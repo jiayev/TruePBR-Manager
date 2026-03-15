@@ -212,6 +212,12 @@ class D3D12Renderer
         return m_initialized;
     }
 
+    /// Check if the D3D12 device has been lost.
+    bool isDeviceLost() const
+    {
+        return m_deviceLost;
+    }
+
     /// Get the D3D12 device (needed by IBLPipeline).
     ID3D12Device* device() const
     {
@@ -263,8 +269,12 @@ class D3D12Renderer
     void waitForFrame(uint32_t frameIndex);
     void flushGPU();
 
+    /// Check if device has been lost (DXGI_ERROR_DEVICE_REMOVED).
+    bool checkDeviceLost();
+
     // ── State ──────────────────────────────────────────────
     bool m_initialized = false;
+    bool m_deviceLost = false;
     uint64_t m_frameNumber = 0; // Monotonically increasing frame counter
 
     // Device & Factory
