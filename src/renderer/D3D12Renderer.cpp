@@ -120,6 +120,17 @@ bool D3D12Renderer::init(HWND hwnd, uint32_t width, uint32_t height)
         m_iblPipeline.reset();
     }
 
+    // Create intermediate render targets for TAA pipeline
+    if (!createIntermediateTargets(width, height))
+        return false;
+
+    // Create post-process pipelines (tone map + TAA)
+    if (!createPostProcessPipelines())
+        return false;
+
+    // Initialize previous view-projection to identity
+    DirectX::XMStoreFloat4x4(&m_prevViewProj, DirectX::XMMatrixIdentity());
+
     m_initialized = true;
     spdlog::info("D3D12Renderer initialized ({}x{})", width, height);
     return true;
@@ -297,8 +308,8 @@ bool D3D12Renderer::createSwapChain(HWND hwnd, uint32_t width, uint32_t height)
 
 bool D3D12Renderer::createRenderTargets()
 {
-    // RTV heap
-    if (!m_rtvHeap.create(m_device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_RTV, FrameCount))
+    // RTV heap: swap chain (FrameCount) + HDR color + velocity
+    if (!m_rtvHeap.create(m_device.Get(), D3D12_DESCRIPTOR_HEAP_TYPE_RTV, FrameCount + 2))
     {
         spdlog::error("Failed to create RTV heap");
         return false;
@@ -367,6 +378,7 @@ bool D3D12Renderer::createRootSignatureAndPSO()
         return false;
     }
     m_srvBaseIndex = m_srvHeap.allocate(SRVCount);
+    m_postProcessSrvBase = m_srvHeap.allocate(PostProcessSRVCount);
 
     // Root signature: 2 inline CBVs + 1 descriptor table (6 SRVs) + 2 static samplers
     D3D12_ROOT_PARAMETER rootParams[3] = {};
@@ -493,13 +505,15 @@ bool D3D12Renderer::createRootSignatureAndPSO()
     psoDesc.RasterizerState.FrontCounterClockwise = TRUE;
     psoDesc.RasterizerState.DepthClipEnable = TRUE;
     psoDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+    psoDesc.BlendState.RenderTarget[1].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
     psoDesc.DepthStencilState.DepthEnable = TRUE;
     psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
     psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
     psoDesc.SampleMask = UINT_MAX;
     psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-    psoDesc.NumRenderTargets = 1;
-    psoDesc.RTVFormats[0] = swapChainFormat();
+    psoDesc.NumRenderTargets = 2;
+    psoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT; // HDR color
+    psoDesc.RTVFormats[1] = DXGI_FORMAT_R16G16_FLOAT;       // velocity
     psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
     psoDesc.SampleDesc.Count = 1;
 
@@ -525,11 +539,13 @@ bool D3D12Renderer::createRootSignatureAndPSO()
         skyPso.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
         skyPso.RasterizerState.DepthClipEnable = FALSE;
         skyPso.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+        skyPso.BlendState.RenderTarget[1].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
         skyPso.DepthStencilState.DepthEnable = FALSE;
         skyPso.SampleMask = UINT_MAX;
         skyPso.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-        skyPso.NumRenderTargets = 1;
-        skyPso.RTVFormats[0] = swapChainFormat();
+        skyPso.NumRenderTargets = 2;
+        skyPso.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT; // HDR color
+        skyPso.RTVFormats[1] = DXGI_FORMAT_R16G16_FLOAT;       // velocity
         skyPso.DSVFormat = DXGI_FORMAT_D32_FLOAT;
         skyPso.SampleDesc.Count = 1;
 
@@ -601,13 +617,15 @@ bool D3D12Renderer::recreatePSOs()
         psoDesc.RasterizerState.FrontCounterClockwise = TRUE;
         psoDesc.RasterizerState.DepthClipEnable = TRUE;
         psoDesc.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+        psoDesc.BlendState.RenderTarget[1].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
         psoDesc.DepthStencilState.DepthEnable = TRUE;
         psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
         psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
         psoDesc.SampleMask = UINT_MAX;
         psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-        psoDesc.NumRenderTargets = 1;
-        psoDesc.RTVFormats[0] = swapChainFormat();
+        psoDesc.NumRenderTargets = 2;
+        psoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        psoDesc.RTVFormats[1] = DXGI_FORMAT_R16G16_FLOAT;
         psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
         psoDesc.SampleDesc.Count = 1;
 
@@ -634,17 +652,51 @@ bool D3D12Renderer::recreatePSOs()
         skyPso.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
         skyPso.RasterizerState.DepthClipEnable = FALSE;
         skyPso.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+        skyPso.BlendState.RenderTarget[1].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
         skyPso.DepthStencilState.DepthEnable = FALSE;
         skyPso.SampleMask = UINT_MAX;
         skyPso.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-        skyPso.NumRenderTargets = 1;
-        skyPso.RTVFormats[0] = swapChainFormat();
+        skyPso.NumRenderTargets = 2;
+        skyPso.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        skyPso.RTVFormats[1] = DXGI_FORMAT_R16G16_FLOAT;
         skyPso.DSVFormat = DXGI_FORMAT_D32_FLOAT;
         skyPso.SampleDesc.Count = 1;
 
         if (FAILED(m_device->CreateGraphicsPipelineState(&skyPso, IID_PPV_ARGS(&m_skyboxPSO))))
         {
             spdlog::error("Failed to recreate skybox PSO");
+            return false;
+        }
+    }
+
+    // ToneMap PSO (output format depends on HDR mode)
+    {
+        std::vector<uint8_t> tmVS, tmPS;
+        if (!loadCSO(shaderDir / "ToneMapShader_VS.cso", tmVS) ||
+            !loadCSO(shaderDir / "ToneMapShader_PS.cso", tmPS))
+        {
+            spdlog::error("Failed to load ToneMap shader CSOs during recreate");
+            return false;
+        }
+
+        D3D12_GRAPHICS_PIPELINE_STATE_DESC pso{};
+        pso.pRootSignature = m_postProcessRootSig.Get();
+        pso.VS = {tmVS.data(), tmVS.size()};
+        pso.PS = {tmPS.data(), tmPS.size()};
+        pso.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+        pso.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+        pso.RasterizerState.DepthClipEnable = FALSE;
+        pso.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+        pso.DepthStencilState.DepthEnable = FALSE;
+        pso.SampleMask = UINT_MAX;
+        pso.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+        pso.NumRenderTargets = 1;
+        pso.RTVFormats[0] = swapChainFormat();
+        pso.SampleDesc.Count = 1;
+
+        if (FAILED(m_device->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&m_toneMapPSO))))
+        {
+            spdlog::error("Failed to recreate ToneMap PSO");
             return false;
         }
     }
@@ -1497,6 +1549,7 @@ void D3D12Renderer::resize(uint32_t width, uint32_t height)
     for (auto& rt : m_renderTargets)
         rt.Reset();
     m_depthStencilBuffer.Reset();
+    destroyIntermediateTargets();
 
     m_swapChain->ResizeBuffers(FrameCount, width, height, swapChainFormat(), m_swapChainFlags);
     m_width = width;
@@ -1510,10 +1563,363 @@ void D3D12Renderer::resize(uint32_t width, uint32_t height)
     }
 
     createDepthStencil(width, height);
+    createIntermediateTargets(width, height);
 }
 
 // ═══════════════════════════════════════════════════════════
-// Render — proper double-buffered frame management
+// TAA / Post-process Infrastructure
+// ═══════════════════════════════════════════════════════════
+
+XMFLOAT2 D3D12Renderer::haltonJitter(uint32_t frameIndex)
+{
+    // Halton sequence (base 2 and base 3), 8-sample cycle, centered around 0
+    static constexpr float h2[] = {1.f / 2, 1.f / 4, 3.f / 4, 1.f / 8, 5.f / 8, 3.f / 8, 7.f / 8, 1.f / 16};
+    static constexpr float h3[] = {1.f / 3, 2.f / 3, 1.f / 9, 4.f / 9, 7.f / 9, 2.f / 9, 5.f / 9, 8.f / 9};
+    uint32_t i = frameIndex % 8;
+    return {h2[i] - 0.5f, h3[i] - 0.5f};
+}
+
+bool D3D12Renderer::createIntermediateTargets(uint32_t width, uint32_t height)
+{
+    m_hdrColorRtvIndex = FrameCount;     // RTV slot right after swap chain
+    m_velocityRtvIndex = FrameCount + 1;
+
+    D3D12_HEAP_PROPERTIES heapProps{};
+    heapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
+
+    // HDR Color buffer
+    {
+        D3D12_RESOURCE_DESC desc{};
+        desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        desc.Width = width;
+        desc.Height = height;
+        desc.DepthOrArraySize = 1;
+        desc.MipLevels = 1;
+        desc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        desc.SampleDesc.Count = 1;
+        desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+
+        D3D12_CLEAR_VALUE clearVal{};
+        clearVal.Format = desc.Format;
+
+        if (FAILED(m_device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc,
+                                                     D3D12_RESOURCE_STATE_RENDER_TARGET, &clearVal,
+                                                     IID_PPV_ARGS(&m_hdrColorBuffer))))
+        {
+            spdlog::error("Failed to create HDR color buffer");
+            return false;
+        }
+        m_device->CreateRenderTargetView(m_hdrColorBuffer.Get(), nullptr, m_rtvHeap.cpuHandle(m_hdrColorRtvIndex));
+    }
+
+    // Velocity buffer
+    {
+        D3D12_RESOURCE_DESC desc{};
+        desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        desc.Width = width;
+        desc.Height = height;
+        desc.DepthOrArraySize = 1;
+        desc.MipLevels = 1;
+        desc.Format = DXGI_FORMAT_R16G16_FLOAT;
+        desc.SampleDesc.Count = 1;
+        desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+
+        D3D12_CLEAR_VALUE clearVal{};
+        clearVal.Format = desc.Format;
+
+        if (FAILED(m_device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc,
+                                                     D3D12_RESOURCE_STATE_RENDER_TARGET, &clearVal,
+                                                     IID_PPV_ARGS(&m_velocityBuffer))))
+        {
+            spdlog::error("Failed to create velocity buffer");
+            return false;
+        }
+        m_device->CreateRenderTargetView(m_velocityBuffer.Get(), nullptr, m_rtvHeap.cpuHandle(m_velocityRtvIndex));
+    }
+
+    // TAA history buffers (2x ping-pong)
+    for (int i = 0; i < 2; i++)
+    {
+        D3D12_RESOURCE_DESC desc{};
+        desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        desc.Width = width;
+        desc.Height = height;
+        desc.DepthOrArraySize = 1;
+        desc.MipLevels = 1;
+        desc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        desc.SampleDesc.Count = 1;
+        desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+        if (FAILED(m_device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &desc,
+                                                     D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, nullptr,
+                                                     IID_PPV_ARGS(&m_taaHistory[i]))))
+        {
+            spdlog::error("Failed to create TAA history buffer {}", i);
+            return false;
+        }
+    }
+
+    // Create SRVs for post-process reads
+    {
+        D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        srvDesc.Texture2D.MipLevels = 1;
+
+        // [0] HDR color SRV
+        srvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        m_device->CreateShaderResourceView(m_hdrColorBuffer.Get(), &srvDesc,
+                                           m_srvHeap.cpuHandle(m_postProcessSrvBase + 0));
+
+        // [1] Velocity SRV
+        srvDesc.Format = DXGI_FORMAT_R16G16_FLOAT;
+        m_device->CreateShaderResourceView(m_velocityBuffer.Get(), &srvDesc,
+                                           m_srvHeap.cpuHandle(m_postProcessSrvBase + 1));
+
+        // [2..3] TAA history SRVs
+        srvDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        for (int i = 0; i < 2; i++)
+        {
+            m_device->CreateShaderResourceView(m_taaHistory[i].Get(), &srvDesc,
+                                               m_srvHeap.cpuHandle(m_postProcessSrvBase + 2 + i));
+        }
+    }
+
+    // Create UAVs for TAA history write
+    {
+        D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{};
+        uavDesc.Format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+
+        for (int i = 0; i < 2; i++)
+        {
+            m_device->CreateUnorderedAccessView(m_taaHistory[i].Get(), nullptr, &uavDesc,
+                                                m_srvHeap.cpuHandle(m_postProcessSrvBase + 4 + i));
+        }
+    }
+
+    m_taaHistoryIndex = 0;
+    m_taaHistoryValid = false;
+    spdlog::debug("Intermediate targets created ({}x{})", width, height);
+    return true;
+}
+
+void D3D12Renderer::destroyIntermediateTargets()
+{
+    m_hdrColorBuffer.Reset();
+    m_velocityBuffer.Reset();
+    m_taaHistory[0].Reset();
+    m_taaHistory[1].Reset();
+    m_taaHistoryValid = false;
+}
+
+bool D3D12Renderer::createPostProcessPipelines()
+{
+    // Locate shader directory
+    std::filesystem::path shaderDir;
+    {
+        wchar_t exePath[MAX_PATH] = {};
+        GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+        auto exeDir = std::filesystem::path(exePath).parent_path();
+        auto distDir = exeDir / "shaders";
+        if (std::filesystem::exists(distDir / "PBRShader_VS.cso"))
+            shaderDir = distDir;
+        else
+        {
+            auto srcDir = std::filesystem::path(__FILE__).parent_path();
+            shaderDir = srcDir;
+        }
+    }
+
+    auto loadCSO = [](const std::filesystem::path& path, std::vector<uint8_t>& outData) -> bool
+    {
+        std::ifstream file(path, std::ios::binary | std::ios::ate);
+        if (!file.is_open())
+        {
+            spdlog::error("Failed to open compiled shader: {}", path.string());
+            return false;
+        }
+        auto size = static_cast<size_t>(file.tellg());
+        outData.resize(size);
+        file.seekg(0);
+        file.read(reinterpret_cast<char*>(outData.data()), size);
+        return file.good();
+    };
+
+    // ── Tone-map root signature ────────────────────────────
+    {
+        D3D12_ROOT_PARAMETER params[2] = {};
+
+        // [0] Root constants: ToneMapCB (4 DWORDs)
+        params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+        params[0].Constants.ShaderRegister = 0;
+        params[0].Constants.Num32BitValues = 4;
+        params[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+        // [1] SRV table: 1 descriptor (t0 = resolved color)
+        D3D12_DESCRIPTOR_RANGE srvRange{};
+        srvRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+        srvRange.NumDescriptors = 1;
+        srvRange.BaseShaderRegister = 0;
+        params[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        params[1].DescriptorTable.NumDescriptorRanges = 1;
+        params[1].DescriptorTable.pDescriptorRanges = &srvRange;
+        params[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+        D3D12_STATIC_SAMPLER_DESC sampler{};
+        sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
+        sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        sampler.ShaderRegister = 0;
+        sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+        D3D12_ROOT_SIGNATURE_DESC rsDesc{};
+        rsDesc.NumParameters = 2;
+        rsDesc.pParameters = params;
+        rsDesc.NumStaticSamplers = 1;
+        rsDesc.pStaticSamplers = &sampler;
+
+        ComPtr<ID3DBlob> sigBlob, errBlob;
+        if (FAILED(D3D12SerializeRootSignature(&rsDesc, D3D_ROOT_SIGNATURE_VERSION_1, &sigBlob, &errBlob)))
+        {
+            spdlog::error("ToneMap root signature serialization failed: {}",
+                          errBlob ? (char*)errBlob->GetBufferPointer() : "unknown");
+            return false;
+        }
+        m_device->CreateRootSignature(0, sigBlob->GetBufferPointer(), sigBlob->GetBufferSize(),
+                                      IID_PPV_ARGS(&m_postProcessRootSig));
+    }
+
+    // ── TAA compute root signature ─────────────────────────
+    {
+        D3D12_ROOT_PARAMETER params[4] = {};
+
+        // [0] Root constants: TAACBuffer (4 DWORDs)
+        params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+        params[0].Constants.ShaderRegister = 0;
+        params[0].Constants.Num32BitValues = 4;
+        params[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+        // [1] SRV table: 2 descriptors (t0=currentColor, t1=velocity)
+        D3D12_DESCRIPTOR_RANGE srvRange0{};
+        srvRange0.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+        srvRange0.NumDescriptors = 2;
+        srvRange0.BaseShaderRegister = 0;
+        params[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        params[1].DescriptorTable.NumDescriptorRanges = 1;
+        params[1].DescriptorTable.pDescriptorRanges = &srvRange0;
+        params[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+        // [2] SRV table: 1 descriptor (t2=historyColor)
+        D3D12_DESCRIPTOR_RANGE srvRange1{};
+        srvRange1.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+        srvRange1.NumDescriptors = 1;
+        srvRange1.BaseShaderRegister = 2;
+        params[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        params[2].DescriptorTable.NumDescriptorRanges = 1;
+        params[2].DescriptorTable.pDescriptorRanges = &srvRange1;
+        params[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+        // [3] UAV table: 1 descriptor (u0=output)
+        D3D12_DESCRIPTOR_RANGE uavRange{};
+        uavRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+        uavRange.NumDescriptors = 1;
+        uavRange.BaseShaderRegister = 0;
+        params[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        params[3].DescriptorTable.NumDescriptorRanges = 1;
+        params[3].DescriptorTable.pDescriptorRanges = &uavRange;
+        params[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+        D3D12_STATIC_SAMPLER_DESC sampler{};
+        sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+        sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        sampler.ShaderRegister = 0;
+        sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+        D3D12_ROOT_SIGNATURE_DESC rsDesc{};
+        rsDesc.NumParameters = 4;
+        rsDesc.pParameters = params;
+        rsDesc.NumStaticSamplers = 1;
+        rsDesc.pStaticSamplers = &sampler;
+
+        ComPtr<ID3DBlob> sigBlob, errBlob;
+        if (FAILED(D3D12SerializeRootSignature(&rsDesc, D3D_ROOT_SIGNATURE_VERSION_1, &sigBlob, &errBlob)))
+        {
+            spdlog::error("TAA compute root signature serialization failed: {}",
+                          errBlob ? (char*)errBlob->GetBufferPointer() : "unknown");
+            return false;
+        }
+        m_device->CreateRootSignature(0, sigBlob->GetBufferPointer(), sigBlob->GetBufferSize(),
+                                      IID_PPV_ARGS(&m_taaComputeRootSig));
+    }
+
+    // ── ToneMap PSO (fullscreen triangle) ──────────────────
+    {
+        std::vector<uint8_t> vsData, psData;
+        if (!loadCSO(shaderDir / "ToneMapShader_VS.cso", vsData) ||
+            !loadCSO(shaderDir / "ToneMapShader_PS.cso", psData))
+        {
+            spdlog::error("Failed to load ToneMap shader CSOs");
+            return false;
+        }
+
+        D3D12_GRAPHICS_PIPELINE_STATE_DESC pso{};
+        pso.pRootSignature = m_postProcessRootSig.Get();
+        pso.VS = {vsData.data(), vsData.size()};
+        pso.PS = {psData.data(), psData.size()};
+        pso.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+        pso.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+        pso.RasterizerState.DepthClipEnable = FALSE;
+        pso.BlendState.RenderTarget[0].RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+        pso.DepthStencilState.DepthEnable = FALSE;
+        pso.SampleMask = UINT_MAX;
+        pso.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+        pso.NumRenderTargets = 1;
+        pso.RTVFormats[0] = swapChainFormat();
+        pso.SampleDesc.Count = 1;
+
+        if (FAILED(m_device->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&m_toneMapPSO))))
+        {
+            spdlog::error("Failed to create ToneMap PSO");
+            return false;
+        }
+    }
+
+    // ── TAA Resolve PSO (compute) ──────────────────────────
+    {
+        std::vector<uint8_t> csData;
+        if (!loadCSO(shaderDir / "TAAResolve.cso", csData))
+        {
+            spdlog::error("Failed to load TAAResolve.cso");
+            return false;
+        }
+
+        D3D12_COMPUTE_PIPELINE_STATE_DESC pso{};
+        pso.pRootSignature = m_taaComputeRootSig.Get();
+        pso.CS = {csData.data(), csData.size()};
+
+        if (FAILED(m_device->CreateComputePipelineState(&pso, IID_PPV_ARGS(&m_taaResolvePSO))))
+        {
+            spdlog::error("Failed to create TAA Resolve PSO");
+            return false;
+        }
+    }
+
+    spdlog::debug("Post-process pipelines created");
+    return true;
+}
+
+void D3D12Renderer::invalidateTAAHistory()
+{
+    m_taaHistoryValid = false;
+    m_taaHistoryIndex = 0;
+}
+
+// ═══════════════════════════════════════════════════════════
+// Render — multi-pass: Scene (MRT) → TAA Resolve → ToneMap
 // ═══════════════════════════════════════════════════════════
 
 void D3D12Renderer::render()
@@ -1532,7 +1938,12 @@ void D3D12Renderer::render()
     frame.commandAllocator->Reset();
     m_commandList->Reset(frame.commandAllocator.Get(), m_pipelineState.Get());
 
-    // 3. Update this frame's constant buffers
+    // 3. Compute TAA jitter (convert sub-pixel offset to NDC)
+    XMFLOAT2 jitter = haltonJitter(static_cast<uint32_t>(m_frameNumber));
+    jitter.x *= 2.0f / static_cast<float>(m_width);
+    jitter.y *= -2.0f / static_cast<float>(m_height);
+
+    // 4. Update this frame's constant buffers
     float aspect = static_cast<float>(m_width) / static_cast<float>(m_height);
     float camX = m_distance * std::cos(m_elevation) * std::sin(m_azimuth);
     float camY = m_distance * std::sin(m_elevation);
@@ -1559,7 +1970,7 @@ void D3D12Renderer::render()
     frame.sceneCBMapped->lightIntensity = m_lightIntensity;
     frame.sceneCBMapped->iblIntensity = m_iblLoaded ? m_iblIntensity : 0.0f;
     frame.sceneCBMapped->maxPrefilteredMip = static_cast<float>(m_maxPrefilteredMip);
-    frame.sceneCBMapped->frameCount = 0; // Fixed: no TAA, so keep glint noise stable across frames
+    frame.sceneCBMapped->frameCount = static_cast<uint32_t>(m_frameNumber);
     frame.sceneCBMapped->envRotation = m_envRotation;
     for (int i = 0; i < 5; i++)
     {
@@ -1568,6 +1979,10 @@ void D3D12Renderer::render()
     frame.sceneCBMapped->hdrEnabled = m_hdrEnabled ? 1 : 0;
     frame.sceneCBMapped->paperWhiteNits = m_paperWhiteNits;
     frame.sceneCBMapped->peakBrightnessNits = effectivePeakNits();
+
+    // TAA parameters
+    frame.sceneCBMapped->prevViewProj = m_prevViewProj;
+    frame.sceneCBMapped->jitterOffset = jitter;
 
     frame.materialCBMapped->specularLevel = m_specularLevel;
     frame.materialCBMapped->roughnessScale = m_roughnessScale;
@@ -1586,25 +2001,19 @@ void D3D12Renderer::render()
     frame.materialCBMapped->glintMicrofacetRoughness = m_glintMicrofacetRoughness;
     frame.materialCBMapped->glintDensityRandomization = m_glintDensityRandomization;
 
-    // 4. Record commands
-    UINT backBufferIdx = m_swapChain->GetCurrentBackBufferIndex();
-
-    // Transition RT to render target
-    D3D12_RESOURCE_BARRIER barrier{};
-    barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    barrier.Transition.pResource = m_renderTargets[backBufferIdx].Get();
-    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
-    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
-    m_commandList->ResourceBarrier(1, &barrier);
-
-    auto rtvHandle = m_rtvHeap.cpuHandle(backBufferIdx);
+    // 5. Record commands — Scene pass (HDR color + velocity MRT)
+    auto hdrRtv = m_rtvHeap.cpuHandle(m_hdrColorRtvIndex);
+    auto velRtv = m_rtvHeap.cpuHandle(m_velocityRtvIndex);
     auto dsvHandle = m_dsvHeap.cpuHandle(0);
 
-    float clearColor[] = {0.15f, 0.15f, 0.15f, 1.0f};
-    m_commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+    float clearColor[] = {0.0f, 0.0f, 0.0f, 0.0f};
+    float clearVel[] = {0.0f, 0.0f, 0.0f, 0.0f};
+    m_commandList->ClearRenderTargetView(hdrRtv, clearColor, 0, nullptr);
+    m_commandList->ClearRenderTargetView(velRtv, clearVel, 0, nullptr);
     m_commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
-    m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
+    D3D12_CPU_DESCRIPTOR_HANDLE mrtHandles[] = {hdrRtv, velRtv};
+    m_commandList->OMSetRenderTargets(2, mrtHandles, FALSE, &dsvHandle);
 
     D3D12_VIEWPORT viewport{0, 0, static_cast<float>(m_width), static_cast<float>(m_height), 0, 1};
     D3D12_RECT scissor{0, 0, static_cast<LONG>(m_width), static_cast<LONG>(m_height)};
@@ -1638,28 +2047,151 @@ void D3D12Renderer::render()
     m_commandList->IASetIndexBuffer(&m_indexBufferView);
     m_commandList->DrawIndexedInstanced(m_indexCount, 1, 0, 0, 0);
 
-    // Transition RT to present
-    barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-    barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
-    m_commandList->ResourceBarrier(1, &barrier);
+    // 6. TAA Resolve (compute pass)
+    uint32_t writeIdx = m_taaHistoryIndex;
+    uint32_t readIdx = 1 - writeIdx;
+
+    // Barrier batch 1: scene targets to SRV, TAA write target to UAV
+    {
+        D3D12_RESOURCE_BARRIER barriers[3] = {};
+        barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barriers[0].Transition.pResource = m_hdrColorBuffer.Get();
+        barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barriers[1].Transition.pResource = m_velocityBuffer.Get();
+        barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        barriers[2].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barriers[2].Transition.pResource = m_taaHistory[writeIdx].Get();
+        barriers[2].Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        barriers[2].Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        m_commandList->ResourceBarrier(3, barriers);
+    }
+
+    // Set TAA compute root signature and dispatch
+    m_commandList->SetComputeRootSignature(m_taaComputeRootSig.Get());
+    m_commandList->SetDescriptorHeaps(1, heaps);
+
+    // Root constants: {width, height, blendFactor, isFirstFrame}
+    struct TAAConstants
+    {
+        uint32_t width;
+        uint32_t height;
+        float blendFactor;
+        uint32_t isFirstFrame;
+    } taaCB;
+    taaCB.width = m_width;
+    taaCB.height = m_height;
+    taaCB.blendFactor = 0.1f;
+    taaCB.isFirstFrame = m_taaHistoryValid ? 0 : 1;
+    m_commandList->SetComputeRoot32BitConstants(0, 4, &taaCB, 0);
+
+    // SRV table: t0=hdrColor, t1=velocity (contiguous at postProcessSrvBase)
+    m_commandList->SetComputeRootDescriptorTable(1, m_srvHeap.gpuHandle(m_postProcessSrvBase));
+    // SRV table: t2=history read
+    m_commandList->SetComputeRootDescriptorTable(2, m_srvHeap.gpuHandle(m_postProcessSrvBase + 2 + readIdx));
+    // UAV table: u0=history write
+    m_commandList->SetComputeRootDescriptorTable(3, m_srvHeap.gpuHandle(m_postProcessSrvBase + 4 + writeIdx));
+
+    m_commandList->SetPipelineState(m_taaResolvePSO.Get());
+    UINT dispatchX = (m_width + 7) / 8;
+    UINT dispatchY = (m_height + 7) / 8;
+    m_commandList->Dispatch(dispatchX, dispatchY, 1);
+
+    // 7. Barrier batch 2: TAA write → PS SRV, swap chain → RT
+    UINT backBufferIdx = m_swapChain->GetCurrentBackBufferIndex();
+    {
+        D3D12_RESOURCE_BARRIER barriers[2] = {};
+        barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barriers[0].Transition.pResource = m_taaHistory[writeIdx].Get();
+        barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barriers[1].Transition.pResource = m_renderTargets[backBufferIdx].Get();
+        barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
+        barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        m_commandList->ResourceBarrier(2, barriers);
+    }
+
+    // 8. Tone-map pass (fullscreen triangle → swap chain)
+    auto swapRtv = m_rtvHeap.cpuHandle(backBufferIdx);
+    m_commandList->OMSetRenderTargets(1, &swapRtv, FALSE, nullptr);
+    m_commandList->RSSetViewports(1, &viewport);
+    m_commandList->RSSetScissorRects(1, &scissor);
+
+    m_commandList->SetGraphicsRootSignature(m_postProcessRootSig.Get());
+    m_commandList->SetDescriptorHeaps(1, heaps);
+
+    // Root constants for ToneMapCB
+    struct ToneMapConstants
+    {
+        uint32_t hdrEnabled;
+        float paperWhiteNits;
+        float peakBrightnessNits;
+        float _pad;
+    } tmCB;
+    tmCB.hdrEnabled = m_hdrEnabled ? 1 : 0;
+    tmCB.paperWhiteNits = m_paperWhiteNits;
+    tmCB.peakBrightnessNits = effectivePeakNits();
+    tmCB._pad = 0.0f;
+    m_commandList->SetGraphicsRoot32BitConstants(0, 4, &tmCB, 0);
+
+    // SRV table: t0 = resolved TAA color (the buffer we just wrote)
+    m_commandList->SetGraphicsRootDescriptorTable(1, m_srvHeap.gpuHandle(m_postProcessSrvBase + 2 + writeIdx));
+
+    m_commandList->SetPipelineState(m_toneMapPSO.Get());
+    m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    m_commandList->DrawInstanced(3, 1, 0, 0);
+
+    // 9. Barrier batch 3: restore states for next frame
+    {
+        D3D12_RESOURCE_BARRIER barriers[4] = {};
+        // swap chain → present
+        barriers[0].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barriers[0].Transition.pResource = m_renderTargets[backBufferIdx].Get();
+        barriers[0].Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        barriers[0].Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+        // TAA write target → NON_PIXEL_SHADER_RESOURCE (for next frame)
+        barriers[1].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barriers[1].Transition.pResource = m_taaHistory[writeIdx].Get();
+        barriers[1].Transition.StateBefore = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        barriers[1].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        // HDR color → RENDER_TARGET (for next frame)
+        barriers[2].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barriers[2].Transition.pResource = m_hdrColorBuffer.Get();
+        barriers[2].Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        barriers[2].Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        // velocity → RENDER_TARGET (for next frame)
+        barriers[3].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        barriers[3].Transition.pResource = m_velocityBuffer.Get();
+        barriers[3].Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+        barriers[3].Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
+        m_commandList->ResourceBarrier(4, barriers);
+    }
 
     m_commandList->Close();
 
-    // 5. Execute
+    // 10. Execute
     ID3D12CommandList* lists[] = {m_commandList.Get()};
     m_directQueue->ExecuteCommandLists(1, lists);
 
-    // 6. Signal fence for this frame context
+    // 11. Signal fence for this frame context
     ++m_directFenceValue;
     frame.fenceValue = m_directFenceValue;
     m_directQueue->Signal(m_directFence.Get(), m_directFenceValue);
 
-    // 7. Present
+    // 12. Present
     {
         const UINT syncInterval = m_vsyncEnabled ? 1 : 0;
         const UINT presentFlags = (!m_vsyncEnabled && m_tearingSupported) ? DXGI_PRESENT_ALLOW_TEARING : 0;
         m_swapChain->Present(syncInterval, presentFlags);
     }
+
+    // Update TAA state for next frame
+    XMStoreFloat4x4(&m_prevViewProj, view * proj);
+    m_taaHistoryValid = true;
+    m_taaHistoryIndex = 1 - m_taaHistoryIndex; // Ping-pong
 
     // Advance frame counter
     ++m_frameNumber;
@@ -1990,7 +2522,9 @@ void D3D12Renderer::rebuildSwapChainAndPSO()
     m_depthStencilBuffer.Reset();
     m_pipelineState.Reset();
     m_skyboxPSO.Reset();
+    m_toneMapPSO.Reset();
     m_swapChain.Reset();
+    destroyIntermediateTargets();
 
     // Recreate swap chain with correct format
     if (!createSwapChain(m_hwnd, m_width, m_height))
@@ -2007,6 +2541,7 @@ void D3D12Renderer::rebuildSwapChainAndPSO()
     }
 
     createDepthStencil(m_width, m_height);
+    createIntermediateTargets(m_width, m_height);
 
     // Recreate PSOs with matching RTV format (preserves root signature + SRV heap)
     if (!recreatePSOs())

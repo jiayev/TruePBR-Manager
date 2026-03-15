@@ -56,7 +56,11 @@ struct SceneCBData
     uint32_t hdrEnabled;             // 0 = SDR, 1 = HDR (scRGB output)
     float paperWhiteNits;            // SDR white-point brightness in nits (default 200)
     float peakBrightnessNits;        // Display peak brightness in nits
-    float _padHDR;                   // => total 416 bytes
+    float _padHDR;
+    // TAA parameters
+    DirectX::XMFLOAT4X4 prevViewProj; // 64 bytes — previous frame's view*proj for reprojection
+    DirectX::XMFLOAT2 jitterOffset;   // 8 bytes — sub-pixel jitter in NDC
+    DirectX::XMFLOAT2 _padTAA;        // 8 bytes padding => total 496 bytes
 };
 
 /// Material constant buffer data (matches cbuffer MaterialCB in shader).
@@ -226,6 +230,12 @@ class D3D12Renderer
     void createDefaultIBL();
     void rebuildSwapChainAndPSO();
 
+    // ── TAA / Post-process ─────────────────────────────────
+    bool createIntermediateTargets(uint32_t width, uint32_t height);
+    void destroyIntermediateTargets();
+    bool createPostProcessPipelines();
+    void invalidateTAAHistory();
+
     /// Current swap chain back buffer format (depends on HDR mode).
     DXGI_FORMAT swapChainFormat() const;
 
@@ -317,10 +327,35 @@ class D3D12Renderer
     // IBL pipeline (GPU compute)
     std::unique_ptr<IBLPipeline> m_iblPipeline;
 
-    // Pipeline state
+    // Pipeline state (scene pass)
     ComPtr<ID3D12RootSignature> m_rootSignature;
     ComPtr<ID3D12PipelineState> m_pipelineState;
     ComPtr<ID3D12PipelineState> m_skyboxPSO;
+
+    // Post-process pipelines (TAA + tone mapping)
+    ComPtr<ID3D12RootSignature> m_postProcessRootSig;
+    ComPtr<ID3D12RootSignature> m_taaComputeRootSig;
+    ComPtr<ID3D12PipelineState> m_toneMapPSO;
+    ComPtr<ID3D12PipelineState> m_taaResolvePSO;
+
+    // Intermediate render targets
+    ComPtr<ID3D12Resource> m_hdrColorBuffer;           // R16G16B16A16_FLOAT scene color
+    ComPtr<ID3D12Resource> m_velocityBuffer;            // R16G16_FLOAT motion vectors
+    std::array<ComPtr<ID3D12Resource>, 2> m_taaHistory; // Ping-pong TAA history
+    uint32_t m_taaHistoryIndex = 0;                     // Current write target (0 or 1)
+    bool m_taaHistoryValid = false;                     // False until first frame resolved
+
+    // RTV indices for intermediate targets (allocated after swap chain RTVs)
+    uint32_t m_hdrColorRtvIndex = 0;
+    uint32_t m_velocityRtvIndex = 0;
+    std::array<uint32_t, 2> m_taaHistoryRtvIndex = {};
+
+    // SRV indices for post-process reads (allocated after scene SRVs)
+    uint32_t m_postProcessSrvBase = 0;
+    static constexpr uint32_t PostProcessSRVCount = 6; // hdrColor, velocity, taaHistory[0], taaHistory[1] SRVs + 2 UAVs
+
+    // TAA state
+    DirectX::XMFLOAT4X4 m_prevViewProj;
 
     // Mesh
     ComPtr<ID3D12Resource> m_vertexBuffer;
@@ -363,6 +398,9 @@ class D3D12Renderer
     float m_glintLogMicrofacetDensity = 40.0f;
     float m_glintMicrofacetRoughness = 0.015f;
     float m_glintDensityRandomization = 2.0f;
+
+    // Halton jitter sequence
+    static DirectX::XMFLOAT2 haltonJitter(uint32_t frameIndex);
 };
 
 } // namespace tpbr

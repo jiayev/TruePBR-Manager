@@ -27,6 +27,10 @@ cbuffer SceneCB : register(b0)
     float  g_PaperWhiteNits;
     float  g_PeakBrightnessNits;
     float  _padHDR;
+    // TAA
+    row_major float4x4 g_PrevViewProj;
+    float2 g_JitterOffset; // sub-pixel jitter in NDC
+    float2 _padTAA;
 };
 
 cbuffer MaterialCB : register(b1)
@@ -86,6 +90,14 @@ struct PSInput
     float3 tangentWS : TEXCOORD2;
     float3 bitangentWS : TEXCOORD3;
     float2 uv : TEXCOORD4;
+    float4 currClipPos : TEXCOORD5;
+    float4 prevClipPos : TEXCOORD6;
+};
+
+struct PSOutput
+{
+    float4 color    : SV_TARGET0; // HDR linear color
+    float2 velocity : SV_TARGET1; // Screen-space motion vector
 };
 
 // ─── Vertex Shader ─────────────────────────────────────────
@@ -93,22 +105,30 @@ struct PSInput
 PSInput VSMain(VSInput input)
 {
     PSInput output;
-    output.positionCS = mul(float4(input.position, 1.0), g_WorldViewProj);
-    output.positionWS = mul(float4(input.position, 1.0), g_World).xyz;
+    float4 worldPos = mul(float4(input.position, 1.0), g_World);
+    output.positionWS = worldPos.xyz;
     output.normalWS = normalize(mul(input.normal, (float3x3) g_WorldInvTranspose));
     output.tangentWS = normalize(mul(input.tangent.xyz, (float3x3) g_World));
     output.bitangentWS = cross(output.normalWS, output.tangentWS) * input.tangent.w;
     output.uv = input.uv;
+
+    // Current clip position (unjittered for velocity calculation)
+    float4 clipPos = mul(float4(input.position, 1.0), g_WorldViewProj);
+    output.currClipPos = clipPos;
+
+    // Previous clip position for velocity
+    output.prevClipPos = mul(worldPos, g_PrevViewProj);
+
+    // Apply sub-pixel jitter to clip position for TAA
+    output.positionCS = clipPos;
+    output.positionCS.xy += g_JitterOffset * clipPos.w;
+
     return output;
 }
 
-// ─── GT7 Tone Mapping ─────────────────────────────────────
-
-#include "Common/GT7ToneMap.hlsli"
-
 // ─── Pixel Shader ──────────────────────────────────────────
 
-float4 PSMain(PSInput input) : SV_TARGET
+PSOutput PSMain(PSInput input)
 {
     // ── Sample textures ────────────────────────────────────
     float4 albedoSample = g_Diffuse.Sample(g_Sampler, input.uv);
@@ -327,18 +347,16 @@ float4 PSMain(PSInput input) : SV_TARGET
 
     // ── Final color ────────────────────────────────────────
     float3 color = directColor + iblColor + emissive;
-
-    // Tone mapping & output
     color = max(float3(0, 0, 0), color);
-    [branch] if (g_HDREnabled)
-    {
-        color = GT7ToneMap(color, true, g_PaperWhiteNits, g_PeakBrightnessNits);
-        return float4(color, alpha);
-    }
-    else
-    {
-        color = GT7ToneMap(color, false, 0, 0);
-        color = pow(max(color, 0.0), 1.0 / 2.2);
-        return float4(saturate(color), alpha);
-    }
+
+    // ── Velocity output ────────────────────────────────────
+    float2 currNDC = input.currClipPos.xy / input.currClipPos.w;
+    float2 prevNDC = input.prevClipPos.xy / input.prevClipPos.w;
+    // Velocity in UV space (current - previous), so reprojection = uv - velocity
+    float2 velocity = (currNDC - prevNDC) * float2(0.5, -0.5);
+
+    PSOutput output;
+    output.color = float4(color, alpha);
+    output.velocity = velocity;
+    return output;
 }

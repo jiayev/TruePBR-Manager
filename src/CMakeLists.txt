@@ -76,6 +76,8 @@ set(RENDERER_SOURCES
     renderer/Common/Random.hlsli
     renderer/Common/Glints/Glints2023.hlsli
     renderer/Common/GT7ToneMap.hlsli
+    renderer/ToneMapShader.hlsl
+    renderer/TAAResolve.hlsl
 )
 
 # Prevent Visual Studio from compiling HLSL files with its built-in FXC (we compile via CMake custom commands)
@@ -90,6 +92,8 @@ set_source_files_properties(
     renderer/Common/Random.hlsli
     renderer/Common/Glints/Glints2023.hlsli
     renderer/Common/GT7ToneMap.hlsli
+    renderer/ToneMapShader.hlsl
+    renderer/TAAResolve.hlsl
     PROPERTIES VS_TOOL_OVERRIDE "None"
 )
 
@@ -309,6 +313,13 @@ compile_hlsl(SkyboxShader.hlsl  SkyboxVS  vs_6_0  SkyboxShader_VS.cso
 compile_hlsl(SkyboxShader.hlsl  SkyboxPS  ps_6_0  SkyboxShader_PS.cso
     INCLUDE_DIR "${SHADER_SRC_DIR}"  DEPENDS ${HLSLI_DEPS})
 
+# ── Post-process shaders (ToneMap, TAA) ──────────────────────────────────
+compile_hlsl(ToneMapShader.hlsl  ToneMapVS  vs_6_0  ToneMapShader_VS.cso
+    INCLUDE_DIR "${SHADER_SRC_DIR}"  DEPENDS ${HLSLI_DEPS})
+compile_hlsl(ToneMapShader.hlsl  ToneMapPS  ps_6_0  ToneMapShader_PS.cso
+    INCLUDE_DIR "${SHADER_SRC_DIR}"  DEPENDS ${HLSLI_DEPS})
+compile_hlsl(TAAResolve.hlsl     CSMain     cs_6_0  TAAResolve.cso)
+
 # ── Compute shaders (IBL – no includes) ─────────────────────────────────
 compile_hlsl(IBLEquirectToCube.hlsl     CSMain  cs_6_0  IBLEquirectToCube.cso)
 compile_hlsl(IBLPrefilter.hlsl          CSMain  cs_6_0  IBLPrefilter.cso)
@@ -321,6 +332,9 @@ set(COMPILED_SHADER_OUTPUTS
     "${SHADER_OUT_DIR}/PBRShader_PS.cso"
     "${SHADER_OUT_DIR}/SkyboxShader_VS.cso"
     "${SHADER_OUT_DIR}/SkyboxShader_PS.cso"
+    "${SHADER_OUT_DIR}/ToneMapShader_VS.cso"
+    "${SHADER_OUT_DIR}/ToneMapShader_PS.cso"
+    "${SHADER_OUT_DIR}/TAAResolve.cso"
     "${SHADER_OUT_DIR}/IBLEquirectToCube.cso"
     "${SHADER_OUT_DIR}/IBLPrefilter.cso"
     "${SHADER_OUT_DIR}/IBLBrdfLut.cso"

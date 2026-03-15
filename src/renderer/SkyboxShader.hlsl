@@ -1,5 +1,6 @@
 // Skybox shader — renders HDRI environment as background
 // Full-screen triangle from SV_VertexID, samples full-resolution cubemap
+// Outputs linear HDR color + zero velocity for TAA
 
 // ─── Constant Buffer (must match SceneCB layout in PBRShader.hlsl) ─────
 
@@ -25,6 +26,10 @@ cbuffer SceneCB : register(b0)
     float  g_PaperWhiteNits;
     float  g_PeakBrightnessNits;
     float  _padHDR;
+    // TAA
+    row_major float4x4 g_PrevViewProj;
+    float2 g_JitterOffset;
+    float2 _padTAA;
 };
 
 // ─── Textures & Samplers ───────────────────────────────────
@@ -38,6 +43,12 @@ struct SkyboxOutput
 {
     float4 positionCS : SV_POSITION;
     float3 viewDir : TEXCOORD0;
+};
+
+struct SkyboxPSOutput
+{
+    float4 color    : SV_TARGET0; // HDR linear color
+    float2 velocity : SV_TARGET1; // Zero velocity for sky
 };
 
 // ─── Vertex Shader ─────────────────────────────────────────
@@ -58,13 +69,9 @@ SkyboxOutput SkyboxVS(uint vertexID : SV_VertexID)
     return output;
 }
 
-// ─── GT7 Tone Mapping ─────────────────────────────────────
-
-#include "Common/GT7ToneMap.hlsli"
-
 // ─── Pixel Shader ──────────────────────────────────────────
 
-float4 SkyboxPS(SkyboxOutput input) : SV_TARGET
+SkyboxPSOutput SkyboxPS(SkyboxOutput input)
 {
     float3 dir = normalize(input.viewDir);
 
@@ -75,18 +82,10 @@ float4 SkyboxPS(SkyboxOutput input) : SV_TARGET
 
     float3 color = g_SkyboxMap.SampleLevel(g_Sampler, dir, 0).rgb;
     color *= g_IBLIntensity;
-
-    // Tone mapping & output
     color = max(float3(0, 0, 0), color);
-    [branch] if (g_HDREnabled)
-    {
-        color = GT7ToneMap(color, true, g_PaperWhiteNits, g_PeakBrightnessNits);
-        return float4(color, 1.0);
-    }
-    else
-    {
-        color = GT7ToneMap(color, false, 0, 0);
-        color = pow(max(color, 0.0), 1.0 / 2.2);
-        return float4(saturate(color), 1.0);
-    }
+
+    SkyboxPSOutput output;
+    output.color = float4(color, 1.0);
+    output.velocity = float2(0, 0); // Sky is at infinity — zero velocity
+    return output;
 }
