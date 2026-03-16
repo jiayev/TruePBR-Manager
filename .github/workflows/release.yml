@@ -7,6 +7,7 @@ on:
     paths:
       - 'CMakeLists.txt'
       - 'vcpkg.json'
+      - '.github/workflows/release.yml'
   workflow_dispatch:
     inputs:
       force_release:
