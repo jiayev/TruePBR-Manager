@@ -987,7 +987,8 @@ void MainWindow::onExportMod()
     }
 
     // Run export on a worker thread with a progress dialog
-    auto* progressDialog = new QProgressDialog(tr("Exporting..."), tr("Cancel"), 0, 0, this);
+    int totalSteps = static_cast<int>(m_project.textureSets.size()) + 2;
+    auto* progressDialog = new QProgressDialog(tr("Exporting..."), tr("Cancel"), 0, totalSteps, this);
     progressDialog->setWindowModality(Qt::WindowModal);
     progressDialog->setMinimumDuration(0);
     progressDialog->setValue(0);
@@ -1008,13 +1009,13 @@ void MainWindow::onExportMod()
         {
             bool ok = ModExporter::exportMod(
                 *projectCopy,
-                [cancelled, progressDialog, &exportingFmt](int current, int total, const std::string& desc)
+                [cancelled, progressDialog, exportingFmt](int current, int total, const std::string& desc)
                 {
                     if (cancelled->load())
                         return false;
                     QMetaObject::invokeMethod(
                         progressDialog,
-                        [progressDialog, current, total, desc, &exportingFmt]()
+                        [progressDialog, current, total, desc, exportingFmt]()
                         {
                             progressDialog->setMaximum(total);
                             progressDialog->setValue(current);
