@@ -135,16 +135,17 @@ PSInput VSMain(VSInput input)
 
 PSOutput PSMain(PSInput input)
 {
-    // ── Sample textures ────────────────────────────────────
-    float4 albedoSample = g_Diffuse.Sample(g_Sampler, input.uv);
+    // ── Sample textures (bias -1 for sharper mip selection) ──
+    static const float kMipBias = -1.0;
+    float4 albedoSample = g_Diffuse.SampleBias(g_Sampler, input.uv, kMipBias);
     // Hardware sRGB format → linear Rec.709; convert to ACEScg working space
     float3 albedo = ColorSpaces::sRGBToACEScg(albedoSample.rgb);
     float alpha = albedoSample.a;
 
-    float3 normalTS = g_Normal.Sample(g_Sampler, input.uv).rgb;
+    float3 normalTS = g_Normal.SampleBias(g_Sampler, input.uv, kMipBias).rgb;
     normalTS = normalTS * 2.0 - 1.0;
 
-    float4 rmaos = g_RMAOS.Sample(g_Sampler, input.uv);
+    float4 rmaos = g_RMAOS.SampleBias(g_Sampler, input.uv, kMipBias);
     float roughness = rmaos.r * g_RoughnessScale;
     float metallic = rmaos.g;
     float ao = rmaos.b;
@@ -203,7 +204,7 @@ PSOutput PSMain(PSInput input)
         float3 ssColorACES = ColorSpaces::sRGBToACEScg(g_SubsurfaceColor);
         [branch] if (g_FeatureFlags & PBR::Flags::HasFeatureTexture1)
         {
-            float4 ssTex = g_FeatureTex1.Sample(g_Sampler, input.uv);
+            float4 ssTex = g_FeatureTex1.SampleBias(g_Sampler, input.uv, kMipBias);
             mat.SubsurfaceColor = ColorSpaces::sRGBToACEScg(ssTex.rgb) * ssColorACES;
             mat.Thickness = 1.0 - ssTex.a * g_SubsurfaceOpacity;
         }
@@ -224,13 +225,13 @@ PSOutput PSMain(PSInput input)
 
         [branch] if (g_FeatureFlags & PBR::Flags::HasFeatureTexture0)
         {
-            float4 coatTex = g_FeatureTex0.Sample(g_Sampler, input.uv);
+            float4 coatTex = g_FeatureTex0.SampleBias(g_Sampler, input.uv, kMipBias);
             mat.CoatRoughness = clamp(coatTex.a, PBR::Constants::MinRoughness, PBR::Constants::MaxRoughness);
         }
 
         [branch] if ((g_FeatureFlags & PBR::Flags::ColoredCoat) && (g_FeatureFlags & PBR::Flags::HasFeatureTexture1))
         {
-            float4 coatColorTex = g_FeatureTex1.Sample(g_Sampler, input.uv);
+            float4 coatColorTex = g_FeatureTex1.SampleBias(g_Sampler, input.uv, kMipBias);
             mat.CoatColor = ColorSpaces::sRGBToACEScg(coatColorTex.rgb);
             mat.CoatStrength *= coatColorTex.a;
         }
@@ -244,7 +245,7 @@ PSOutput PSMain(PSInput input)
 
         [branch] if (g_FeatureFlags & PBR::Flags::HasFeatureTexture0)
         {
-            float4 fuzzTex = g_FeatureTex0.Sample(g_Sampler, input.uv);
+            float4 fuzzTex = g_FeatureTex0.SampleBias(g_Sampler, input.uv, kMipBias);
             mat.FuzzColor *= ColorSpaces::sRGBToACEScg(fuzzTex.rgb);
             mat.FuzzWeight *= fuzzTex.a;
         }
@@ -294,7 +295,7 @@ PSOutput PSMain(PSInput input)
     [branch] if (g_FeatureFlags & PBR::Flags::HasEmissive)
     {
         // Emissive texture is sRGB; hardware linearizes to Rec.709, convert to ACEScg
-        emissive = ColorSpaces::sRGBToACEScg(g_Emissive.Sample(g_Sampler, input.uv).rgb) * g_EmissiveScale;
+        emissive = ColorSpaces::sRGBToACEScg(g_Emissive.SampleBias(g_Sampler, input.uv, kMipBias).rgb) * g_EmissiveScale;
     }
 
     // ── Image-Based Lighting ───────────────────────────────
