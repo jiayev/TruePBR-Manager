@@ -694,7 +694,23 @@ Two workflows are configured:
 - Public APIs are documented with Doxygen-style comments in headers.
 - Core logic is kept separate from Qt UI widgets.
 
-## 15. Roadmap
+## 15. Versioning
+
+This project uses [Semantic Versioning 2.0.0](https://semver.org/):
+
+```
+MAJOR.MINOR.PATCH
+```
+
+- **MAJOR**: incompatible changes to the project file format (`.tpbr`) or export output that would break existing saved projects or exported mods. Remains `0` during initial development (pre-1.0), where any release may contain breaking changes.
+- **MINOR**: new user-facing features or significant enhancements (e.g. new preview modes, new export capabilities, new UI panels). Increment when a release adds functionality.
+- **PATCH**: bug fixes, performance improvements, documentation updates, and other changes that do not add new features.
+
+The version is defined in `CMakeLists.txt` via `project(TruePBR-Manager VERSION X.Y.Z)` and embedded into the binary at build time through `Version.h.in`.
+
+Git tags follow the format `vX.Y.Z` (e.g. `v0.2.0`). The `release.yml` GitHub Actions workflow triggers on `v*` tags to build and publish release artifacts.
+
+## 16. Roadmap
 
 Planned features not yet implemented:
 
