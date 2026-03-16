@@ -1,30 +1,107 @@
-name: Release
+name: Auto Tag & Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - master
+    paths:
+      - 'CMakeLists.txt'
+      - 'vcpkg.json'
+  workflow_dispatch:
+    inputs:
+      force_release:
+        description: 'Force release from current version (skip tag creation)'
+        required: false
+        default: 'false'
 
 permissions:
   contents: write
 
 jobs:
+  # ── Job 1: Detect version bump and create tag ─────────────
+  auto-tag:
+    name: Detect Version & Create Tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.result.outputs.TAG }}
+      version: ${{ steps.result.outputs.VERSION }}
+      should_release: ${{ steps.result.outputs.SHOULD_RELEASE }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version from CMakeLists.txt
+        id: cmake_ver
+        run: |
+          ver=$(grep -oP 'project\(TruePBR-Manager\s+VERSION\s+\K[0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt)
+          echo "VERSION=$ver" >> "$GITHUB_OUTPUT"
+          echo "Detected CMake version: $ver"
+
+      - name: Extract version from vcpkg.json
+        id: vcpkg_ver
+        run: |
+          ver=$(python3 -c "import json; print(json.load(open('vcpkg.json'))['version-string'])")
+          echo "VERSION=$ver" >> "$GITHUB_OUTPUT"
+          echo "Detected vcpkg version: $ver"
+
+      - name: Verify versions are in sync
+        run: |
+          cmake_ver="${{ steps.cmake_ver.outputs.VERSION }}"
+          vcpkg_ver="${{ steps.vcpkg_ver.outputs.VERSION }}"
+          if [ "$cmake_ver" != "$vcpkg_ver" ]; then
+            echo "::error::Version mismatch! CMakeLists.txt=$cmake_ver, vcpkg.json=$vcpkg_ver"
+            exit 1
+          fi
+          echo "Versions are in sync: $cmake_ver"
+
+      - name: Check if tag already exists
+        id: check_tag
+        run: |
+          tag="v${{ steps.cmake_ver.outputs.VERSION }}"
+          if git rev-parse "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "EXISTS=true" >> "$GITHUB_OUTPUT"
+            echo "Tag $tag already exists."
+          else
+            echo "EXISTS=false" >> "$GITHUB_OUTPUT"
+            echo "Tag $tag does not exist, will create."
+          fi
+
+      - name: Create and push tag
+        if: steps.check_tag.outputs.EXISTS == 'false'
+        run: |
+          tag="v${{ steps.cmake_ver.outputs.VERSION }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$tag" -m "Release $tag"
+          git push origin "$tag"
+
+      - name: Set outputs
+        id: result
+        run: |
+          tag="v${{ steps.cmake_ver.outputs.VERSION }}"
+          echo "TAG=$tag" >> "$GITHUB_OUTPUT"
+          echo "VERSION=${{ steps.cmake_ver.outputs.VERSION }}" >> "$GITHUB_OUTPUT"
+          if [ "${{ steps.check_tag.outputs.EXISTS }}" == "false" ] || [ "${{ inputs.force_release }}" == "true" ]; then
+            echo "SHOULD_RELEASE=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "SHOULD_RELEASE=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ── Job 2: Build and publish release ──────────────────────
   build-release:
-    name: Build Release Artifact
+    name: Build & Publish Release
+    needs: auto-tag
+    if: needs.auto-tag.outputs.should_release == 'true'
     runs-on: windows-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Extract version from tag
-        id: version
-        shell: pwsh
-        run: |
-          $tag = "${{ github.ref_name }}"
-          $ver = $tag -replace '^v', ''
-          echo "VERSION=$ver" >> $env:GITHUB_OUTPUT
-          echo "TAG=$tag" >> $env:GITHUB_OUTPUT
+        with:
+          ref: ${{ needs.auto-tag.outputs.tag }}
 
       - name: Verify CMake version matches tag
         shell: pwsh
@@ -32,7 +109,7 @@ jobs:
           $cmake = Get-Content CMakeLists.txt -Raw
           if ($cmake -match 'project\(TruePBR-Manager\s+VERSION\s+(\S+)') {
             $cmakeVer = $Matches[1]
-            $tagVer = "${{ steps.version.outputs.VERSION }}"
+            $tagVer = "${{ needs.auto-tag.outputs.version }}"
             if ($cmakeVer -ne $tagVer) {
               Write-Error "Version mismatch: CMakeLists.txt has $cmakeVer but tag is v$tagVer"
               exit 1
@@ -66,7 +143,8 @@ jobs:
       - name: Create release archive
         shell: pwsh
         run: |
-          $archiveName = "TruePBR-Manager-${{ steps.version.outputs.TAG }}-windows-x64.zip"
+          $tag = "${{ needs.auto-tag.outputs.tag }}"
+          $archiveName = "TruePBR-Manager-$tag-windows-x64.zip"
           if (Test-Path release) {
             Remove-Item release -Recurse -Force
           }
@@ -76,6 +154,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: TruePBR Manager ${{ steps.version.outputs.TAG }}
+          tag_name: ${{ needs.auto-tag.outputs.tag }}
+          name: TruePBR Manager ${{ needs.auto-tag.outputs.tag }}
           files: release/*.zip
           generate_release_notes: true
