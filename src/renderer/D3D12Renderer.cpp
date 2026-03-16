@@ -421,7 +421,6 @@ bool D3D12Renderer::createRootSignatureAndPSO()
     samplers[0].AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
     samplers[0].AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
     samplers[0].AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-    samplers[0].MipLODBias = -1.0f;
     samplers[0].MaxLOD = D3D12_FLOAT32_MAX;
     samplers[0].ShaderRegister = 0;
     samplers[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
@@ -1074,10 +1073,8 @@ void D3D12Renderer::uploadTexture(int texIndex, int srvIndex, const uint8_t* rgb
         }
     }
 
-    // Generate mip chain on CPU
-    // For sRGB textures (diffuse, emissive): use alpha-weighted (premultiplied alpha)
-    // downsampling to prevent transparent pixels from bleeding dark halos into RGB.
-    // For linear textures (normal, RMAOS): plain box filter on all 4 channels.
+    // Generate mip chain on CPU using box filter
+    // mipData[0] points to the original data, mipData[i>0] to generated levels
     struct MipLevel
     {
         const uint8_t* data;
@@ -1105,53 +1102,15 @@ void D3D12Renderer::uploadTexture(int texIndex, int srvIndex, const uint8_t* rgb
             {
                 int sx = x * 2;
                 int sy = y * 2;
+                // Clamp second sample to valid range for non-power-of-two edge case
                 int sx1 = (sx + 1 < prevW) ? sx + 1 : sx;
                 int sy1 = (sy + 1 < prevH) ? sy + 1 : sy;
 
-                // Gather 4 texels
-                const uint8_t* p00 = prev + (sy * prevW + sx) * 4;
-                const uint8_t* p10 = prev + (sy * prevW + sx1) * 4;
-                const uint8_t* p01 = prev + (sy1 * prevW + sx) * 4;
-                const uint8_t* p11 = prev + (sy1 * prevW + sx1) * 4;
-
-                uint8_t* dst = generatedMips[m].data() + (y * mipW + x) * 4;
-
-                if (srgb)
+                for (int c = 0; c < 4; ++c)
                 {
-                    // Alpha-weighted mip: premultiply, average, unpremultiply
-                    float a0 = p00[3] / 255.0f, a1 = p10[3] / 255.0f;
-                    float a2 = p01[3] / 255.0f, a3 = p11[3] / 255.0f;
-                    float sumA = a0 + a1 + a2 + a3;
-                    float avgA = sumA * 0.25f;
-
-                    if (sumA > 0.001f)
-                    {
-                        for (int c = 0; c < 3; ++c)
-                        {
-                            float weighted = p00[c] * a0 + p10[c] * a1 + p01[c] * a2 + p11[c] * a3;
-                            float val = weighted / sumA;
-                            dst[c] = static_cast<uint8_t>(val < 0.0f ? 0.0f : (val > 255.0f ? 255.0f : (val + 0.5f)));
-                        }
-                    }
-                    else
-                    {
-                        // All transparent — just average RGB
-                        for (int c = 0; c < 3; ++c)
-                        {
-                            int sum = p00[c] + p10[c] + p01[c] + p11[c];
-                            dst[c] = static_cast<uint8_t>((sum + 2) / 4);
-                        }
-                    }
-                    dst[3] = static_cast<uint8_t>(avgA * 255.0f + 0.5f);
-                }
-                else
-                {
-                    // Plain box filter for linear data (normal, RMAOS, etc.)
-                    for (int c = 0; c < 4; ++c)
-                    {
-                        int sum = p00[c] + p10[c] + p01[c] + p11[c];
-                        dst[c] = static_cast<uint8_t>((sum + 2) / 4);
-                    }
+                    int sum = prev[(sy * prevW + sx) * 4 + c] + prev[(sy * prevW + sx1) * 4 + c] +
+                              prev[(sy1 * prevW + sx) * 4 + c] + prev[(sy1 * prevW + sx1) * 4 + c];
+                    generatedMips[m][(y * mipW + x) * 4 + c] = static_cast<uint8_t>((sum + 2) / 4);
                 }
             }
         }
