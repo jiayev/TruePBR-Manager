@@ -1751,6 +1751,13 @@ void MainWindow::pushAllPreviewSettings()
 
     uint32_t debugMode = static_cast<uint32_t>(m_debugModeCombo->currentData().toInt());
     m_materialPreview->setDebugMode(debugMode);
+
+    int shapeIdx = m_shapeCombo->currentIndex();
+    if (shapeIdx >= 0)
+    {
+        auto shape = static_cast<PreviewShape>(m_shapeCombo->itemData(shapeIdx).toInt());
+        m_materialPreview->setShape(shape);
+    }
 }
 
 void MainWindow::refresh3DPreview()
