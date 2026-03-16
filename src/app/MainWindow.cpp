@@ -1035,6 +1035,9 @@ void MainWindow::onExportMod()
     connect(thread, &QThread::finished, this,
             [this, thread, progressDialog, cancelled, result]()
             {
+                // Disconnect canceled signal BEFORE close(), because
+                // QProgressDialog::close() emits canceled.
+                progressDialog->disconnect();
                 progressDialog->close();
                 progressDialog->deleteLater();
                 thread->deleteLater();
