@@ -117,7 +117,17 @@
       "No Texture Sets yet.\n\nUse Add on the left to create your first Texture Set.": "还没有纹理集。\n\n使用左侧的「添加」创建您的第一个纹理集。",
       "Select a Texture Set to see its texture preview.": "选择一个纹理集以查看纹理预览。",
       "Preview will appear here after you create and select a Texture Set.": "创建并选择纹理集后，预览将显示在此处。",
-      "No previewable texture has been imported for the selected Texture Set yet.": "所选纹理集尚未导入可预览的纹理。"
+      "No previewable texture has been imported for the selected Texture Set yet.": "所选纹理集尚未导入可预览的纹理。",
+      "3D Preview: %1": "3D 预览：%1",
+      "Recent &Projects": "最近的项目(&P)",
+      "(No recent projects)": "（无最近项目）",
+      "Recent Project": "最近的项目",
+      "File not found:\n%1\n\nIt will be removed from the recent list.": "文件未找到：\n%1\n\n将从最近列表中移除。",
+      "Clear Recent Projects": "清除最近项目列表",
+      "Exporting...": "正在导出...",
+      "Cancel": "取消",
+      "Exporting: %1": "正在导出：%1",
+      "Export cancelled": "导出已取消"
     },
     "tpbr::TextureSetPanel": {
       "Add": "添加",

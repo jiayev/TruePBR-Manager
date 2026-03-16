@@ -2,6 +2,7 @@
 
 #include <QSettings>
 #include <QString>
+#include <QStringList>
 
 namespace tpbr
 {
@@ -37,6 +38,16 @@ class AppSettings
 
     QString lastProjectDir() const;
     void setLastProjectDir(const QString& dir);
+
+    /// Returns the recent projects list (most recent first, max 10).
+    QStringList recentProjects() const;
+
+    /// Add a path to the front of the recent projects list.
+    /// Removes duplicates and trims to 10 entries.
+    void addRecentProject(const QString& filePath);
+
+    /// Remove a specific path from the recent projects list.
+    void removeRecentProject(const QString& filePath);
 
   private:
     AppSettings();

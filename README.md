@@ -22,6 +22,10 @@ The application currently supports:
 - Pre-export validation (resolution, missing slots, conflicts)
 - Landscape texture set support (TXST EDIDs)
 - PGPatcher JSON and DDS texture export
+- Export runs on a background thread with progress dialog (cancellable)
+- Skips unchanged textures on re-export (timestamp + format check)
+- Recent projects list (File menu, max 10 entries)
+- 3D preview settings persisted across sessions (light, HDRI, render flags, etc.)
 - Localization: auto-detects system language, supports runtime language switching, and hot-reloads translation files during development
 
 The application does not currently provide undo/redo.
@@ -212,13 +216,8 @@ translations/   JSON translation files (en.json, zh_CN.json, ...)
 
 Planned features:
 
-- [ ] Import existing PBR mod
 - [ ] Built-in vanilla texture set conversion
-- [ ] Export progress bar
-- [ ] Skip unchanged textures on export
 - [ ] Undo/redo
-- [ ] Persist 3D preview settings in AppSettings
-- [ ] Recent projects list
 
 ## References
 

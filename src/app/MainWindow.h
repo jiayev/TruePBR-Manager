@@ -71,6 +71,7 @@ class MainWindow : public QMainWindow
     void setupStatusBar();
     void setupLanguageMenu();
     void rebuildLanguageMenu();
+    void rebuildRecentProjectsMenu();
     void retranslateUi();
     void changeEvent(QEvent* event) override;
     bool saveProjectToPath(const QString& path);
@@ -79,6 +80,9 @@ class MainWindow : public QMainWindow
     void refreshUI();
     void refreshPreview();
     void refresh3DPreview();
+    void pushAllPreviewSettings();
+    void save3DPreviewSettings();
+    void restore3DPreviewSettings();
 
     Project m_project;
     std::filesystem::path m_projectFilePath;
@@ -124,11 +128,13 @@ class MainWindow : public QMainWindow
     float m_lightColorR = 1.0f;
     float m_lightColorG = 1.0f;
     float m_lightColorB = 1.0f;
+    QComboBox* m_shapeCombo = nullptr;
     QLabel* m_editorPlaceholder = nullptr;
     QLabel* m_previewPlaceholder = nullptr;
 
     // Menu bar items (for retranslation)
     QMenu* m_fileMenu = nullptr;
+    QMenu* m_recentMenu = nullptr;
     QMenu* m_languageMenu = nullptr;
     QActionGroup* m_languageGroup = nullptr;
     QAction* m_newProjectAction = nullptr;

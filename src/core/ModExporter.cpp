@@ -272,6 +272,43 @@ static void resizeRGBA(const std::vector<uint8_t>& src, int srcW, int srcH, std:
     }
 }
 
+/// Check whether the output DDS is up-to-date with the source file and
+/// matches the desired compression format and dimensions.
+static bool isOutputUpToDate(const fs::path& sourcePath, const fs::path& outputPath, DDSCompressionMode compressionMode,
+                             int targetWidth, int targetHeight)
+{
+    std::error_code ec;
+    if (!fs::exists(outputPath, ec))
+        return false;
+
+    // Output must be at least as new as the source
+    auto srcTime = fs::last_write_time(sourcePath, ec);
+    if (ec)
+        return false;
+    auto outTime = fs::last_write_time(outputPath, ec);
+    if (ec)
+        return false;
+    if (outTime < srcTime)
+        return false;
+
+    // Check that the output DDS format matches
+    DDSUtils::DDSInfo info;
+    if (!DDSUtils::getDDSInfo(outputPath, info))
+        return false;
+
+    if (!ddsFormatMatchesCompressionMode(info.dxgiFormat, compressionMode))
+        return false;
+
+    // Check dimensions if a specific export size was requested
+    if (targetWidth > 0 && targetHeight > 0)
+    {
+        if (static_cast<int>(info.width) != targetWidth || static_cast<int>(info.height) != targetHeight)
+            return false;
+    }
+
+    return true;
+}
+
 /// Export a single texture to DDS. If the source is already DDS, copy as-is.
 /// If the source is PNG/TGA/BMP, convert to the appropriate DDS format for the slot.
 static bool exportSingleTexture(const TextureEntry& entry, const fs::path& outputPath,
@@ -345,6 +382,13 @@ bool ModExporter::exportTextures(const PBRTextureSet& textureSet, const fs::path
             targetH = sizeIt->second.second;
         }
 
+        // Skip export if output is already up-to-date
+        if (isOutputUpToDate(entry.sourcePath, outPath, compressionMode, targetW, targetH))
+        {
+            spdlog::info("ModExporter: skipping unchanged {}", outPath.filename().string());
+            continue;
+        }
+
         if (!exportSingleTexture(entry, outPath, compressionMode, targetW, targetH))
         {
             spdlog::error("ModExporter: failed to export {} -> {}", entry.sourcePath.string(), outPath.string());
@@ -383,7 +427,41 @@ bool ModExporter::exportTextures(const PBRTextureSet& textureSet, const fs::path
             rmaosTargetH = rmaosSizeIt->second.second;
         }
 
-        if (!ChannelPacker::packRMAOS(channelPaths, rmaosPath, compressionMode, rmaosTargetW, rmaosTargetH))
+        // Skip RMAOS packing if output is up-to-date with all channel sources
+        bool rmaosUpToDate = false;
+        if (fs::exists(rmaosPath))
+        {
+            std::error_code ec;
+            auto outTime = fs::last_write_time(rmaosPath, ec);
+            if (!ec)
+            {
+                rmaosUpToDate = true;
+                for (const auto& [ch, chPath] : channelPaths)
+                {
+                    auto srcTime = fs::last_write_time(chPath, ec);
+                    if (ec || outTime < srcTime)
+                    {
+                        rmaosUpToDate = false;
+                        break;
+                    }
+                }
+                if (rmaosUpToDate)
+                {
+                    DDSUtils::DDSInfo rmaosInfo;
+                    if (!DDSUtils::getDDSInfo(rmaosPath, rmaosInfo) ||
+                        !ddsFormatMatchesCompressionMode(rmaosInfo.dxgiFormat, compressionMode))
+                    {
+                        rmaosUpToDate = false;
+                    }
+                }
+            }
+        }
+
+        if (rmaosUpToDate)
+        {
+            spdlog::info("ModExporter: skipping unchanged {}", rmaosPath.filename().string());
+        }
+        else if (!ChannelPacker::packRMAOS(channelPaths, rmaosPath, compressionMode, rmaosTargetW, rmaosTargetH))
         {
             spdlog::error("ModExporter: RMAOS packing failed for {}", textureSet.name);
             allOk = false;
@@ -393,7 +471,7 @@ bool ModExporter::exportTextures(const PBRTextureSet& textureSet, const fs::path
     return allOk;
 }
 
-bool ModExporter::exportMod(const Project& project)
+bool ModExporter::exportMod(const Project& project, ExportProgressCallback progress)
 {
     if (project.outputModFolder.empty())
     {
@@ -403,28 +481,61 @@ bool ModExporter::exportMod(const Project& project)
 
     spdlog::info("ModExporter: exporting to {}", project.outputModFolder.string());
 
+    // Count total steps: each texture set counts as one step, plus JSON + landscape
+    int totalSteps = static_cast<int>(project.textureSets.size()) + 2;
+    int currentStep = 0;
+    bool cancelled = false;
+
     bool allOk = true;
 
     // Export textures for each set
     for (const auto& ts : project.textureSets)
     {
+        if (progress && !progress(currentStep, totalSteps, ts.name))
+        {
+            cancelled = true;
+            break;
+        }
+
         if (!exportTextures(ts, project.outputModFolder))
         {
             allOk = false;
         }
+        ++currentStep;
+    }
+
+    if (cancelled)
+    {
+        spdlog::warn("ModExporter: export cancelled by user");
+        return false;
     }
 
     // Export PGPatcher JSON
+    if (progress && !progress(currentStep, totalSteps, "PGPatcher JSON"))
+    {
+        spdlog::warn("ModExporter: export cancelled by user");
+        return false;
+    }
     if (!JsonExporter::exportPGPatcherJson(project, project.outputModFolder))
     {
         allOk = false;
     }
+    ++currentStep;
 
     // Export Landscape PBRTextureSets JSONs (for sets that have landscapeEdids)
+    if (progress && !progress(currentStep, totalSteps, "Landscape JSON"))
+    {
+        spdlog::warn("ModExporter: export cancelled by user");
+        return false;
+    }
     if (!LandscapeExporter::exportLandscapeJsons(project))
     {
         allOk = false;
     }
+    ++currentStep;
+
+    if (progress)
+        progress(totalSteps, totalSteps, "");
 
     if (allOk)
     {

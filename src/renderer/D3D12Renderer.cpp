@@ -68,7 +68,8 @@ bool D3D12Renderer::init(HWND hwnd, uint32_t width, uint32_t height)
     m_height = height;
     m_hwnd = hwnd;
 
-    spdlog::info("D3D12Renderer::init starting ({}x{}, hwnd=0x{:X})", width, height, reinterpret_cast<uintptr_t>(hwnd));
+    spdlog::debug("D3D12Renderer::init starting ({}x{}, hwnd=0x{:X})", width, height,
+                  reinterpret_cast<uintptr_t>(hwnd));
 
     if (!createDevice())
         return false;
@@ -87,7 +88,7 @@ bool D3D12Renderer::init(HWND hwnd, uint32_t width, uint32_t height)
                 m_tearingSupported = (allowTearing == TRUE);
             }
         }
-        spdlog::info("DXGI tearing support: {}", m_tearingSupported ? "yes" : "no");
+        spdlog::debug("DXGI tearing support: {}", m_tearingSupported ? "yes" : "no");
     }
 
     m_swapChainFlags = m_tearingSupported ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0;
@@ -97,8 +98,8 @@ bool D3D12Renderer::init(HWND hwnd, uint32_t width, uint32_t height)
 
     // Query HDR display capability (after swap chain so GetContainingOutput works)
     m_hdrInfo = queryHDRSupport();
-    spdlog::info("HDR display support: {} (max={:.0f} nits, min={:.4f} nits)", m_hdrInfo.hdrSupported ? "yes" : "no",
-                 m_hdrInfo.maxLuminance, m_hdrInfo.minLuminance);
+    spdlog::debug("HDR display support: {} (max={:.0f} nits, min={:.4f} nits)", m_hdrInfo.hdrSupported ? "yes" : "no",
+                  m_hdrInfo.maxLuminance, m_hdrInfo.minLuminance);
 
     if (!createRenderTargets())
         return false;
@@ -303,7 +304,7 @@ bool D3D12Renderer::createSwapChain(HWND hwnd, uint32_t width, uint32_t height)
         if (SUCCEEDED(hr) && (colorSpaceSupport & DXGI_SWAP_CHAIN_COLOR_SPACE_SUPPORT_FLAG_PRESENT))
         {
             m_swapChain->SetColorSpace1(DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709);
-            spdlog::info("Swap chain color space set to scRGB (linear Rec.709)");
+            spdlog::debug("Swap chain color space set to scRGB (linear Rec.709)");
         }
         else
         {
@@ -2402,8 +2403,8 @@ bool D3D12Renderer::loadIBL(const std::filesystem::path& hdriPath)
 
             m_iblLoaded = true;
             m_iblIntensity = 1.0f;
-            spdlog::info("D3D12Renderer: IBL loaded via GPU from {} (prefSize={}, samples={})",
-                         hdriPath.filename().string(), m_iblPrefilteredSize, m_iblPrefilterSamples);
+            spdlog::debug("D3D12Renderer: IBL loaded via GPU from {} (prefSize={}, samples={})",
+                          hdriPath.filename().string(), m_iblPrefilteredSize, m_iblPrefilterSamples);
             return true;
         }
         spdlog::error("D3D12Renderer: GPU IBL processing failed for {}", hdriPath.filename().string());
@@ -2425,7 +2426,7 @@ void D3D12Renderer::setIBLParams(int prefilteredSize, int prefilterSamples)
     // Reprocess if we have cached HDRI data
     if (!m_hdriPixels.empty() && m_iblLoaded)
     {
-        spdlog::info("D3D12Renderer: reprocessing IBL (prefSize={}, samples={})", prefilteredSize, prefilterSamples);
+        spdlog::debug("D3D12Renderer: reprocessing IBL (prefSize={}, samples={})", prefilteredSize, prefilterSamples);
 
         if (m_iblPipeline && m_iblPipeline->isInitialized())
         {
@@ -2465,8 +2466,8 @@ void D3D12Renderer::setIBLParams(int prefilteredSize, int prefilterSamples)
                 m_device->CreateShaderResourceView(m_skyboxCubemap.Get(), &skySrvDesc,
                                                    m_srvHeap.cpuHandle(m_srvBaseIndex + 9));
 
-                spdlog::info("D3D12Renderer: IBL reprocessed (GPU, prefSize={}, samples={})", prefilteredSize,
-                             prefilterSamples);
+                spdlog::debug("D3D12Renderer: IBL reprocessed (GPU, prefSize={}, samples={})", prefilteredSize,
+                              prefilterSamples);
                 return;
             }
         }
@@ -2555,9 +2556,9 @@ HDRDisplayInfo D3D12Renderer::queryHDRSupport() const
         return info;
     }
 
-    spdlog::info("queryHDRSupport: ColorSpace={}, BitsPerColor={}, MaxLum={:.0f}, MinLum={:.4f}, MaxFullFrame={:.0f}",
-                 static_cast<int>(desc1.ColorSpace), desc1.BitsPerColor, desc1.MaxLuminance, desc1.MinLuminance,
-                 desc1.MaxFullFrameLuminance);
+    spdlog::debug("queryHDRSupport: ColorSpace={}, BitsPerColor={}, MaxLum={:.0f}, MinLum={:.4f}, MaxFullFrame={:.0f}",
+                  static_cast<int>(desc1.ColorSpace), desc1.BitsPerColor, desc1.MaxLuminance, desc1.MinLuminance,
+                  desc1.MaxFullFrameLuminance);
 
     info.minLuminance = desc1.MinLuminance;
     info.maxLuminance = desc1.MaxLuminance;
@@ -2597,7 +2598,7 @@ void D3D12Renderer::setHDREnabled(bool enabled)
         return;
 
     m_hdrEnabled = enabled;
-    spdlog::info("HDR output {}", m_hdrEnabled ? "enabled" : "disabled");
+    spdlog::debug("HDR output {}", m_hdrEnabled ? "enabled" : "disabled");
 
     rebuildSwapChainAndPSO();
 }
@@ -2658,8 +2659,8 @@ void D3D12Renderer::rebuildSwapChainAndPSO()
         return;
     }
 
-    spdlog::info("Swap chain rebuilt: format={}, HDR={}", m_hdrEnabled ? "R16G16B16A16_FLOAT" : "R8G8B8A8_UNORM",
-                 m_hdrEnabled);
+    spdlog::debug("Swap chain rebuilt: format={}, HDR={}", m_hdrEnabled ? "R16G16B16A16_FLOAT" : "R8G8B8A8_UNORM",
+                  m_hdrEnabled);
 }
 
 } // namespace tpbr

@@ -117,7 +117,17 @@
       "No Texture Sets yet.\n\nUse Add on the left to create your first Texture Set.": "No Texture Sets yet.\n\nUse Add on the left to create your first Texture Set.",
       "Select a Texture Set to see its texture preview.": "Select a Texture Set to see its texture preview.",
       "Preview will appear here after you create and select a Texture Set.": "Preview will appear here after you create and select a Texture Set.",
-      "No previewable texture has been imported for the selected Texture Set yet.": "No previewable texture has been imported for the selected Texture Set yet."
+      "No previewable texture has been imported for the selected Texture Set yet.": "No previewable texture has been imported for the selected Texture Set yet.",
+      "3D Preview: %1": "3D Preview: %1",
+      "Recent &Projects": "Recent &Projects",
+      "(No recent projects)": "(No recent projects)",
+      "Recent Project": "Recent Project",
+      "File not found:\n%1\n\nIt will be removed from the recent list.": "File not found:\n%1\n\nIt will be removed from the recent list.",
+      "Clear Recent Projects": "Clear Recent Projects",
+      "Exporting...": "Exporting...",
+      "Cancel": "Cancel",
+      "Exporting: %1": "Exporting: %1",
+      "Export cancelled": "Export cancelled"
     },
     "tpbr::TextureSetPanel": {
       "Add": "Add",

@@ -13,6 +13,8 @@
 namespace tpbr
 {
 
+static constexpr int kMaxRecentProjects = 10;
+
 static QString iniFilePath()
 {
 #ifdef _WIN32
@@ -94,6 +96,28 @@ QString AppSettings::lastProjectDir() const
 void AppSettings::setLastProjectDir(const QString& dir)
 {
     m_settings.setValue("Paths/lastProjectDir", dir);
+}
+
+QStringList AppSettings::recentProjects() const
+{
+    return m_settings.value("RecentProjects/paths").toStringList();
+}
+
+void AppSettings::addRecentProject(const QString& filePath)
+{
+    QStringList list = recentProjects();
+    list.removeAll(filePath);
+    list.prepend(filePath);
+    while (list.size() > kMaxRecentProjects)
+        list.removeLast();
+    m_settings.setValue("RecentProjects/paths", list);
+}
+
+void AppSettings::removeRecentProject(const QString& filePath)
+{
+    QStringList list = recentProjects();
+    list.removeAll(filePath);
+    m_settings.setValue("RecentProjects/paths", list);
 }
 
 } // namespace tpbr

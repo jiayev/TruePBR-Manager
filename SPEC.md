@@ -148,10 +148,22 @@ Primary references:
   - `MainWindow/state`: toolbar and dock widget layout
   - `Paths/lastProjectDir`: last directory used for open/save project dialogs
   - `Paths/lastExportPath`: last used export folder
+  - `RecentProjects/paths`: ordered list of recently opened/saved project file paths (max 10)
+  - `Preview3D/*`: 3D preview settings (light intensity, light color, exposure, HDRI selection, IBL intensity/resolution/samples, render flags, display options, shape)
 - Window geometry and state are saved on close and restored on launch
 - Language preference is saved whenever the user switches language via the menu
+- 3D preview settings are saved on close and restored on launch
+- Recent projects list is updated on every successful open or save
 
-### 3.12 Known current limitations
+### 3.12 Export
+
+- Export runs on a background thread with a modal progress dialog
+- Progress reports per-texture-set and for JSON export steps
+- Users can cancel an in-progress export
+- Textures whose output DDS already exists, is newer than the source, and matches the target compression and dimensions are automatically skipped
+- RMAOS channel-packed textures are skipped if the output is newer than all channel source files
+
+### 3.13 Known current limitations
 
 - No undo/redo
 
@@ -447,7 +459,7 @@ Current defaults from the code:
 
 `MainWindow` coordinates:
 
-- File menu actions: new, open, save, export
+- File menu actions: new, open, recent projects, save, export
 - Current project state
 - Current texture set selection
 - Refresh of editor and preview panels
@@ -667,10 +679,5 @@ Two workflows are configured:
 
 Planned features not yet implemented:
 
-- [ ] Import existing PBR mod (导入已有 PBR mod)
 - [ ] Built-in vanilla texture set conversion (内置 vanilla texture set 转换)
-- [ ] Export progress bar (导出进度条)
-- [ ] Skip unchanged textures on export (导出跳过状态没有改变的已有贴图)
 - [ ] Undo/redo
-- [ ] Persist 3D preview settings (camera, lighting, HDRI, render flags) in AppSettings
-- [ ] Recent projects list

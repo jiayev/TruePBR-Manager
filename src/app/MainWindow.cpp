@@ -29,11 +29,13 @@
 #include <QLabel>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QProgressDialog>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSplitter>
 #include <QStackedWidget>
 #include <QStatusBar>
+#include <QThread>
 #include <QVBoxLayout>
 
 #include "utils/Log.h"
@@ -118,6 +120,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
     setupMenuBar();
     setupCentralWidget();
     setupStatusBar();
+    restore3DPreviewSettings();
     refreshUI();
 }
 
@@ -125,6 +128,7 @@ MainWindow::~MainWindow()
 {
     AppSettings::instance().setWindowGeometry(saveGeometry());
     AppSettings::instance().setWindowState(saveState());
+    save3DPreviewSettings();
 }
 
 // ─── Menu Bar ──────────────────────────────────────────────
@@ -135,6 +139,8 @@ void MainWindow::setupMenuBar()
     m_newProjectAction = m_fileMenu->addAction(tr("&New Project"), this, &MainWindow::onNewProject, QKeySequence::New);
     m_openProjectAction =
         m_fileMenu->addAction(tr("&Open Project"), this, &MainWindow::onOpenProject, QKeySequence::Open);
+    m_recentMenu = m_fileMenu->addMenu(tr("Recent &Projects"));
+    rebuildRecentProjectsMenu();
     m_saveProjectAction =
         m_fileMenu->addAction(tr("&Save Project"), this, &MainWindow::onSaveProject, QKeySequence::Save);
     m_saveAsAction =
@@ -146,6 +152,56 @@ void MainWindow::setupMenuBar()
     m_exitAction = m_fileMenu->addAction(tr("E&xit"), this, &QWidget::close, QKeySequence::Quit);
 
     setupLanguageMenu();
+}
+
+void MainWindow::rebuildRecentProjectsMenu()
+{
+    m_recentMenu->clear();
+    const QStringList recent = AppSettings::instance().recentProjects();
+
+    if (recent.isEmpty())
+    {
+        auto* emptyAction = m_recentMenu->addAction(tr("(No recent projects)"));
+        emptyAction->setEnabled(false);
+        return;
+    }
+
+    for (const QString& path : recent)
+    {
+        const QString label = QFileInfo(path).fileName();
+        auto* action = m_recentMenu->addAction(label);
+        action->setData(path);
+        action->setToolTip(path);
+        connect(action, &QAction::triggered, this,
+                [this, path]()
+                {
+                    if (!QFileInfo::exists(path))
+                    {
+                        QMessageBox::warning(
+                            this, tr("Recent Project"),
+                            tr("File not found:\n%1\n\nIt will be removed from the recent list.").arg(path));
+                        AppSettings::instance().removeRecentProject(path);
+                        rebuildRecentProjectsMenu();
+                        return;
+                    }
+                    AppSettings::instance().setLastProjectDir(QFileInfo(path).absolutePath());
+                    m_project = Project::load(path.toStdString());
+                    m_projectFilePath = path.toStdString();
+                    m_currentSetIndex = -1;
+                    AppSettings::instance().addRecentProject(path);
+                    rebuildRecentProjectsMenu();
+                    refreshUI();
+                    statusBar()->showMessage(tr("Opened: %1").arg(path));
+                });
+    }
+
+    m_recentMenu->addSeparator();
+    m_recentMenu->addAction(tr("Clear Recent Projects"), this,
+                            [this]()
+                            {
+                                AppSettings::instance().setValue("RecentProjects/paths", QStringList());
+                                rebuildRecentProjectsMenu();
+                            });
 }
 
 // ─── Central Widget ────────────────────────────────────────
@@ -245,10 +301,10 @@ void MainWindow::setupCentralWidget()
     previewLayout->addWidget(m_previewStack, 1);
 
     // Shape combo from MaterialPreviewWidget (show below preview in 3D mode)
-    auto* shapeCombo = m_materialPreview->shapeCombo();
-    shapeCombo->setParent(previewContainer);
-    shapeCombo->setVisible(false);
-    previewLayout->addWidget(shapeCombo);
+    m_shapeCombo = m_materialPreview->shapeCombo();
+    m_shapeCombo->setParent(previewContainer);
+    m_shapeCombo->setVisible(false);
+    previewLayout->addWidget(m_shapeCombo);
 
     // 3D control bar: light intensity slider + light color button
     m_3dControlBar = new QWidget(previewContainer);
@@ -600,7 +656,7 @@ void MainWindow::setupCentralWidget()
                 m_preview3DMode = false;
                 m_preview2DBtn->setChecked(true);
                 m_preview3DBtn->setChecked(false);
-                m_materialPreview->shapeCombo()->setVisible(false);
+                m_shapeCombo->setVisible(false);
                 m_3dControlBar->setVisible(false);
                 iblRow->setVisible(false);
                 iblParamsRow->setVisible(false);
@@ -614,7 +670,7 @@ void MainWindow::setupCentralWidget()
                 m_preview3DMode = true;
                 m_preview2DBtn->setChecked(false);
                 m_preview3DBtn->setChecked(true);
-                m_materialPreview->shapeCombo()->setVisible(true);
+                m_shapeCombo->setVisible(true);
                 m_3dControlBar->setVisible(true);
                 iblRow->setVisible(true);
                 iblParamsRow->setVisible(true);
@@ -675,6 +731,79 @@ void MainWindow::setupStatusBar()
     statusBar()->showMessage(tr("Ready"));
 }
 
+// ─── 3D Preview Settings Persistence ──────────────────────
+
+void MainWindow::save3DPreviewSettings()
+{
+    auto& s = AppSettings::instance();
+    s.setValue("Preview3D/lightIntensity", m_lightIntensitySlider->value());
+    s.setValue("Preview3D/lightColorR", static_cast<double>(m_lightColorR));
+    s.setValue("Preview3D/lightColorG", static_cast<double>(m_lightColorG));
+    s.setValue("Preview3D/lightColorB", static_cast<double>(m_lightColorB));
+    s.setValue("Preview3D/exposure", m_exposureSlider->value());
+    s.setValue("Preview3D/hdriIndex", m_hdriCombo->currentIndex());
+    s.setValue("Preview3D/iblIntensity", m_iblIntensitySlider->value());
+    s.setValue("Preview3D/iblResIndex", m_iblResCombo->currentIndex());
+    s.setValue("Preview3D/iblSamplesIndex", m_iblSamplesCombo->currentIndex());
+    s.setValue("Preview3D/horizonOcclusion", m_horizonOcclusionCB->isChecked());
+    s.setValue("Preview3D/multiBounceAO", m_multiBounceAOCB->isChecked());
+    s.setValue("Preview3D/specularOcclusion", m_specularOcclusionCB->isChecked());
+    s.setValue("Preview3D/vsync", m_vsyncCB->isChecked());
+    s.setValue("Preview3D/taa", m_taaCB->isChecked());
+    s.setValue("Preview3D/paperWhite", m_paperWhiteSlider->value());
+    s.setValue("Preview3D/peakBrightness", m_peakBrightnessSlider->value());
+    s.setValue("Preview3D/shapeIndex", m_shapeCombo->currentIndex());
+}
+
+void MainWindow::restore3DPreviewSettings()
+{
+    auto& s = AppSettings::instance();
+
+    // Only restore if settings were previously saved
+    if (!s.value("Preview3D/lightIntensity").isValid())
+        return;
+
+    m_lightIntensitySlider->setValue(s.value("Preview3D/lightIntensity", 30).toInt());
+    m_exposureSlider->setValue(s.value("Preview3D/exposure", 0).toInt());
+
+    float r = s.value("Preview3D/lightColorR", 1.0).toFloat();
+    float g = s.value("Preview3D/lightColorG", 1.0).toFloat();
+    float b = s.value("Preview3D/lightColorB", 1.0).toFloat();
+    m_lightColorR = r;
+    m_lightColorG = g;
+    m_lightColorB = b;
+    QColor lightColor = QColor::fromRgbF(r, g, b);
+    m_lightColorBtn->setStyleSheet(
+        QString("QPushButton { background: %1; border: 1px solid #888; }").arg(lightColor.name()));
+
+    m_iblIntensitySlider->setValue(s.value("Preview3D/iblIntensity", 10).toInt());
+
+    int iblResIdx = s.value("Preview3D/iblResIndex", 3).toInt();
+    if (iblResIdx >= 0 && iblResIdx < m_iblResCombo->count())
+        m_iblResCombo->setCurrentIndex(iblResIdx);
+
+    int iblSamplesIdx = s.value("Preview3D/iblSamplesIndex", 2).toInt();
+    if (iblSamplesIdx >= 0 && iblSamplesIdx < m_iblSamplesCombo->count())
+        m_iblSamplesCombo->setCurrentIndex(iblSamplesIdx);
+
+    m_horizonOcclusionCB->setChecked(s.value("Preview3D/horizonOcclusion", true).toBool());
+    m_multiBounceAOCB->setChecked(s.value("Preview3D/multiBounceAO", true).toBool());
+    m_specularOcclusionCB->setChecked(s.value("Preview3D/specularOcclusion", true).toBool());
+    m_vsyncCB->setChecked(s.value("Preview3D/vsync", true).toBool());
+    m_taaCB->setChecked(s.value("Preview3D/taa", true).toBool());
+    m_paperWhiteSlider->setValue(s.value("Preview3D/paperWhite", 200).toInt());
+    m_peakBrightnessSlider->setValue(s.value("Preview3D/peakBrightness", 1000).toInt());
+
+    int shapeIdx = s.value("Preview3D/shapeIndex", 0).toInt();
+    if (shapeIdx >= 0 && shapeIdx < m_shapeCombo->count())
+        m_shapeCombo->setCurrentIndex(shapeIdx);
+
+    // Restore HDRI last — it triggers loading which depends on IBL params being set
+    int hdriIdx = s.value("Preview3D/hdriIndex", 0).toInt();
+    if (hdriIdx >= 0 && hdriIdx < m_hdriCombo->count())
+        m_hdriCombo->setCurrentIndex(hdriIdx);
+}
+
 // ─── Actions ───────────────────────────────────────────────
 
 void MainWindow::onNewProject()
@@ -695,9 +824,11 @@ void MainWindow::onOpenProject()
         return;
 
     AppSettings::instance().setLastProjectDir(QFileInfo(path).absolutePath());
+    AppSettings::instance().addRecentProject(path);
     m_project = Project::load(path.toStdString());
     m_projectFilePath = path.toStdString();
     m_currentSetIndex = -1;
+    rebuildRecentProjectsMenu();
     refreshUI();
     statusBar()->showMessage(tr("Opened: %1").arg(path));
 }
@@ -795,6 +926,8 @@ bool MainWindow::saveProjectToPath(const QString& path)
 
     m_projectFilePath = path.toStdString();
     AppSettings::instance().setLastProjectDir(QFileInfo(path).absolutePath());
+    AppSettings::instance().addRecentProject(path);
+    rebuildRecentProjectsMenu();
     refreshUI();
     statusBar()->showMessage(tr("Saved: %1").arg(path));
     return true;
@@ -853,14 +986,73 @@ void MainWindow::onExportMod()
             return;
     }
 
-    if (ModExporter::exportMod(m_project))
-    {
-        QMessageBox::information(this, tr("Export"), tr("Export successful!"));
-    }
-    else
-    {
-        QMessageBox::warning(this, tr("Export"), tr("Export failed. Check log for details."));
-    }
+    // Run export on a worker thread with a progress dialog
+    auto* progressDialog = new QProgressDialog(tr("Exporting..."), tr("Cancel"), 0, 0, this);
+    progressDialog->setWindowModality(Qt::WindowModal);
+    progressDialog->setMinimumDuration(0);
+    progressDialog->setValue(0);
+    progressDialog->show();
+
+    // Shared state between worker thread and UI
+    auto cancelled = std::make_shared<std::atomic<bool>>(false);
+    auto result = std::make_shared<std::atomic<bool>>(false);
+
+    // Pre-translate the progress label format on the UI thread
+    const QString exportingFmt = tr("Exporting: %1");
+
+    // Take a copy of the project for the worker thread
+    auto projectCopy = std::make_shared<Project>(m_project);
+
+    auto* thread = QThread::create(
+        [projectCopy, cancelled, result, progressDialog, exportingFmt]()
+        {
+            bool ok = ModExporter::exportMod(
+                *projectCopy,
+                [cancelled, progressDialog, &exportingFmt](int current, int total, const std::string& desc)
+                {
+                    if (cancelled->load())
+                        return false;
+                    QMetaObject::invokeMethod(
+                        progressDialog,
+                        [progressDialog, current, total, desc, &exportingFmt]()
+                        {
+                            progressDialog->setMaximum(total);
+                            progressDialog->setValue(current);
+                            if (!desc.empty())
+                                progressDialog->setLabelText(exportingFmt.arg(QString::fromStdString(desc)));
+                        },
+                        Qt::QueuedConnection);
+                    return !cancelled->load();
+                });
+            result->store(ok);
+        });
+
+    connect(progressDialog, &QProgressDialog::canceled, this, [cancelled]() { cancelled->store(true); });
+
+    connect(thread, &QThread::finished, this,
+            [this, thread, progressDialog, cancelled, result]()
+            {
+                progressDialog->close();
+                progressDialog->deleteLater();
+                thread->deleteLater();
+
+                if (cancelled->load())
+                {
+                    statusBar()->showMessage(tr("Export cancelled"));
+                }
+                else if (result->load())
+                {
+                    QMessageBox::information(this, tr("Export"), tr("Export successful!"));
+                    AppSettings::instance().setLastExportPath(
+                        QString::fromStdString(m_project.outputModFolder.string()));
+                }
+                else
+                {
+                    QMessageBox::warning(this, tr("Export"), tr("Export failed. Check log for details."));
+                }
+            });
+
+    thread->start();
 }
 
 void MainWindow::onBrowseExportFolder()
@@ -1498,6 +1690,36 @@ void MainWindow::refreshPreview()
     }
 }
 
+void MainWindow::pushAllPreviewSettings()
+{
+    // Re-apply all 3D preview UI state to the renderer.
+    // This is needed because restore3DPreviewSettings() runs at construction
+    // time when the renderer doesn't exist yet, so the slider signals fire
+    // but the values are silently dropped.
+
+    float intensity = static_cast<float>(m_lightIntensitySlider->value()) / 10.0f;
+    m_materialPreview->setLightIntensity(intensity);
+    m_materialPreview->setLightColor(m_lightColorR, m_lightColorG, m_lightColorB);
+
+    float ev = static_cast<float>(m_exposureSlider->value()) / 10.0f;
+    m_materialPreview->setExposure(ev);
+
+    uint32_t flags = 0;
+    if (m_horizonOcclusionCB->isChecked())
+        flags |= 1u;
+    if (m_multiBounceAOCB->isChecked())
+        flags |= 2u;
+    if (m_specularOcclusionCB->isChecked())
+        flags |= 4u;
+    m_materialPreview->setRenderFlags(flags);
+
+    m_materialPreview->setVSync(m_vsyncCB->isChecked());
+    m_materialPreview->setTAAEnabled(m_taaCB->isChecked());
+
+    float iblIntensity = static_cast<float>(m_iblIntensitySlider->value()) / 10.0f;
+    m_materialPreview->setIBLIntensity(iblIntensity);
+}
+
 void MainWindow::refresh3DPreview()
 {
     if (m_currentSetIndex < 0 || m_currentSetIndex >= static_cast<int>(m_project.textureSets.size()))
@@ -1671,6 +1893,9 @@ void MainWindow::refresh3DPreview()
         m_previewStack->setCurrentWidget(m_materialPreview);
     }
 
+    // Push all UI settings to the renderer (which may have just been initialized)
+    pushAllPreviewSettings();
+
     statusBar()->showMessage(tr("3D Preview: %1").arg(QString::fromStdString(ts.name)));
 }
 
@@ -1744,6 +1969,7 @@ void MainWindow::retranslateUi()
     m_fileMenu->setTitle(tr("&File"));
     m_newProjectAction->setText(tr("&New Project"));
     m_openProjectAction->setText(tr("&Open Project"));
+    m_recentMenu->setTitle(tr("Recent &Projects"));
     m_saveProjectAction->setText(tr("&Save Project"));
     m_saveAsAction->setText(tr("Save Project &As..."));
     m_projectNameAction->setText(tr("Project &Name..."));

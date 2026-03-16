@@ -137,7 +137,7 @@ bool IBLPipeline::init(ID3D12Device* device)
     m_fenceValue = 0;
 
     m_initialized = true;
-    spdlog::info("IBLPipeline: initialized (5 compute shaders)");
+    spdlog::debug("IBLPipeline: initialized (5 compute shaders)");
     return true;
 }
 
@@ -321,7 +321,7 @@ IBLResult IBLPipeline::process(ID3D12Device* device, ID3D12CommandQueue* directQ
         return result;
     }
 
-    spdlog::info("IBLPipeline: starting GPU IBL processing ({}x{} equirect)", equirectW, equirectH);
+    spdlog::debug("IBLPipeline: starting GPU IBL processing ({}x{} equirect)", equirectW, equirectH);
 
     // ── 1. Upload equirect texture to GPU ──────────────────
     // Create equirect texture (DEFAULT heap, for SRV use)
@@ -446,7 +446,7 @@ IBLResult IBLPipeline::process(ID3D12Device* device, ID3D12CommandQueue* directQ
     runCubemapMipGen(device, m_cmdList.Get(), cubemapTex.Get(), cubemapSize, cubemapMipCount, computeHeap);
 
     executeAndWait(m_cmdList.Get(), directQueue, m_fence.Get(), m_fenceEvent, m_fenceValue);
-    spdlog::info("IBLPipeline: equirect → cubemap done ({}x{}, {} mips)", cubemapSize, cubemapSize, cubemapMipCount);
+    spdlog::debug("IBLPipeline: equirect -> cubemap done ({}x{}, {} mips)", cubemapSize, cubemapSize, cubemapMipCount);
 
     // Pass 2: Diffuse irradiance (cubemap → ZH3)
     m_cmdAllocator->Reset();
@@ -474,7 +474,7 @@ IBLResult IBLPipeline::process(ID3D12Device* device, ID3D12CommandQueue* directQ
         D3D12_RANGE writeRange{0, 0};
         zh3ReadbackBuf->Unmap(0, &writeRange);
     }
-    spdlog::info("IBLPipeline: ZH3 irradiance projection done (cubemap-based)");
+    spdlog::debug("IBLPipeline: ZH3 irradiance projection done (cubemap-based)");
 
     // Pass 3: Specular prefilter (all mip levels)
     m_cmdAllocator->Reset();
@@ -497,7 +497,7 @@ IBLResult IBLPipeline::process(ID3D12Device* device, ID3D12CommandQueue* directQ
     m_cmdList->ResourceBarrier(1, &barrier);
 
     executeAndWait(m_cmdList.Get(), directQueue, m_fence.Get(), m_fenceEvent, m_fenceValue);
-    spdlog::info("IBLPipeline: prefilter done ({}x{}, {} mips)", prefilteredSize, prefilteredSize, maxMips);
+    spdlog::debug("IBLPipeline: prefilter done ({}x{}, {} mips)", prefilteredSize, prefilteredSize, maxMips);
 
     // Save intermediate cubemap for skybox display
     result.skyboxCubemap = std::move(cubemapTex);
@@ -516,10 +516,10 @@ IBLResult IBLPipeline::process(ID3D12Device* device, ID3D12CommandQueue* directQ
     m_cmdList->ResourceBarrier(1, &barrier);
 
     executeAndWait(m_cmdList.Get(), directQueue, m_fence.Get(), m_fenceEvent, m_fenceValue);
-    spdlog::info("IBLPipeline: BRDF LUT done ({}x{})", brdfLutSize, brdfLutSize);
+    spdlog::debug("IBLPipeline: BRDF LUT done ({}x{})", brdfLutSize, brdfLutSize);
 
     result.valid = true;
-    spdlog::info("IBLPipeline: GPU IBL processing complete");
+    spdlog::debug("IBLPipeline: GPU IBL processing complete");
     return result;
 }
 
@@ -999,25 +999,25 @@ static HDRIColorSpace detectEXRColorSpace(const std::filesystem::path& path)
             if (approx(rX, 0.713f) && approx(rY, 0.293f) && approx(gX, 0.165f) && approx(gY, 0.830f))
             {
                 result = HDRIColorSpace::ACEScg;
-                spdlog::info("IBL: EXR chromaticities detected as ACEScg (AP1)");
+                spdlog::debug("IBL: EXR chromaticities detected as ACEScg (AP1)");
             }
             // ACES 2065-1 (AP0): R(0.7347,0.2653) G(0.0,1.0) B(0.0001,-0.077)
             else if (approx(rX, 0.7347f) && approx(rY, 0.2653f) && approx(gX, 0.0f) && approx(gY, 1.0f))
             {
                 result = HDRIColorSpace::ACES2065_1;
-                spdlog::info("IBL: EXR chromaticities detected as ACES 2065-1 (AP0)");
+                spdlog::debug("IBL: EXR chromaticities detected as ACES 2065-1 (AP0)");
             }
             // Rec.2020: R(0.708,0.292) G(0.170,0.797) B(0.131,0.046)
             else if (approx(rX, 0.708f) && approx(rY, 0.292f) && approx(gX, 0.170f) && approx(gY, 0.797f))
             {
                 result = HDRIColorSpace::Rec2020;
-                spdlog::info("IBL: EXR chromaticities detected as Rec.2020");
+                spdlog::debug("IBL: EXR chromaticities detected as Rec.2020");
             }
             // sRGB / Rec.709: R(0.64,0.33) G(0.30,0.60) B(0.15,0.06)
             else if (approx(rX, 0.64f) && approx(rY, 0.33f) && approx(gX, 0.30f) && approx(gY, 0.60f))
             {
                 result = HDRIColorSpace::Rec709;
-                spdlog::info("IBL: EXR chromaticities detected as sRGB/Rec.709");
+                spdlog::debug("IBL: EXR chromaticities detected as sRGB/Rec.709");
             }
             else
             {
@@ -1037,7 +1037,7 @@ static HDRIColorSpace detectEXRColorSpace(const std::filesystem::path& path)
             if (std::strcmp(header.custom_attributes[i].name, "acesImageContainerFlag") == 0)
             {
                 result = HDRIColorSpace::ACES2065_1;
-                spdlog::info("IBL: EXR has acesImageContainerFlag — treating as ACES 2065-1");
+                spdlog::debug("IBL: EXR has acesImageContainerFlag -- treating as ACES 2065-1");
                 break;
             }
         }
@@ -1247,7 +1247,7 @@ void IBLPipeline::convertPixelsToACEScg(float* rgba, int w, int h, HDRIColorSpac
     }
 
     static const char* csNames[] = {"Rec.709", "ACEScg", "ACES 2065-1", "Rec.2020"};
-    spdlog::info("IBL: Converted {} pixels from {} to ACEScg", pixelCount, csNames[static_cast<int>(src)]);
+    spdlog::debug("IBL: Converted {} pixels from {} to ACEScg", pixelCount, csNames[static_cast<int>(src)]);
 }
 
 std::vector<std::filesystem::path> IBLPipeline::listHDRIs(const std::filesystem::path& directory)
