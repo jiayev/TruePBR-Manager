@@ -258,6 +258,12 @@ bool MaterialPreviewWidget::isVSyncEnabled() const
     return m_renderer ? m_renderer->isVSyncEnabled() : true;
 }
 
+void MaterialPreviewWidget::setDebugMode(uint32_t mode)
+{
+    if (m_renderer)
+        m_renderer->setDebugMode(mode);
+}
+
 void MaterialPreviewWidget::resizeEvent(QResizeEvent* event)
 {
     QWidget::resizeEvent(event);

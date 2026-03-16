@@ -117,19 +117,69 @@ set(RESOURCES
     ${CMAKE_SOURCE_DIR}/resources/resources.qrc
 )
 
+# ── Core library (testable subset, no Qt/D3D12 dependency) ──
+set(CORE_LIB_SOURCES
+    core/Project.h
+    core/Project.cpp
+    core/PBRTextureSet.h
+    core/PBRTextureSet.cpp
+    core/TextureSetValidator.h
+    core/TextureSetValidator.cpp
+    core/JsonExporter.h
+    core/JsonExporter.cpp
+    core/LandscapeExporter.h
+    core/LandscapeExporter.cpp
+    utils/Log.h
+    utils/Log.cpp
+)
+
+add_library(TruePBR-Core STATIC ${CORE_LIB_SOURCES})
+set_target_properties(TruePBR-Core PROPERTIES
+    AUTOMOC OFF
+    AUTORCC OFF
+    AUTOUIC OFF
+    QT_NO_UTF8_SOURCE ON
+)
+
+# vcpkg x64-windows only ships release libraries
+set(CMAKE_MAP_IMPORTED_CONFIG_DEBUG Release RelWithDebInfo "")
+
+find_package(nlohmann_json CONFIG REQUIRED)
+find_package(spdlog CONFIG REQUIRED)
+
+target_include_directories(TruePBR-Core PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_BINARY_DIR}/generated
+)
+
+target_link_libraries(TruePBR-Core PUBLIC
+    nlohmann_json::nlohmann_json
+    spdlog::spdlog
+)
+
+target_compile_definitions(TruePBR-Core PUBLIC
+    $<$<CONFIG:Debug>:SPDLOG_ACTIVE_LEVEL=0>
+    $<$<NOT:$<CONFIG:Debug>>:SPDLOG_ACTIVE_LEVEL=2>
+)
+
+if(WIN32)
+    target_compile_definitions(TruePBR-Core PUBLIC
+        WIN32_LEAN_AND_MEAN
+        NOMINMAX
+        UNICODE
+        _UNICODE
+    )
+endif()
+
+# ── Main executable ──
+
 add_executable(TruePBR-Manager WIN32
     ${ALL_SOURCES}
     ${RESOURCES}
 )
 
 # Find packages
-# vcpkg x64-windows only ships release libraries, so map Debug config
-# to Release for all imported targets to avoid missing *d.dll errors.
-set(CMAKE_MAP_IMPORTED_CONFIG_DEBUG Release RelWithDebInfo "")
-
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
-find_package(nlohmann_json CONFIG REQUIRED)
-find_package(spdlog CONFIG REQUIRED)
 find_package(directxtex CONFIG REQUIRED)
 find_package(Stb REQUIRED)
 
@@ -140,9 +190,8 @@ target_include_directories(TruePBR-Manager PRIVATE
 )
 
 target_link_libraries(TruePBR-Manager PRIVATE
+    TruePBR-Core
     Qt6::Widgets
-    nlohmann_json::nlohmann_json
-    spdlog::spdlog
     Microsoft::DirectXTex
     d3d12.lib
     dxgi.lib

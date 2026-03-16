@@ -127,7 +127,13 @@
       "Exporting...": "正在导出...",
       "Cancel": "取消",
       "Exporting: %1": "正在导出：%1",
-      "Export cancelled": "导出已取消"
+      "Export cancelled": "导出已取消",
+      "Full Shading": "完整着色",
+      "Normal": "法线",
+      "Roughness": "粗糙度",
+      "Metallic": "金属度",
+      "AO": "AO",
+      "Specular": "高光"
     },
     "tpbr::TextureSetPanel": {
       "Add": "添加",

@@ -2019,6 +2019,7 @@ void D3D12Renderer::render()
     frame.materialCBMapped->glintLogMicrofacetDensity = m_glintLogMicrofacetDensity;
     frame.materialCBMapped->glintMicrofacetRoughness = m_glintMicrofacetRoughness;
     frame.materialCBMapped->glintDensityRandomization = m_glintDensityRandomization;
+    frame.materialCBMapped->debugMode = m_debugMode;
 
     // 5. Record commands — Scene pass (HDR color + velocity MRT)
     auto hdrRtv = m_rtvHeap.cpuHandle(m_hdrColorRtvIndex);
@@ -2580,6 +2581,11 @@ void D3D12Renderer::setTAAEnabled(bool enabled)
     m_taaEnabled = enabled;
     if (!enabled)
         invalidateTAAHistory();
+}
+
+void D3D12Renderer::setDebugMode(uint32_t mode)
+{
+    m_debugMode = mode;
 }
 
 void D3D12Renderer::setHDREnabled(bool enabled)

@@ -57,6 +57,9 @@ cbuffer MaterialCB : register(b1)
     float g_GlintLogMicrofacetDensity;
     float g_GlintMicrofacetRoughness;
     float g_GlintDensityRandomization;
+
+    uint  g_DebugMode; // 0=off, 1=Normal, 2=Roughness, 3=Metallic, 4=AO, 5=Specular
+    uint3 _padDebug;
 };
 
 // ─── Textures & Samplers ───────────────────────────────────
@@ -155,6 +158,31 @@ PSOutput PSMain(PSInput input)
     float3 B = normalize(input.bitangentWS);
     float3x3 TBN = float3x3(T, B, N);
     N = normalize(mul(normalTS, TBN));
+
+    // ── Debug visualization (early out) ────────────────────
+    if (g_DebugMode != 0)
+    {
+        float2 currNDC = input.currClipPos.xy / input.currClipPos.w;
+        float2 prevNDC = input.prevClipPos.xy / input.prevClipPos.w;
+        float2 vel = (currNDC - prevNDC) * float2(0.5, -0.5);
+        PSOutput dbg;
+        dbg.velocity = vel;
+
+        if (g_DebugMode == 1) // World-space normal → [0,1]
+            dbg.color = float4(N * 0.5 + 0.5, 1);
+        else if (g_DebugMode == 2) // Roughness (grayscale)
+            dbg.color = float4(roughness, roughness, roughness, 1);
+        else if (g_DebugMode == 3) // Metallic (grayscale)
+            dbg.color = float4(metallic, metallic, metallic, 1);
+        else if (g_DebugMode == 4) // AO (grayscale)
+            dbg.color = float4(ao, ao, ao, 1);
+        else if (g_DebugMode == 5) // Specular (grayscale)
+            dbg.color = float4(specularMap, specularMap, specularMap, 1);
+        else
+            dbg.color = float4(1, 0, 1, 1); // Unknown mode = magenta
+
+        return dbg;
+    }
 
     float3 V = normalize(g_CameraPos - input.positionWS);
     float NdotV = max(dot(N, V), EPSILON_DOT_CLAMP);

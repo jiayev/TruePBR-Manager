@@ -34,3 +34,10 @@ configure_file(
 )
 
 add_subdirectory(src)
+
+# --- Optional: unit tests ---
+option(TRUEPBR_BUILD_TESTS "Build unit tests" OFF)
+if(TRUEPBR_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()

@@ -27,6 +27,14 @@
             "name": "debug",
             "displayName": "Debug (vcpkg)",
             "inherits": "default"
+        },
+        {
+            "name": "test",
+            "displayName": "Test (vcpkg, with unit tests)",
+            "inherits": "default",
+            "cacheVariables": {
+                "TRUEPBR_BUILD_TESTS": "ON"
+            }
         }
     ],
     "buildPresets": [
@@ -39,6 +47,21 @@
             "name": "debug",
             "configurePreset": "debug",
             "configuration": "Debug"
+        },
+        {
+            "name": "test",
+            "configurePreset": "test",
+            "configuration": "Debug"
+        }
+    ],
+    "testPresets": [
+        {
+            "name": "test",
+            "configurePreset": "test",
+            "configuration": "Debug",
+            "output": {
+                "outputOnFailure": true
+            }
         }
     ]
 }

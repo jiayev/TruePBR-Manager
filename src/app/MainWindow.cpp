@@ -304,7 +304,29 @@ void MainWindow::setupCentralWidget()
     m_shapeCombo = m_materialPreview->shapeCombo();
     m_shapeCombo->setParent(previewContainer);
     m_shapeCombo->setVisible(false);
-    previewLayout->addWidget(m_shapeCombo);
+
+    // Debug visualization mode combo
+    m_debugModeCombo = new QComboBox(previewContainer);
+    m_debugModeCombo->addItem(tr("Full Shading"), 0);
+    m_debugModeCombo->addItem(tr("Normal"), 1);
+    m_debugModeCombo->addItem(tr("Roughness"), 2);
+    m_debugModeCombo->addItem(tr("Metallic"), 3);
+    m_debugModeCombo->addItem(tr("AO"), 4);
+    m_debugModeCombo->addItem(tr("Specular"), 5);
+    m_debugModeCombo->setVisible(false);
+
+    auto* shapeDebugRow = new QHBoxLayout();
+    shapeDebugRow->setContentsMargins(0, 0, 0, 0);
+    shapeDebugRow->addWidget(m_shapeCombo, 1);
+    shapeDebugRow->addWidget(m_debugModeCombo, 1);
+    previewLayout->addLayout(shapeDebugRow);
+
+    connect(m_debugModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            [this](int index)
+            {
+                uint32_t mode = static_cast<uint32_t>(m_debugModeCombo->itemData(index).toInt());
+                m_materialPreview->setDebugMode(mode);
+            });
 
     // 3D control bar: light intensity slider + light color button
     m_3dControlBar = new QWidget(previewContainer);
@@ -657,6 +679,7 @@ void MainWindow::setupCentralWidget()
                 m_preview2DBtn->setChecked(true);
                 m_preview3DBtn->setChecked(false);
                 m_shapeCombo->setVisible(false);
+                m_debugModeCombo->setVisible(false);
                 m_3dControlBar->setVisible(false);
                 iblRow->setVisible(false);
                 iblParamsRow->setVisible(false);
@@ -671,6 +694,7 @@ void MainWindow::setupCentralWidget()
                 m_preview2DBtn->setChecked(false);
                 m_preview3DBtn->setChecked(true);
                 m_shapeCombo->setVisible(true);
+                m_debugModeCombo->setVisible(true);
                 m_3dControlBar->setVisible(true);
                 iblRow->setVisible(true);
                 iblParamsRow->setVisible(true);
@@ -1724,6 +1748,9 @@ void MainWindow::pushAllPreviewSettings()
 
     float iblIntensity = static_cast<float>(m_iblIntensitySlider->value()) / 10.0f;
     m_materialPreview->setIBLIntensity(iblIntensity);
+
+    uint32_t debugMode = static_cast<uint32_t>(m_debugModeCombo->currentData().toInt());
+    m_materialPreview->setDebugMode(debugMode);
 }
 
 void MainWindow::refresh3DPreview()
@@ -2033,6 +2060,14 @@ void MainWindow::retranslateUi()
     m_iblResCombo->setToolTip(tr("Prefiltered cubemap face resolution"));
     m_samplesLabel->setText(tr("Samples:"));
     m_iblSamplesCombo->setToolTip(tr("GGX importance samples per texel for specular prefiltering"));
+
+    // Debug visualization combo
+    m_debugModeCombo->setItemText(0, tr("Full Shading"));
+    m_debugModeCombo->setItemText(1, tr("Normal"));
+    m_debugModeCombo->setItemText(2, tr("Roughness"));
+    m_debugModeCombo->setItemText(3, tr("Metallic"));
+    m_debugModeCombo->setItemText(4, tr("AO"));
+    m_debugModeCombo->setItemText(5, tr("Specular"));
 
     // Placeholders – update only if currently visible
     updateEditorState();

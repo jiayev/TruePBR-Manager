@@ -127,7 +127,13 @@
       "Exporting...": "Exporting...",
       "Cancel": "Cancel",
       "Exporting: %1": "Exporting: %1",
-      "Export cancelled": "Export cancelled"
+      "Export cancelled": "Export cancelled",
+      "Full Shading": "Full Shading",
+      "Normal": "Normal",
+      "Roughness": "Roughness",
+      "Metallic": "Metallic",
+      "AO": "AO",
+      "Specular": "Specular"
     },
     "tpbr::TextureSetPanel": {
       "Add": "Add",

@@ -86,6 +86,9 @@ struct MaterialCBData
     float glintLogMicrofacetDensity;
     float glintMicrofacetRoughness;
     float glintDensityRandomization;
+
+    uint32_t debugMode; // 0=off, 1=Normal, 2=Roughness, 3=Metallic, 4=AO, 5=Specular
+    uint32_t _padDebug[3];
 };
 
 /// Per-frame resources for double-buffered rendering.
@@ -215,6 +218,14 @@ class D3D12Renderer
         return m_taaEnabled;
     }
 
+    /// Set debug visualization mode.
+    /// 0=off, 1=Normal, 2=Roughness, 3=Metallic, 4=AO, 5=Specular.
+    void setDebugMode(uint32_t mode);
+    uint32_t debugMode() const
+    {
+        return m_debugMode;
+    }
+
     /// Render one frame.
     void render();
 
@@ -320,6 +331,9 @@ class D3D12Renderer
 
     // TAA toggle
     bool m_taaEnabled = true;
+
+    // Debug visualization mode (0=off)
+    uint32_t m_debugMode = 0;
 
     // HDR state
     bool m_hdrEnabled = false;

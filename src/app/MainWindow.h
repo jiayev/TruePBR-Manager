@@ -129,6 +129,7 @@ class MainWindow : public QMainWindow
     float m_lightColorG = 1.0f;
     float m_lightColorB = 1.0f;
     QComboBox* m_shapeCombo = nullptr;
+    QComboBox* m_debugModeCombo = nullptr;
     QLabel* m_editorPlaceholder = nullptr;
     QLabel* m_previewPlaceholder = nullptr;
 
