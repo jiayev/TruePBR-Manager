@@ -990,6 +990,8 @@ void MainWindow::onExportMod()
     int totalSteps = static_cast<int>(m_project.textureSets.size()) + 2;
     auto* progressDialog = new QProgressDialog(tr("Exporting..."), tr("Cancel"), 0, totalSteps, this);
     progressDialog->setWindowModality(Qt::WindowModal);
+    progressDialog->setAutoReset(false);
+    progressDialog->setAutoClose(false);
     progressDialog->setMinimumDuration(0);
     progressDialog->setValue(0);
     progressDialog->show();
