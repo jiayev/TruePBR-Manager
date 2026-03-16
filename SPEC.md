@@ -138,6 +138,8 @@ Primary references:
 - Hot-reload: `QTimer`-based 2-second polling detects file changes and reloads translations without restart
 - Adding a new language requires only dropping a new `<locale>.json` file into the `translations/` directory
 
+**Development workflow**: Any code change that adds, removes, or modifies `tr()` strings MUST be accompanied by corresponding updates to ALL translation files (`translations/*.json`). The key in each JSON file is the exact English source string passed to `tr()`, scoped under the fully-qualified class context (e.g. `"tpbr::MainWindow"`). Forgetting to update translation files will cause the new strings to display untranslated in non-English locales.
+
 ### 3.11 Application settings persistence
 
 - `AppSettings` (singleton) persists project-independent preferences via `QSettings` in INI format
@@ -561,7 +563,6 @@ TruePBR-Manager/
 ├── buildrelease.bat
 ├── README.md
 ├── SPEC.md
-├── docs/
 ├── resources/
 ├── translations/   JSON translation files (en.json, zh_CN.json)
 └── src/
