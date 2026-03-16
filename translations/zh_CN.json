@@ -133,7 +133,9 @@
       "Roughness": "粗糙度",
       "Metallic": "金属度",
       "AO": "AO",
-      "Specular": "高光"
+      "Specular": "高光",
+      "Mip Bias:": "Mip 偏移:",
+      "Mip LOD bias for texture sampling (negative = sharper)": "纹理采样 Mip LOD 偏移（负值 = 更锐利）"
     },
     "tpbr::TextureSetPanel": {
       "Add": "添加",

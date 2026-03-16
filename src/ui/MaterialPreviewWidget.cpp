@@ -264,6 +264,12 @@ void MaterialPreviewWidget::setDebugMode(uint32_t mode)
         m_renderer->setDebugMode(mode);
 }
 
+void MaterialPreviewWidget::setMipBias(float bias)
+{
+    if (m_renderer)
+        m_renderer->setMipBias(bias);
+}
+
 void MaterialPreviewWidget::resizeEvent(QResizeEvent* event)
 {
     QWidget::resizeEvent(event);

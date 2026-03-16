@@ -133,7 +133,9 @@
       "Roughness": "Roughness",
       "Metallic": "Metallic",
       "AO": "AO",
-      "Specular": "Specular"
+      "Specular": "Specular",
+      "Mip Bias:": "Mip Bias:",
+      "Mip LOD bias for texture sampling (negative = sharper)": "Mip LOD bias for texture sampling (negative = sharper)"
     },
     "tpbr::TextureSetPanel": {
       "Add": "Add",

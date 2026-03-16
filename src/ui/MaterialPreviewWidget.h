@@ -60,6 +60,9 @@ class MaterialPreviewWidget : public QWidget
     /// Set debug visualization mode (0=off, 1=Normal, 2=Roughness, 3=Metallic, 4=AO, 5=Specular).
     void setDebugMode(uint32_t mode);
 
+    /// Set mip LOD bias for material texture sampling.
+    void setMipBias(float bias);
+
     QComboBox* shapeCombo() const
     {
         return m_shapeCombo;

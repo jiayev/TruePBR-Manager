@@ -88,7 +88,8 @@ struct MaterialCBData
     float glintDensityRandomization;
 
     uint32_t debugMode; // 0=off, 1=Normal, 2=Roughness, 3=Metallic, 4=AO, 5=Specular
-    uint32_t _padDebug[3];
+    float mipBias;      // Mip LOD bias for material texture sampling
+    uint32_t _padDebug[2];
 };
 
 /// Per-frame resources for double-buffered rendering.
@@ -226,6 +227,13 @@ class D3D12Renderer
         return m_debugMode;
     }
 
+    /// Set mip LOD bias for material texture sampling (e.g. -1.0 for sharper).
+    void setMipBias(float bias);
+    float mipBias() const
+    {
+        return m_mipBias;
+    }
+
     /// Render one frame.
     void render();
 
@@ -334,6 +342,9 @@ class D3D12Renderer
 
     // Debug visualization mode (0=off)
     uint32_t m_debugMode = 0;
+
+    // Mip LOD bias for material textures
+    float m_mipBias = -1.0f;
 
     // HDR state
     bool m_hdrEnabled = false;

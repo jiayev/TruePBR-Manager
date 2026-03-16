@@ -390,6 +390,19 @@ void MainWindow::setupCentralWidget()
     m_specularOcclusionCB->setToolTip(tr("AO-based specular occlusion"));
     renderOptsLayout->addWidget(m_specularOcclusionCB);
 
+    m_mipBiasTextLabel = new QLabel(tr("Mip Bias:"), renderOptsRow);
+    renderOptsLayout->addWidget(m_mipBiasTextLabel);
+
+    m_mipBiasSlider = new QSlider(Qt::Horizontal, renderOptsRow);
+    m_mipBiasSlider->setRange(-30, 0); // -3.0 to 0.0, stored as x10
+    m_mipBiasSlider->setValue(-10);    // default -1.0
+    m_mipBiasSlider->setToolTip(tr("Mip LOD bias for texture sampling (negative = sharper)"));
+    renderOptsLayout->addWidget(m_mipBiasSlider, 1);
+
+    m_mipBiasLabel = new QLabel("-1.0", renderOptsRow);
+    m_mipBiasLabel->setFixedWidth(32);
+    renderOptsLayout->addWidget(m_mipBiasLabel);
+
     renderOptsLayout->addStretch();
     renderOptsRow->setVisible(false);
     previewLayout->addWidget(renderOptsRow);
@@ -497,6 +510,14 @@ void MainWindow::setupCentralWidget()
     connect(m_horizonOcclusionCB, &QCheckBox::toggled, this, updateRenderFlags);
     connect(m_multiBounceAOCB, &QCheckBox::toggled, this, updateRenderFlags);
     connect(m_specularOcclusionCB, &QCheckBox::toggled, this, updateRenderFlags);
+
+    connect(m_mipBiasSlider, &QSlider::valueChanged, this,
+            [this](int value)
+            {
+                float bias = static_cast<float>(value) / 10.0f;
+                m_mipBiasLabel->setText(QString::number(bias, 'f', 1));
+                m_materialPreview->setMipBias(bias);
+            });
 
     connect(m_lightIntensitySlider, &QSlider::valueChanged, this,
             [this](int value)
@@ -777,6 +798,7 @@ void MainWindow::save3DPreviewSettings()
     s.setValue("Preview3D/paperWhite", m_paperWhiteSlider->value());
     s.setValue("Preview3D/peakBrightness", m_peakBrightnessSlider->value());
     s.setValue("Preview3D/shapeIndex", m_shapeCombo->currentIndex());
+    s.setValue("Preview3D/mipBias", m_mipBiasSlider->value());
 }
 
 void MainWindow::restore3DPreviewSettings()
@@ -817,6 +839,8 @@ void MainWindow::restore3DPreviewSettings()
     m_taaCB->setChecked(s.value("Preview3D/taa", true).toBool());
     m_paperWhiteSlider->setValue(s.value("Preview3D/paperWhite", 200).toInt());
     m_peakBrightnessSlider->setValue(s.value("Preview3D/peakBrightness", 1000).toInt());
+
+    m_mipBiasSlider->setValue(s.value("Preview3D/mipBias", -10).toInt());
 
     int shapeIdx = s.value("Preview3D/shapeIndex", 0).toInt();
     if (shapeIdx >= 0 && shapeIdx < m_shapeCombo->count())
@@ -1752,6 +1776,9 @@ void MainWindow::pushAllPreviewSettings()
     uint32_t debugMode = static_cast<uint32_t>(m_debugModeCombo->currentData().toInt());
     m_materialPreview->setDebugMode(debugMode);
 
+    float mipBias = static_cast<float>(m_mipBiasSlider->value()) / 10.0f;
+    m_materialPreview->setMipBias(mipBias);
+
     int shapeIdx = m_shapeCombo->currentIndex();
     if (shapeIdx >= 0)
     {
@@ -2043,6 +2070,8 @@ void MainWindow::retranslateUi()
     m_multiBounceAOCB->setToolTip(tr("Multi-bounce ambient occlusion (Jimenez 2016)"));
     m_specularOcclusionCB->setText(tr("Specular Occlusion"));
     m_specularOcclusionCB->setToolTip(tr("AO-based specular occlusion"));
+    m_mipBiasTextLabel->setText(tr("Mip Bias:"));
+    m_mipBiasSlider->setToolTip(tr("Mip LOD bias for texture sampling (negative = sharper)"));
 
     // Display options
     m_vsyncCB->setText(tr("VSync"));
