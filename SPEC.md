@@ -88,6 +88,9 @@ Primary references:
 - Full PBR feature support in preview: emissive, subsurface, coat, fuzz, glint, hair
 - Automatic GPU selection (discrete adapter preferred)
 - Device-lost detection and recovery
+- Full mip chain generation: CPU box filter downsampling with per-level upload to GPU
+- Configurable mip LOD bias for material texture sampling (default -1.0, adjustable -1.0 to 0.0)
+- Debug channel visualization: Normal, Roughness, Metallic, AO, Specular (bypasses tone mapping)
 
 ### 3.6 Export
 
@@ -503,8 +506,11 @@ The preview area is a `QStackedWidget` toggled via 2D/3D buttons.
 - HDRI selector combo (scans a folder for .exr/.hdr/.dds files)
 - IBL intensity slider, prefilter resolution combo, sample count combo
 - Render flag checkboxes: Horizon Occlusion, Multi-Bounce AO, Specular Occlusion
+- Mip Bias slider (-1.0 to 0.0, default -1.0)
 - VSync, TAA, and HDR checkboxes
 - Paper-white and peak-brightness sliders (HDR mode only)
+- Debug visualization combo: Full Shading, Normal, Roughness, Metallic, AO, Specular
+- Shape selector: Sphere, Plane, Cube, Rounded Cube
 
 ### 9.4 D3D12 Renderer
 
@@ -512,10 +518,11 @@ The preview area is a `QStackedWidget` toggled via 2D/3D buttons.
 
 - Double-buffered frame management with per-frame command allocators and fence values
 - Dedicated async copy queue (`D3D12UploadQueue`) with 64 MB ring buffer for texture uploads
+- Full mip chain generation on CPU (box filter) with per-level upload via copy queue
 - `DescriptorHeap` helper for linear SRV/CBV/UAV and RTV/DSV allocation
 - Cook-Torrance PBR pipeline state with precompiled vertex and pixel shaders
 - Skybox pipeline for HDRI environment background
-- GT7 tone-mapping post-process pass
+- GT7 tone-mapping post-process pass (bypassed for debug visualization modes)
 - TAA resolve compute pass with velocity reprojection
 - HDR (scRGB) and SDR swap chain modes
 - GPU adapter selection preferring discrete GPUs
@@ -565,6 +572,7 @@ TruePBR-Manager/
 ├── SPEC.md
 ├── resources/
 ├── translations/   JSON translation files (en.json, zh_CN.json)
+├── tests/          Unit tests (Google Test)
 └── src/
     ├── app/
     ├── core/
@@ -619,15 +627,24 @@ CMake presets:
 
 - `default` configure preset for Release
 - `debug` configure preset for Debug
-- `release` and `debug` build presets
+- `test` configure preset for Debug with unit tests (`-DTRUEPBR_BUILD_TESTS=ON`)
+- `release`, `debug`, and `test` build presets
 
-### 11.3 Shader compilation
+### 11.3 Unit tests
+
+- Optional, enabled via `-DTRUEPBR_BUILD_TESTS=ON` or the `test` CMake preset
+- `TruePBR-Core` static library extracts testable core logic (Project, PBRTextureSet, TextureSetValidator, JsonExporter, LandscapeExporter) with no Qt or D3D12 dependency
+- `TruePBR-Tests` executable links `TruePBR-Core` + Google Test
+- Test suites: PBRTextureSet free functions, TextureSetValidator rules, Project save/load round-trip
+- Run: `cmake --preset test && cmake --build build --config Debug --target TruePBR-Tests && ctest --preset test`
+
+### 11.4 Shader compilation
 
 - HLSL shaders are precompiled to `.cso` files during build via `dxc.exe`
 - Compiled shader objects are copied to the output directory alongside the executable
 - Shader source files live in `src/renderer/` with shared includes in `src/renderer/Common/`
 
-### 11.4 Packaged output
+### 11.5 Packaged output
 
 The CMake target currently places the runtime package in:
 
@@ -650,6 +667,7 @@ Post-build steps currently do the following:
 | spdlog | Logging | vcpkg (spdlog) |
 | DirectXTex | DDS metadata, decode, encode, compression | vcpkg (directxtex) |
 | stb_image | Raster image loading | vcpkg (stb) |
+| Google Test | Unit testing framework | vcpkg (gtest), optional |
 | tinyexr | EXR image loading for HDRI | Vendored (v1.0.9, header-only) |
 | D3D12 / DXGI | GPU rendering (3D preview) | Windows SDK (system) |
 | d3dcompiler | HLSL shader compilation fallback | Windows SDK (system) |

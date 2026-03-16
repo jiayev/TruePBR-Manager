@@ -18,6 +18,8 @@ The application currently supports:
 - Per-slot DDS compression, export size override, and slot path override
 - 2D preview with zoom, pan, and per-channel isolation
 - 3D material preview (D3D12 Cook-Torrance PBR): IBL with HDRI, skybox, TAA, HDR output, GT7 tone mapping, ACEScg pipeline
+- 3D debug channel visualization: Normal, Roughness, Metallic, AO, Specular
+- Full mipmap generation for preview textures with adjustable mip LOD bias
 - Batch import by filename suffix
 - Pre-export validation (resolution, missing slots, conflicts)
 - Landscape texture set support (TXST EDIDs)
@@ -124,7 +126,7 @@ Recommended baseline for this project:
 
 - `CI` for formatting, lint-style checks, and build validation
 - `Release` for tagged packaging and downloadable binaries
-- `Tests` later, once the project has automated tests to run
+- Unit tests can be run locally via `cmake --preset test`
 
 ### Requirements
 
@@ -156,6 +158,15 @@ Available configure presets:
 
 - `default` for Release
 - `debug` for Debug
+- `test` for Debug with unit tests
+
+### Running Tests
+
+```powershell
+cmake --preset test
+cmake --build --preset test
+ctest --preset test
+```
 
 ### Manual CMake
 
@@ -178,6 +189,7 @@ Managed through vcpkg:
 | nlohmann/json | Project and export JSON serialization |
 | spdlog | Logging |
 | stb_image | Raster image loading |
+| Google Test | Unit testing (optional, test preset only) |
 Additional dependencies:
 
 | Library | Purpose | Source |
@@ -193,6 +205,7 @@ src/
 ├── renderer/   D3D12 GPU backend, IBL pipeline, mesh generation, HLSL shaders
 ├── ui/         Texture set list, slot editor, feature toggles, parameter editor, 3D preview widget
 └── utils/      DDS helpers, image loading, file helpers, logging
+tests/          Unit tests (Google Test): PBRTextureSet, TextureSetValidator, Project
 translations/   JSON translation files (en.json, zh_CN.json, ...)
 ```
 
