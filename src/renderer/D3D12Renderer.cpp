@@ -1062,7 +1062,63 @@ void D3D12Renderer::uploadTexture(int texIndex, int srvIndex, const uint8_t* rgb
 
     const DXGI_FORMAT texFormat = srgb ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
 
-    // Create texture resource on DEFAULT heap
+    // Calculate mip count: floor(log2(max(w,h))) + 1, capped for tiny textures
+    int mipCount = 1;
+    {
+        int maxDim = (w > h) ? w : h;
+        while (maxDim > 1)
+        {
+            maxDim >>= 1;
+            ++mipCount;
+        }
+    }
+
+    // Generate mip chain on CPU using box filter
+    // mipData[0] points to the original data, mipData[i>0] to generated levels
+    struct MipLevel
+    {
+        const uint8_t* data;
+        int width;
+        int height;
+    };
+    std::vector<MipLevel> mips(mipCount);
+    std::vector<std::vector<uint8_t>> generatedMips(mipCount);
+
+    mips[0] = {rgba, w, h};
+
+    for (int m = 1; m < mipCount; ++m)
+    {
+        int prevW = mips[m - 1].width;
+        int prevH = mips[m - 1].height;
+        int mipW = (prevW > 1) ? (prevW >> 1) : 1;
+        int mipH = (prevH > 1) ? (prevH >> 1) : 1;
+
+        generatedMips[m].resize(mipW * mipH * 4);
+        const uint8_t* prev = mips[m - 1].data;
+
+        for (int y = 0; y < mipH; ++y)
+        {
+            for (int x = 0; x < mipW; ++x)
+            {
+                int sx = x * 2;
+                int sy = y * 2;
+                // Clamp second sample to valid range for non-power-of-two edge case
+                int sx1 = (sx + 1 < prevW) ? sx + 1 : sx;
+                int sy1 = (sy + 1 < prevH) ? sy + 1 : sy;
+
+                for (int c = 0; c < 4; ++c)
+                {
+                    int sum = prev[(sy * prevW + sx) * 4 + c] + prev[(sy * prevW + sx1) * 4 + c] +
+                              prev[(sy1 * prevW + sx) * 4 + c] + prev[(sy1 * prevW + sx1) * 4 + c];
+                    generatedMips[m][(y * mipW + x) * 4 + c] = static_cast<uint8_t>((sum + 2) / 4);
+                }
+            }
+        }
+
+        mips[m] = {generatedMips[m].data(), mipW, mipH};
+    }
+
+    // Create texture resource with full mip chain
     D3D12_HEAP_PROPERTIES heapProps{};
     heapProps.Type = D3D12_HEAP_TYPE_DEFAULT;
 
@@ -1071,7 +1127,7 @@ void D3D12Renderer::uploadTexture(int texIndex, int srvIndex, const uint8_t* rgb
     texDesc.Width = w;
     texDesc.Height = h;
     texDesc.DepthOrArraySize = 1;
-    texDesc.MipLevels = 1;
+    texDesc.MipLevels = static_cast<UINT16>(mipCount);
     texDesc.Format = texFormat;
     texDesc.SampleDesc.Count = 1;
 
@@ -1085,58 +1141,66 @@ void D3D12Renderer::uploadTexture(int texIndex, int srvIndex, const uint8_t* rgb
         return;
     }
 
-    // Get upload footprint
-    D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint;
-    UINT64 requiredSize = 0;
-    m_device->GetCopyableFootprints(&texDesc, 0, 1, 0, &footprint, nullptr, nullptr, &requiredSize);
-
-    // Allocate from ring buffer
-    uint64_t ringOffset = 0;
-    uint8_t* mapped = m_uploadQueue->allocate(requiredSize, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT, ringOffset);
-    if (!mapped)
+    // Upload each mip level
+    for (int m = 0; m < mipCount; ++m)
     {
-        // Ring buffer full — flush and retry
-        m_uploadQueue->flush();
-        m_uploadQueue->resetRingBuffer();
-        mapped = m_uploadQueue->allocate(requiredSize, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT, ringOffset);
+        int mipW = mips[m].width;
+        int mipH = mips[m].height;
+
+        // Compute footprint for this mip level
+        D3D12_RESOURCE_DESC mipDesc = texDesc;
+        mipDesc.Width = mipW;
+        mipDesc.Height = mipH;
+        mipDesc.MipLevels = 1;
+
+        D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint;
+        UINT64 requiredSize = 0;
+        m_device->GetCopyableFootprints(&mipDesc, 0, 1, 0, &footprint, nullptr, nullptr, &requiredSize);
+
+        // Allocate from ring buffer
+        uint64_t ringOffset = 0;
+        uint8_t* mapped = m_uploadQueue->allocate(requiredSize, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT, ringOffset);
         if (!mapped)
         {
-            spdlog::error("uploadTexture: ring buffer allocation failed after flush");
-            return;
+            m_uploadQueue->flush();
+            m_uploadQueue->resetRingBuffer();
+            mapped = m_uploadQueue->allocate(requiredSize, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT, ringOffset);
+            if (!mapped)
+            {
+                spdlog::error("uploadTexture: ring buffer allocation failed for mip {}", m);
+                return;
+            }
         }
+
+        // Copy mip data into ring buffer, respecting row pitch
+        footprint.Offset = ringOffset;
+        for (int y = 0; y < mipH; ++y)
+        {
+            memcpy(mapped + y * footprint.Footprint.RowPitch, mips[m].data + y * mipW * 4, mipW * 4);
+        }
+
+        // Record copy command
+        m_uploadQueue->resetCommandList();
+        auto* copyList = m_uploadQueue->commandList();
+
+        D3D12_TEXTURE_COPY_LOCATION dst{};
+        dst.pResource = m_textures[texIndex].Get();
+        dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+        dst.SubresourceIndex = m;
+
+        D3D12_TEXTURE_COPY_LOCATION src{};
+        src.pResource = m_uploadQueue->ringBuffer();
+        src.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+        src.PlacedFootprint = footprint;
+
+        copyList->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+
+        uint64_t copyFence = m_uploadQueue->execute();
+        m_uploadQueue->directQueueWaitForCopy(m_directQueue.Get(), copyFence);
     }
 
-    // Copy data into ring buffer, respecting row pitch
-    footprint.Offset = ringOffset;
-    for (int y = 0; y < h; ++y)
-    {
-        memcpy(mapped + y * footprint.Footprint.RowPitch, rgba + y * w * 4, w * 4);
-    }
-
-    // Record copy command
-    m_uploadQueue->resetCommandList();
-    auto* copyList = m_uploadQueue->commandList();
-
-    D3D12_TEXTURE_COPY_LOCATION dst{};
-    dst.pResource = m_textures[texIndex].Get();
-    dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-    dst.SubresourceIndex = 0;
-
-    D3D12_TEXTURE_COPY_LOCATION src{};
-    src.pResource = m_uploadQueue->ringBuffer();
-    src.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-    src.PlacedFootprint = footprint;
-
-    copyList->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
-
-    uint64_t copyFence = m_uploadQueue->execute();
-
-    // We need to transition the resource from COPY_DEST to PIXEL_SHADER_RESOURCE
-    // on the direct queue after the copy completes. Use a one-shot direct queue submission.
-    m_uploadQueue->directQueueWaitForCopy(m_directQueue.Get(), copyFence);
-
-    // Use frame 0's allocator for this transition (we're during init or blocking upload)
-    flushGPU(); // Ensure no pending work
+    // Transition from COPY_DEST to PIXEL_SHADER_RESOURCE
+    flushGPU();
     m_frames[0].commandAllocator->Reset();
     m_commandList->Reset(m_frames[0].commandAllocator.Get(), nullptr);
 
@@ -1145,6 +1209,7 @@ void D3D12Renderer::uploadTexture(int texIndex, int srvIndex, const uint8_t* rgb
     barrier.Transition.pResource = m_textures[texIndex].Get();
     barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
     barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+    barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     m_commandList->ResourceBarrier(1, &barrier);
 
     m_commandList->Close();
@@ -1152,12 +1217,12 @@ void D3D12Renderer::uploadTexture(int texIndex, int srvIndex, const uint8_t* rgb
     m_directQueue->ExecuteCommandLists(1, lists);
     flushGPU();
 
-    // Create SRV
+    // Create SRV with full mip chain
     D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc{};
     srvDesc.Format = texFormat;
     srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
     srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    srvDesc.Texture2D.MipLevels = 1;
+    srvDesc.Texture2D.MipLevels = mipCount;
 
     m_device->CreateShaderResourceView(m_textures[texIndex].Get(), &srvDesc,
                                        m_srvHeap.cpuHandle(m_srvBaseIndex + srvIndex));
