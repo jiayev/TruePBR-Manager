@@ -394,7 +394,7 @@ void MainWindow::setupCentralWidget()
     renderOptsLayout->addWidget(m_mipBiasTextLabel);
 
     m_mipBiasSlider = new QSlider(Qt::Horizontal, renderOptsRow);
-    m_mipBiasSlider->setRange(-20, 0); // -2.0 to 0.0, stored as x10
+    m_mipBiasSlider->setRange(-10, 0); // -1.0 to 0.0, stored as x10
     m_mipBiasSlider->setValue(-10);    // default -1.0
     m_mipBiasSlider->setToolTip(tr("Mip LOD bias for texture sampling (negative = sharper)"));
     renderOptsLayout->addWidget(m_mipBiasSlider, 1);
