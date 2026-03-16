@@ -1141,21 +1141,21 @@ void D3D12Renderer::uploadTexture(int texIndex, int srvIndex, const uint8_t* rgb
         return;
     }
 
-    // Upload each mip level
+    // Upload all mip levels in a single command list submission
+    m_uploadQueue->resetCommandList();
+    auto* copyList = m_uploadQueue->commandList();
+
     for (int m = 0; m < mipCount; ++m)
     {
         int mipW = mips[m].width;
         int mipH = mips[m].height;
 
-        // Compute footprint for this mip level
-        D3D12_RESOURCE_DESC mipDesc = texDesc;
-        mipDesc.Width = mipW;
-        mipDesc.Height = mipH;
-        mipDesc.MipLevels = 1;
-
-        D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint;
+        // Query footprint for this subresource from the actual texture desc
+        D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};
+        UINT numRows = 0;
+        UINT64 rowSizeInBytes = 0;
         UINT64 requiredSize = 0;
-        m_device->GetCopyableFootprints(&mipDesc, 0, 1, 0, &footprint, nullptr, nullptr, &requiredSize);
+        m_device->GetCopyableFootprints(&texDesc, m, 1, 0, &footprint, &numRows, &rowSizeInBytes, &requiredSize);
 
         // Allocate from ring buffer
         uint64_t ringOffset = 0;
@@ -1164,6 +1164,8 @@ void D3D12Renderer::uploadTexture(int texIndex, int srvIndex, const uint8_t* rgb
         {
             m_uploadQueue->flush();
             m_uploadQueue->resetRingBuffer();
+            m_uploadQueue->resetCommandList();
+            copyList = m_uploadQueue->commandList();
             mapped = m_uploadQueue->allocate(requiredSize, D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT, ringOffset);
             if (!mapped)
             {
@@ -1174,15 +1176,13 @@ void D3D12Renderer::uploadTexture(int texIndex, int srvIndex, const uint8_t* rgb
 
         // Copy mip data into ring buffer, respecting row pitch
         footprint.Offset = ringOffset;
-        for (int y = 0; y < mipH; ++y)
+        const int srcRowBytes = mipW * 4;
+        for (UINT row = 0; row < numRows; ++row)
         {
-            memcpy(mapped + y * footprint.Footprint.RowPitch, mips[m].data + y * mipW * 4, mipW * 4);
+            memcpy(mapped + row * footprint.Footprint.RowPitch, mips[m].data + row * srcRowBytes, srcRowBytes);
         }
 
         // Record copy command
-        m_uploadQueue->resetCommandList();
-        auto* copyList = m_uploadQueue->commandList();
-
         D3D12_TEXTURE_COPY_LOCATION dst{};
         dst.pResource = m_textures[texIndex].Get();
         dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
@@ -1194,10 +1194,10 @@ void D3D12Renderer::uploadTexture(int texIndex, int srvIndex, const uint8_t* rgb
         src.PlacedFootprint = footprint;
 
         copyList->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
-
-        uint64_t copyFence = m_uploadQueue->execute();
-        m_uploadQueue->directQueueWaitForCopy(m_directQueue.Get(), copyFence);
     }
+
+    uint64_t copyFence = m_uploadQueue->execute();
+    m_uploadQueue->directQueueWaitForCopy(m_directQueue.Get(), copyFence);
 
     // Transition from COPY_DEST to PIXEL_SHADER_RESOURCE
     flushGPU();
