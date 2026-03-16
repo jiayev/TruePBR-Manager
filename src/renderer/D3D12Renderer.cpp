@@ -1765,10 +1765,10 @@ bool D3D12Renderer::createPostProcessPipelines()
     {
         D3D12_ROOT_PARAMETER params[2] = {};
 
-        // [0] Root constants: ToneMapCB (4 DWORDs)
+        // [0] Root constants: ToneMapCB (5 DWORDs)
         params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
         params[0].Constants.ShaderRegister = 0;
-        params[0].Constants.Num32BitValues = 4;
+        params[0].Constants.Num32BitValues = 5;
         params[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
         // [1] SRV table: 1 descriptor (t0 = resolved color)
@@ -2175,12 +2175,14 @@ void D3D12Renderer::render()
         float paperWhiteNits;
         float peakBrightnessNits;
         float exposureEV;
+        uint32_t debugMode;
     } tmCB;
     tmCB.hdrEnabled = m_hdrEnabled ? 1 : 0;
     tmCB.paperWhiteNits = m_paperWhiteNits;
     tmCB.peakBrightnessNits = effectivePeakNits();
     tmCB.exposureEV = m_exposureEV;
-    m_commandList->SetGraphicsRoot32BitConstants(0, 4, &tmCB, 0);
+    tmCB.debugMode = m_debugMode;
+    m_commandList->SetGraphicsRoot32BitConstants(0, 5, &tmCB, 0);
 
     // SRV table: t0 = resolved color source
     m_commandList->SetGraphicsRootDescriptorTable(1, m_srvHeap.gpuHandle(toneMapSrvIndex));

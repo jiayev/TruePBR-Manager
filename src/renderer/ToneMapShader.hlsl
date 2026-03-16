@@ -12,6 +12,7 @@ cbuffer ToneMapCB : register(b0)
     float  g_PaperWhiteNits;
     float  g_PeakBrightnessNits;
     float  g_ExposureEV;
+    uint   g_DebugMode; // 0=off (normal tonemap), nonzero=passthrough
 };
 
 // ─── Textures & Samplers ───────────────────────────────────
@@ -50,6 +51,13 @@ float4 ToneMapPS(VSOutput input) : SV_TARGET
 {
     float4 hdr = g_HDRColor.Sample(g_PointSampler, input.uv);
     float3 color = max(hdr.rgb, float3(0, 0, 0));
+
+    // Debug visualization: skip tonemap, just apply sRGB OETF for display
+    if (g_DebugMode != 0)
+    {
+        color = ColorSpaces::sRGBOETF(saturate(color));
+        return float4(color, hdr.a);
+    }
 
     // Convert from ACEScg working space to Rec.709 for GT7 tone mapping
     color = ColorSpaces::ACEScgToSRGB(color);
