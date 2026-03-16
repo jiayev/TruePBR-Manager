@@ -8,10 +8,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Force release CRT in all configurations to avoid CRT mismatch heap corruption.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
 
-# Qt auto-processing
-set(CMAKE_AUTOMOC ON)
-set(CMAKE_AUTORCC ON)
-set(CMAKE_AUTOUIC ON)
+# NOTE: Qt auto-processing (AUTOMOC/AUTORCC/AUTOUIC) is set per-target
+# in src/CMakeLists.txt rather than globally, to prevent Qt's
+# INTERFACE_COMPILE_OPTIONS (-utf-8) from leaking into non-Qt targets.
 
 # --- Version info: git hash + build timestamp ---
 execute_process(

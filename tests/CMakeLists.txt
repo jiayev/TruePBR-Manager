@@ -6,6 +6,12 @@ add_executable(TruePBR-Tests
     test_Project.cpp
 )
 
+set_target_properties(TruePBR-Tests PROPERTIES
+    AUTOMOC OFF
+    AUTORCC OFF
+    AUTOUIC OFF
+)
+
 target_link_libraries(TruePBR-Tests PRIVATE
     TruePBR-Core
     GTest::gtest_main

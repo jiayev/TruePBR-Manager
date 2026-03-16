@@ -178,6 +178,13 @@ add_executable(TruePBR-Manager WIN32
     ${RESOURCES}
 )
 
+# Enable Qt auto-processing only on the main exe (not on TruePBR-Core)
+set_target_properties(TruePBR-Manager PROPERTIES
+    AUTOMOC ON
+    AUTORCC ON
+    AUTOUIC ON
+)
+
 # Find packages
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
 find_package(directxtex CONFIG REQUIRED)
