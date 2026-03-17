@@ -17,6 +17,7 @@ on:
 
 permissions:
   contents: write
+  actions: read    # needed to download artifacts from CI workflow
 
 jobs:
   # ── Job 1: Detect version bump and create tag ─────────────
@@ -91,66 +92,40 @@ jobs:
             echo "SHOULD_RELEASE=false" >> "$GITHUB_OUTPUT"
           fi
 
-  # ── Job 2: Build and publish release ──────────────────────
-  build-release:
-    name: Build & Publish Release
+  # ── Job 2: Wait for CI build, then publish release ────────
+  publish-release:
+    name: Publish Release
     needs: auto-tag
     if: needs.auto-tag.outputs.should_release == 'true'
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      # Wait for the CI workflow's build job to finish (triggered by the same push)
+      - name: Wait for CI build to complete
+        uses: lewagon/wait-on-check-action@v1.3.4
         with:
-          ref: ${{ needs.auto-tag.outputs.tag }}
+          ref: ${{ github.sha }}
+          check-name: 'Windows Build'
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 15
+          allowed-conclusions: success
 
-      - name: Verify CMake version matches tag
-        shell: pwsh
-        run: |
-          $cmake = Get-Content CMakeLists.txt -Raw
-          if ($cmake -match 'project\(TruePBR-Manager\s+VERSION\s+(\S+)') {
-            $cmakeVer = $Matches[1]
-            $tagVer = "${{ needs.auto-tag.outputs.version }}"
-            if ($cmakeVer -ne $tagVer) {
-              Write-Error "Version mismatch: CMakeLists.txt has $cmakeVer but tag is v$tagVer"
-              exit 1
-            }
-            Write-Host "Version verified: $cmakeVer"
-          } else {
-            Write-Error "Could not parse version from CMakeLists.txt"
-            exit 1
-          }
-
-      - name: Setup CMake and Ninja
-        uses: lukka/get-cmake@latest
-
-      - name: Setup MSVC
-        uses: ilammy/msvc-dev-cmd@v1
+      # Download the artifact produced by CI's build-windows job
+      - name: Download build artifact from CI
+        uses: dawidd6/action-download-artifact@v6
         with:
-          arch: x64
-
-      - name: Setup vcpkg
-        uses: lukka/run-vcpkg@v11
-        with:
-          doNotCache: false
-          vcpkgJsonGlob: '**/vcpkg.json'
-
-      - name: Configure
-        run: cmake --preset default
-
-      - name: Build
-        run: cmake --build --preset release
+          workflow: ci.yml
+          commit: ${{ github.sha }}
+          name: TruePBR-Manager-windows
+          path: dist/TruePBR-Manager
 
       - name: Create release archive
-        shell: pwsh
         run: |
-          $tag = "${{ needs.auto-tag.outputs.tag }}"
-          $archiveName = "TruePBR-Manager-$tag-windows-x64.zip"
-          if (Test-Path release) {
-            Remove-Item release -Recurse -Force
-          }
-          New-Item -ItemType Directory -Path release | Out-Null
-          Compress-Archive -Path dist/TruePBR-Manager/* -DestinationPath (Join-Path release $archiveName)
+          tag="${{ needs.auto-tag.outputs.tag }}"
+          archiveName="TruePBR-Manager-${tag}-windows-x64.zip"
+          mkdir -p release
+          cd dist/TruePBR-Manager
+          zip -r "../../release/${archiveName}" .
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

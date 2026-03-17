@@ -60,7 +60,9 @@ jobs:
   build-windows:
     name: Windows Build
     runs-on: windows-latest
-    needs: [prek, version-sync]
+    # Run in parallel with prek and version-sync — don't wait for them
+    # If lint or version check fails, the overall CI still fails,
+    # but the build starts immediately instead of waiting ~1-2 min.
 
     steps:
       - name: Checkout
