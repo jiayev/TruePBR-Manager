@@ -798,6 +798,7 @@ void MainWindow::save3DPreviewSettings()
     s.setValue("Preview3D/specularOcclusion", m_specularOcclusionCB->isChecked());
     s.setValue("Preview3D/vsync", m_vsyncCB->isChecked());
     s.setValue("Preview3D/taa", m_taaCB->isChecked());
+    s.setValue("Preview3D/hdr", m_hdrCB->isChecked());
     s.setValue("Preview3D/paperWhite", m_paperWhiteSlider->value());
     s.setValue("Preview3D/peakBrightness", m_peakBrightnessSlider->value());
     s.setValue("Preview3D/shapeIndex", m_shapeCombo->currentIndex());
@@ -840,6 +841,7 @@ void MainWindow::restore3DPreviewSettings()
     m_specularOcclusionCB->setChecked(s.value("Preview3D/specularOcclusion", true).toBool());
     m_vsyncCB->setChecked(s.value("Preview3D/vsync", true).toBool());
     m_taaCB->setChecked(s.value("Preview3D/taa", true).toBool());
+    m_hdrCB->setChecked(s.value("Preview3D/hdr", false).toBool());
     m_paperWhiteSlider->setValue(s.value("Preview3D/paperWhite", 200).toInt());
     m_peakBrightnessSlider->setValue(s.value("Preview3D/peakBrightness", 1000).toInt());
 
@@ -1881,6 +1883,19 @@ void MainWindow::pushAllPreviewSettings()
 
     m_materialPreview->setVSync(m_vsyncCB->isChecked());
     m_materialPreview->setTAAEnabled(m_taaCB->isChecked());
+
+    m_materialPreview->setHDREnabled(m_hdrCB->isChecked());
+    bool hdrActive = m_materialPreview->isHDREnabled();
+    if (m_hdrCB->isChecked() && !hdrActive)
+    {
+        m_hdrCB->blockSignals(true);
+        m_hdrCB->setChecked(false);
+        m_hdrCB->blockSignals(false);
+    }
+    m_paperWhiteSlider->setEnabled(hdrActive);
+    m_peakBrightnessSlider->setEnabled(hdrActive);
+    m_materialPreview->setPaperWhiteNits(static_cast<float>(m_paperWhiteSlider->value()));
+    m_materialPreview->setPeakBrightnessNits(static_cast<float>(m_peakBrightnessSlider->value()));
 
     float iblIntensity = static_cast<float>(m_iblIntensitySlider->value()) / 10.0f;
     m_materialPreview->setIBLIntensity(iblIntensity);
