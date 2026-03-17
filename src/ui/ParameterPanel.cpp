@@ -80,6 +80,7 @@ void ParameterPanel::setupUI()
     auto* emissiveLayout = new QFormLayout(m_emissiveSection);
     makeSpin(m_emissiveScale, 0.0, 100.0, 0.1, 0.0);
     emissiveLayout->addRow(tr("Emissive Scale"), m_emissiveScale);
+    emissiveLayout->addRow(tr("Color"), makeColorRow(m_emissiveColorR, m_emissiveColorG, m_emissiveColorB));
     m_emissiveSection->setVisible(false);
     mainLayout->addWidget(m_emissiveSection);
 
@@ -168,6 +169,9 @@ void ParameterPanel::setParameters(const PBRParameters& p, const PBRFeatureFlags
 
     // Emissive
     block(m_emissiveScale, p.emissiveScale);
+    block(m_emissiveColorR, p.emissiveColor[0]);
+    block(m_emissiveColorG, p.emissiveColor[1]);
+    block(m_emissiveColorB, p.emissiveColor[2]);
     m_emissiveSection->setVisible(f.emissive);
 
     // Subsurface
@@ -213,6 +217,9 @@ PBRParameters ParameterPanel::getParameters() const
     p.roughnessScale = static_cast<float>(m_roughnessScale->value());
     p.displacementScale = static_cast<float>(m_displacementScale->value());
     p.emissiveScale = static_cast<float>(m_emissiveScale->value());
+    p.emissiveColor[0] = static_cast<float>(m_emissiveColorR->value());
+    p.emissiveColor[1] = static_cast<float>(m_emissiveColorG->value());
+    p.emissiveColor[2] = static_cast<float>(m_emissiveColorB->value());
 
     p.subsurfaceOpacity = static_cast<float>(m_subsurfaceOpacity->value());
     p.subsurfaceColor[0] = static_cast<float>(m_subsurfaceColorR->value());

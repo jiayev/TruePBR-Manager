@@ -1534,6 +1534,7 @@ void D3D12Renderer::setFeatureParams(const PBRFeatureFlags& features, const PBRP
     m_coatRoughness = params.coatRoughness;
     m_coatSpecularLevel = params.coatSpecularLevel;
     m_emissiveScale = params.emissiveScale;
+    m_emissiveColor = {params.emissiveColor[0], params.emissiveColor[1], params.emissiveColor[2]};
     m_fuzzColor = {params.fuzzColor[0], params.fuzzColor[1], params.fuzzColor[2]};
     m_fuzzWeight = params.fuzzWeight;
     m_glintScreenSpaceScale = params.glintScreenSpaceScale;
@@ -2086,6 +2087,7 @@ void D3D12Renderer::render()
     frame.materialCBMapped->coatRoughness = m_coatRoughness;
     frame.materialCBMapped->coatSpecularLevel = m_coatSpecularLevel;
     frame.materialCBMapped->emissiveScale = m_emissiveScale;
+    frame.materialCBMapped->emissiveColor = m_emissiveColor;
     frame.materialCBMapped->fuzzColor = m_fuzzColor;
     frame.materialCBMapped->fuzzWeight = m_fuzzWeight;
     frame.materialCBMapped->glintScreenSpaceScale = m_glintScreenSpaceScale;

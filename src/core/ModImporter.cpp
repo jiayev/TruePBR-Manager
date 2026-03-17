@@ -299,6 +299,7 @@ static PBRTextureSet parseEntry(const json& entry, const fs::path& modDir, std::
     ts.params.subsurfaceOpacity = getFloat(entry, "subsurface_opacity", 1.0f);
     ts.params.subsurfaceColor = getFloat3(entry, "subsurface_color", {1.0f, 1.0f, 1.0f});
     ts.params.emissiveScale = getFloat(entry, "emissive_scale", 0.0f);
+    ts.params.emissiveColor = getFloat3(entry, "emissive_color", {1.0f, 1.0f, 1.0f});
 
     // Coat parameters
     ts.params.coatStrength = getFloat(entry, "coat_strength", 0.0f);

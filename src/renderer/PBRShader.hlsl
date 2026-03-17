@@ -50,6 +50,9 @@ cbuffer MaterialCB : register(b1)
     float g_CoatSpecularLevel;
     float g_EmissiveScale;
 
+    float3 g_EmissiveColor;
+    float _padEmissive;
+
     float3 g_FuzzColor;
     float g_FuzzWeight;
 
@@ -295,7 +298,10 @@ PSOutput PSMain(PSInput input)
     [branch] if (g_FeatureFlags & PBR::Flags::HasEmissive)
     {
         // Emissive texture is sRGB; hardware linearizes to Rec.709, convert to ACEScg
-        emissive = ColorSpaces::sRGBToACEScg(g_Emissive.SampleBias(g_Sampler, input.uv, g_MipBias).rgb) * g_EmissiveScale;
+        // Then tint by emissive color (also sRGB → ACEScg) and scale
+        emissive = ColorSpaces::sRGBToACEScg(g_Emissive.SampleBias(g_Sampler, input.uv, g_MipBias).rgb)
+                 * ColorSpaces::sRGBToACEScg(g_EmissiveColor)
+                 * g_EmissiveScale;
     }
 
     // ── Image-Based Lighting ───────────────────────────────

@@ -122,7 +122,7 @@ Primary references:
   - Matching fields: `texture` / `match_diffuse`, `match_normal`, `rename`
   - Feature flags: `emissive`, `parallax`, `subsurface`, `subsurface_foliage`, `coat_normal`, `coat_diffuse`, `coat_parallax`, `hair`
   - Nested feature objects: `fuzz` (with `texture`, `color`, `weight`) and `glint` (with `screen_space_scale`, `log_microfacet_density`, `microfacet_roughness`, `density_randomization`)
-  - Parameters: `specular_level`, `roughness_scale`, `displacement_scale`, `subsurface_opacity`, `subsurface_color`, `emissive_scale`, coat parameters
+  - Parameters: `specular_level`, `roughness_scale`, `displacement_scale`, `subsurface_opacity`, `subsurface_color`, `emissive_scale`, `emissive_color`, coat parameters
   - Vertex color controls: `vertex_colors`, `vertex_color_lum_mult`, `vertex_color_sat_mult`
   - Explicit slot paths: `slot1`..`slot8`
   - Lock fields: `lock_diffuse`, `lock_normal`, etc.
@@ -419,6 +419,7 @@ Representative entry shape:
 Conditional fields currently emitted by implementation:
 
 - `emissive_scale` when emissive is enabled
+- `emissive_color` when emissive is enabled (RGB tint)
 - `match_normal` when a set is configured to match vanilla normal instead of diffuse
 - `rename` when exported PBR texture base name differs from the matched vanilla base name
 - Explicit `slotN` paths when the generated path differs from what PGPatcher would infer by convention

@@ -96,6 +96,7 @@ static json paramsToJson(const PBRParameters& p)
         {"subsurface_opacity", rounded3(p.subsurfaceOpacity)},
         {"subsurface_color", rounded3Array(p.subsurfaceColor)},
         {"emissive_scale", rounded3(p.emissiveScale)},
+        {"emissive_color", rounded3Array(p.emissiveColor)},
         {"coat_strength", rounded3(p.coatStrength)},
         {"coat_roughness", rounded3(p.coatRoughness)},
         {"coat_specular_level", rounded3(p.coatSpecularLevel)},
@@ -143,6 +144,10 @@ static PBRParameters paramsFromJson(const json& j)
     if (j.contains("fuzz_color") && j["fuzz_color"].is_array() && j["fuzz_color"].size() == 3)
     {
         p.fuzzColor = {j["fuzz_color"][0], j["fuzz_color"][1], j["fuzz_color"][2]};
+    }
+    if (j.contains("emissive_color") && j["emissive_color"].is_array() && j["emissive_color"].size() >= 3)
+    {
+        p.emissiveColor = {j["emissive_color"][0], j["emissive_color"][1], j["emissive_color"][2]};
     }
     return p;
 }

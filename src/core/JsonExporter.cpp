@@ -276,6 +276,7 @@ static json serializeEntryToJson(const PBRTextureSet& ts)
     if (ts.features.emissive)
     {
         entry["emissive_scale"] = rounded3(ts.params.emissiveScale);
+        entry["emissive_color"] = rounded3Array(ts.params.emissiveColor);
         if (!hasExportedSlot(ts, PBRTextureSlot::Emissive))
         {
             entry["lock_emissive"] = true;

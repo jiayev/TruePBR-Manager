@@ -79,6 +79,9 @@ struct MaterialCBData
     float coatSpecularLevel;
     float emissiveScale;
 
+    DirectX::XMFLOAT3 emissiveColor;
+    float _padEmissive;
+
     DirectX::XMFLOAT3 fuzzColor;
     float fuzzWeight;
 
@@ -451,6 +454,7 @@ class D3D12Renderer
     float m_coatRoughness = 0.0f;
     float m_coatSpecularLevel = 0.04f;
     float m_emissiveScale = 0.0f;
+    DirectX::XMFLOAT3 m_emissiveColor = {1.0f, 1.0f, 1.0f};
     DirectX::XMFLOAT3 m_fuzzColor = {1.0f, 1.0f, 1.0f};
     float m_fuzzWeight = 1.0f;
 

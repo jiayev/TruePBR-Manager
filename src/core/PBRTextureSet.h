@@ -161,6 +161,7 @@ struct PBRParameters
 
     // Emissive
     float emissiveScale = 0.0f;
+    std::array<float, 3> emissiveColor = {1.0f, 1.0f, 1.0f};
 
     // Multilayer / Coat
     float coatStrength = 0.0f;

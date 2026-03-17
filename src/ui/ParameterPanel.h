@@ -46,6 +46,9 @@ class ParameterPanel : public QWidget
     // Emissive
     QGroupBox* m_emissiveSection = nullptr;
     QDoubleSpinBox* m_emissiveScale = nullptr;
+    QDoubleSpinBox* m_emissiveColorR = nullptr;
+    QDoubleSpinBox* m_emissiveColorG = nullptr;
+    QDoubleSpinBox* m_emissiveColorB = nullptr;
 
     // Subsurface
     QGroupBox* m_subsurfaceSection = nullptr;
