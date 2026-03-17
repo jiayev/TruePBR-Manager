@@ -20,6 +20,8 @@ set(CORE_SOURCES
     core/TranslationManager.cpp
     core/AppSettings.h
     core/AppSettings.cpp
+    core/ModImporter.h
+    core/ModImporter.cpp
 )
 
 set(UI_SOURCES
@@ -129,6 +131,8 @@ set(CORE_LIB_SOURCES
     core/JsonExporter.cpp
     core/LandscapeExporter.h
     core/LandscapeExporter.cpp
+    core/ModImporter.h
+    core/ModImporter.cpp
     utils/Log.h
     utils/Log.cpp
 )

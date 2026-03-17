@@ -11,6 +11,7 @@
       "Save Project &As...": "Save Project &As...",
       "Project &Name...": "Project &Name...",
       "&Batch Import Folder...": "&Batch Import Folder...",
+      "&Import PBR Mod...": "&Import PBR Mod...",
       "E&xit": "E&xit",
       "&Language": "&Language",
       "Export Folder:": "Export Folder:",
@@ -135,7 +136,13 @@
       "AO": "AO",
       "Specular": "Specular",
       "Mip Bias:": "Mip Bias:",
-      "Mip LOD bias for texture sampling (negative = sharper)": "Mip LOD bias for texture sampling (negative = sharper)"
+      "Mip LOD bias for texture sampling (negative = sharper)": "Mip LOD bias for texture sampling (negative = sharper)",
+      "Select PBR Mod Folder": "Select PBR Mod Folder",
+      "Import failed.\n\n": "Import failed.\n\n",
+      "Import PBR Mod": "Import PBR Mod",
+      "Imported PBR mod: %1 texture set(s)": "Imported PBR mod: %1 texture set(s)",
+      "Imported %1 texture set(s) with %2 warning(s):\n\n%3": "Imported %1 texture set(s) with %2 warning(s):\n\n%3",
+      "Multiple JSON files found.\nSelect one to import:": "Multiple JSON files found.\nSelect one to import:"
     },
     "tpbr::TextureSetPanel": {
       "Add": "Add",

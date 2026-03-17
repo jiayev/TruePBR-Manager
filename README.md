@@ -21,6 +21,7 @@ The application currently supports:
 - 3D debug channel visualization: Normal, Roughness, Metallic, AO, Specular
 - Full mipmap generation for preview textures with adjustable mip LOD bias
 - Batch import by filename suffix
+- Import existing PBR mod: reads PGPatcher JSON from a mod directory and resolves DDS textures to reconstruct a project
 - Pre-export validation (resolution, missing slots, conflicts)
 - Landscape texture set support (TXST EDIDs)
 - PGPatcher JSON and DDS texture export
@@ -230,6 +231,7 @@ translations/   JSON translation files (en.json, zh_CN.json, ...)
 Planned features:
 
 - [ ] Built-in vanilla texture set conversion
+- [x] Import existing PBR mod (read mod directory with PGPatcher JSON + textures, reconstruct project)
 - [ ] Undo/redo
 
 ## References

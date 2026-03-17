@@ -3,6 +3,7 @@
 #include "core/AppSettings.h"
 #include "core/JsonExporter.h"
 #include "core/ModExporter.h"
+#include "core/ModImporter.h"
 #include "core/TextureImporter.h"
 #include "core/TextureSetValidator.h"
 #include "core/TranslationManager.h"
@@ -148,6 +149,7 @@ void MainWindow::setupMenuBar()
     m_projectNameAction = m_fileMenu->addAction(tr("Project &Name..."), this, &MainWindow::onRenameProject);
     m_fileMenu->addSeparator();
     m_batchImportAction = m_fileMenu->addAction(tr("&Batch Import Folder..."), this, &MainWindow::onBatchImport);
+    m_importModAction = m_fileMenu->addAction(tr("&Import PBR Mod..."), this, &MainWindow::onImportMod);
     m_fileMenu->addSeparator();
     m_exitAction = m_fileMenu->addAction(tr("E&xit"), this, &QWidget::close, QKeySequence::Quit);
 
@@ -1349,6 +1351,99 @@ void MainWindow::onBatchImport()
     }
 }
 
+void MainWindow::onImportMod()
+{
+    auto dir = QFileDialog::getExistingDirectory(this, tr("Select PBR Mod Folder"));
+    if (dir.isEmpty())
+        return;
+
+    // Step 1: Scan for JSON files
+    auto scan = ModImporter::scanForJsonFiles(dir.toStdString());
+    if (!scan.success)
+    {
+        QMessageBox::critical(this, tr("Import PBR Mod"), QString::fromStdString(scan.errorMessage));
+        return;
+    }
+
+    // Step 2: Let the user select which JSON to import
+    size_t selectedIndex = 0;
+    if (scan.jsonFiles.size() > 1)
+    {
+        QStringList items;
+        for (const auto& relPath : scan.jsonFiles)
+        {
+            items << QString::fromStdString(relPath.string());
+        }
+
+        bool ok = false;
+        QString chosen = QInputDialog::getItem(
+            this, tr("Import PBR Mod"), tr("Multiple JSON files found.\nSelect one to import:"), items, 0, false, &ok);
+        if (!ok || chosen.isEmpty())
+            return;
+
+        selectedIndex = static_cast<size_t>(items.indexOf(chosen));
+    }
+
+    // Step 3: Import the selected JSON file
+    auto result = ModImporter::importJsonFile(scan.jsonFilesAbsolute[selectedIndex], dir.toStdString());
+
+    // Build diagnostic report
+    QString warnings;
+    QString errors;
+    int warnCount = 0;
+    int errCount = 0;
+    for (const auto& d : result.diagnostics)
+    {
+        switch (d.severity)
+        {
+        case ImportDiagnostic::Severity::Error:
+            errors += QString::fromStdString(d.message) + "\n";
+            ++errCount;
+            break;
+        case ImportDiagnostic::Severity::Warning:
+            warnings += QString::fromStdString(d.message) + "\n";
+            ++warnCount;
+            break;
+        default:
+            break;
+        }
+    }
+
+    if (!result.success)
+    {
+        QString msg = tr("Import failed.\n\n");
+        if (!errors.isEmpty())
+            msg += errors;
+        if (!warnings.isEmpty())
+            msg += "\n" + warnings;
+        QMessageBox::critical(this, tr("Import PBR Mod"), msg);
+        return;
+    }
+
+    // Replace current project with the imported one
+    m_project = std::move(result.project);
+    m_projectFilePath.clear();
+    m_currentSetIndex = -1;
+
+    // Set the export path to the mod directory
+    m_exportPathEdit->setText(dir);
+    m_project.outputModFolder = dir.toStdString();
+
+    refreshUI();
+
+    int setCount = static_cast<int>(m_project.textureSets.size());
+    QString statusMsg = tr("Imported PBR mod: %1 texture set(s)").arg(setCount);
+    statusBar()->showMessage(statusMsg);
+
+    // Show summary with any warnings
+    if (warnCount > 0)
+    {
+        QMessageBox::information(
+            this, tr("Import PBR Mod"),
+            tr("Imported %1 texture set(s) with %2 warning(s):\n\n%3").arg(setCount).arg(warnCount).arg(warnings));
+    }
+}
+
 void MainWindow::onDroppedOnSlot(PBRTextureSlot slot, const QString& filePath)
 {
     if (m_currentSetIndex < 0)
@@ -2041,6 +2136,7 @@ void MainWindow::retranslateUi()
     m_saveAsAction->setText(tr("Save Project &As..."));
     m_projectNameAction->setText(tr("Project &Name..."));
     m_batchImportAction->setText(tr("&Batch Import Folder..."));
+    m_importModAction->setText(tr("&Import PBR Mod..."));
     m_exitAction->setText(tr("E&xit"));
 
     // Language menu title

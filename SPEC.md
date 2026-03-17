@@ -110,7 +110,32 @@ Primary references:
 - Files with no recognized suffix are assigned as Diffuse
 - If channel maps are found, RMAOS source mode is automatically set to SeparateChannels
 
-### 3.8 Input validation
+### 3.8 Import existing PBR mod
+
+- Import an existing PBR mod directory containing PGPatcher JSON and DDS textures
+- Recursively scans `<modDir>/PBRNIFPatcher/` (including all subdirectories) for JSON files and resolves textures from `<modDir>/textures/pbr/`
+- When multiple JSON files are found, presents a selection dialog for the user to choose one to import
+- Supports both PGPatcher JSON layouts:
+  - Flat array: `[{entry}, {entry}, ...]`
+  - Defaults with entries: `{"default": {...}, "entries": [{entry}, ...]}`
+- Parses all PGPatcher fields per the [Mod Authors specification](https://github.com/hakasapl/PGPatcher/wiki/Mod-Authors):
+  - Matching fields: `texture` / `match_diffuse`, `match_normal`, `rename`
+  - Feature flags: `emissive`, `parallax`, `subsurface`, `subsurface_foliage`, `coat_normal`, `coat_diffuse`, `coat_parallax`, `hair`
+  - Nested feature objects: `fuzz` (with `texture`, `color`, `weight`) and `glint` (with `screen_space_scale`, `log_microfacet_density`, `microfacet_roughness`, `density_randomization`)
+  - Parameters: `specular_level`, `roughness_scale`, `displacement_scale`, `subsurface_opacity`, `subsurface_color`, `emissive_scale`, coat parameters
+  - Vertex color controls: `vertex_colors`, `vertex_color_lum_mult`, `vertex_color_sat_mult`
+  - Explicit slot paths: `slot1`..`slot8`
+  - Lock fields: `lock_diffuse`, `lock_normal`, etc.
+- Textures are resolved on disk by convention-based path (`textures/pbr/<matchDir>/<stem><suffix>`) or explicit slot paths
+- Case-insensitive file lookup for texture resolution
+- When `rename` is present, tries both the renamed stem and the original match stem for texture lookup
+- Entries with `delete: true` are skipped
+- Default fields are merged into each entry (entry fields take precedence)
+- Replaces the current project; sets the mod directory as the export folder; project name defaults to the JSON filename
+- Reports import diagnostics (errors, warnings, info) to the user
+- Accessible from File > Import PBR Mod...
+
+### 3.9 Input validation
 
 - Pre-export validation checks per texture set:
   - Missing required slots (Diffuse, Normal, RMAOS)
@@ -121,7 +146,7 @@ Primary references:
   - Empty vanilla match texture path
 - Errors block export; warnings allow continue with user confirmation
 
-### 3.9 Landscape support
+### 3.10 Landscape support
 
 - Any texture set can optionally have one or more Landscape TXST EDIDs
 - When EDIDs are present, the exporter generates `PBRTextureSets/<edid>.json` per EDID
@@ -129,7 +154,7 @@ Primary references:
 - Textures are shared with NIF export — no separate landscape texture output
 - This is an additive option, not a separate type: the same set can serve both NIF and Landscape
 
-### 3.10 Localization
+### 3.11 Localization
 
 - JSON-based translation system via `TranslationManager` singleton and `JsonTranslator` (subclass of `QTranslator`)
 - Translation files stored in `translations/` directory next to the executable (source-tree fallback for development builds)
@@ -143,7 +168,7 @@ Primary references:
 
 **Development workflow**: Any code change that adds, removes, or modifies `tr()` strings MUST be accompanied by corresponding updates to ALL translation files (`translations/*.json`). The key in each JSON file is the exact English source string passed to `tr()`, scoped under the fully-qualified class context (e.g. `"tpbr::MainWindow"`). Forgetting to update translation files will cause the new strings to display untranslated in non-English locales.
 
-### 3.11 Application settings persistence
+### 3.12 Application settings persistence
 
 - `AppSettings` (singleton) persists project-independent preferences via `QSettings` in INI format
 - Settings file: `TruePBR-Manager.ini` next to the executable
@@ -160,7 +185,7 @@ Primary references:
 - 3D preview settings are saved on close and restored on launch
 - Recent projects list is updated on every successful open or save
 
-### 3.12 Export
+### 3.13 Export
 
 - Export runs on a background thread with a modal progress dialog
 - Progress reports per-texture-set and for JSON export steps
@@ -168,7 +193,7 @@ Primary references:
 - Textures whose output DDS already exists, is newer than the source, and matches the target compression and dimensions are automatically skipped
 - RMAOS channel-packed textures are skipped if the output is newer than all channel source files
 
-### 3.13 Known current limitations
+### 3.14 Known current limitations
 
 - No undo/redo
 
@@ -590,6 +615,7 @@ Important implementation modules:
 - `core/ChannelPacker.*`: split-channel RMAOS generation
 - `core/JsonExporter.*`: PGPatcher JSON generation
 - `core/ModExporter.*`: DDS and JSON export orchestration
+- `core/ModImporter.*`: import existing PBR mod directories (PGPatcher JSON + textures)
 - `core/LandscapeExporter.*`: Landscape TXST JSON generation
 - `core/TextureSetValidator.*`: pre-export validation checks
 - `core/TranslationManager.*`: JSON-based i18n, locale detection, hot-reload
@@ -715,4 +741,5 @@ Git tags follow the format `vX.Y.Z` (e.g. `v0.2.0`). The `release.yml` GitHub Ac
 Planned features not yet implemented:
 
 - [ ] Built-in vanilla texture set conversion (内置 vanilla texture set 转换)
+- [x] Import existing PBR mod: read a mod directory containing PGPatcher JSON and textures, reconstruct a `.tpbr` project automatically (导入已有 PBR Mod：读取含 JSON 和贴图的 Mod 目录，自动重建项目)
 - [ ] Undo/redo

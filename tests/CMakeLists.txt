@@ -4,6 +4,7 @@ add_executable(TruePBR-Tests
     test_PBRTextureSet.cpp
     test_TextureSetValidator.cpp
     test_Project.cpp
+    test_ModImporter.cpp
 )
 
 set_target_properties(TruePBR-Tests PROPERTIES

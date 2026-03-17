@@ -11,6 +11,7 @@
       "Save Project &As...": "另存为(&A)...",
       "Project &Name...": "项目名称(&N)...",
       "&Batch Import Folder...": "批量导入文件夹(&B)...",
+      "&Import PBR Mod...": "导入 PBR Mod(&I)...",
       "E&xit": "退出(&X)",
       "&Language": "语言(&L)",
       "Export Folder:": "导出文件夹：",
@@ -135,7 +136,13 @@
       "AO": "AO",
       "Specular": "高光",
       "Mip Bias:": "Mip 偏移:",
-      "Mip LOD bias for texture sampling (negative = sharper)": "纹理采样 Mip LOD 偏移（负值 = 更锐利）"
+      "Mip LOD bias for texture sampling (negative = sharper)": "纹理采样 Mip LOD 偏移（负值 = 更锐利）",
+      "Select PBR Mod Folder": "选择 PBR Mod 文件夹",
+      "Import failed.\n\n": "导入失败。\n\n",
+      "Import PBR Mod": "导入 PBR Mod",
+      "Imported PBR mod: %1 texture set(s)": "已导入 PBR Mod：%1 个纹理集",
+      "Imported %1 texture set(s) with %2 warning(s):\n\n%3": "已导入 %1 个纹理集，%2 个警告：\n\n%3",
+      "Multiple JSON files found.\nSelect one to import:": "找到多个 JSON 文件。\n请选择要导入的文件："
     },
     "tpbr::TextureSetPanel": {
       "Add": "添加",
