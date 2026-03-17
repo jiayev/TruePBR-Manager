@@ -1033,12 +1033,12 @@ void D3D12Renderer::createDefaultIBL()
         std::vector<float> faces[6] = {face, face, face, face, face, face};
         uploadCubemap(3, m_prefilteredCubemap, faces, 1, 1);
     }
-    // Skybox: 1x1 dark grey dummy cubemap (slot 9)
+    // Skybox: 1x1 dark grey dummy cubemap (slot 10)
     {
         float pref[] = {0.02f, 0.02f, 0.02f, 1.0f};
         std::vector<float> face(pref, pref + 4);
         std::vector<float> faces[6] = {face, face, face, face, face, face};
-        uploadCubemap(9, m_skyboxCubemap, faces, 1, 1);
+        uploadCubemap(10, m_skyboxCubemap, faces, 1, 1);
     }
     // BRDF LUT: default (0.5, 0.0)
     {
@@ -1518,6 +1518,8 @@ void D3D12Renderer::setFeatureParams(const PBRFeatureFlags& features, const PBRP
         flags |= (1 << 6); // ColoredCoat
     if (features.coatNormal)
         flags |= (1 << 8); // CoatNormal
+    if (features.coatParallax)
+        flags |= (1 << 7); // InterlayerParallax
     if (features.fuzz)
         flags |= (1 << 9); // Fuzz
     if (features.hair)
@@ -1541,10 +1543,12 @@ void D3D12Renderer::setFeatureParams(const PBRFeatureFlags& features, const PBRP
     m_glintLogMicrofacetDensity = params.glintLogMicrofacetDensity;
     m_glintMicrofacetRoughness = params.glintMicrofacetRoughness;
     m_glintDensityRandomization = params.glintDensityRandomization;
+    m_displacementScale = params.displacementScale;
 }
 
 void D3D12Renderer::setFeatureTextures(const uint8_t* emissiveRGBA, int ew, int eh, const uint8_t* feat0RGBA, int f0w,
-                                       int f0h, const uint8_t* feat1RGBA, int f1w, int f1h)
+                                       int f0h, const uint8_t* feat1RGBA, int f1w, int f1h,
+                                       const uint8_t* displacementRGBA, int dw, int dh)
 {
     if (emissiveRGBA && ew > 0 && eh > 0)
         uploadTexture(3, 5, emissiveRGBA, ew, eh, true);
@@ -1576,6 +1580,16 @@ void D3D12Renderer::setFeatureTextures(const uint8_t* emissiveRGBA, int ew, int 
         uint8_t defaultFeat1[] = {255, 255, 255, 255};
         uploadTexture(5, 7, defaultFeat1, 1, 1, false);
         m_featureFlags &= ~(1 << 3);
+    }
+
+    if (displacementRGBA && dw > 0 && dh > 0)
+    {
+        uploadTexture(7, 9, displacementRGBA, dw, dh, false);
+    }
+    else
+    {
+        uint8_t defaultDisp[] = {128, 128, 128, 255}; // 0.5 height = no displacement
+        uploadTexture(7, 9, defaultDisp, 1, 1, false);
     }
 }
 
@@ -2096,6 +2110,7 @@ void D3D12Renderer::render()
     frame.materialCBMapped->glintDensityRandomization = m_glintDensityRandomization;
     frame.materialCBMapped->debugMode = m_debugMode;
     frame.materialCBMapped->mipBias = m_mipBias;
+    frame.materialCBMapped->displacementScale = m_displacementScale;
 
     // 5. Record commands — Scene pass (HDR color + velocity MRT)
     auto hdrRtv = m_rtvHeap.cpuHandle(m_hdrColorRtvIndex);
@@ -2471,14 +2486,14 @@ bool D3D12Renderer::loadIBL(const std::filesystem::path& hdriPath)
             lutSrvDesc.Texture2D.MipLevels = 1;
             m_device->CreateShaderResourceView(m_brdfLut.Get(), &lutSrvDesc, m_srvHeap.cpuHandle(m_srvBaseIndex + 4));
 
-            // Create cubemap SRV for skybox (slot 9)
+            // Create cubemap SRV for skybox (slot 10)
             D3D12_SHADER_RESOURCE_VIEW_DESC skySrvDesc{};
             skySrvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
             skySrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
             skySrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
             skySrvDesc.TextureCube.MipLevels = 1;
             m_device->CreateShaderResourceView(m_skyboxCubemap.Get(), &skySrvDesc,
-                                               m_srvHeap.cpuHandle(m_srvBaseIndex + 9));
+                                               m_srvHeap.cpuHandle(m_srvBaseIndex + 10));
 
             m_iblLoaded = true;
             m_iblIntensity = 1.0f;
@@ -2536,14 +2551,14 @@ void D3D12Renderer::setIBLParams(int prefilteredSize, int prefilterSamples)
                 m_device->CreateShaderResourceView(m_brdfLut.Get(), &lutSrvDesc,
                                                    m_srvHeap.cpuHandle(m_srvBaseIndex + 4));
 
-                // Update skybox cubemap SRV (slot 9)
+                // Update skybox cubemap SRV (slot 10)
                 D3D12_SHADER_RESOURCE_VIEW_DESC skySrvDesc{};
                 skySrvDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
                 skySrvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
                 skySrvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
                 skySrvDesc.TextureCube.MipLevels = 1;
                 m_device->CreateShaderResourceView(m_skyboxCubemap.Get(), &skySrvDesc,
-                                                   m_srvHeap.cpuHandle(m_srvBaseIndex + 9));
+                                                   m_srvHeap.cpuHandle(m_srvBaseIndex + 10));
 
                 spdlog::debug("D3D12Renderer: IBL reprocessed (GPU, prefSize={}, samples={})", prefilteredSize,
                               prefilterSamples);

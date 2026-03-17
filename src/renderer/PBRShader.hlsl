@@ -63,7 +63,8 @@ cbuffer MaterialCB : register(b1)
 
     uint  g_DebugMode; // 0=off, 1=Normal, 2=Roughness, 3=Metallic, 4=AO, 5=Specular
     float g_MipBias;   // Mip LOD bias for material texture sampling (e.g. -1.0)
-    uint2 _padDebug;
+    float g_DisplacementScale;
+    uint  _padDebug;
 };
 
 // ─── Textures & Samplers ───────────────────────────────────
@@ -77,9 +78,54 @@ Texture2D g_Emissive : register(t5);            // Emissive RGB
 Texture2D g_FeatureTex0 : register(t6);         // CoatNormalRoughness / Fuzz
 Texture2D g_FeatureTex1 : register(t7);         // Subsurface / CoatColor
 // t8 = GlintNoiseMap is declared inside Common/Glints/Glints2023.hlsli
+Texture2D g_Displacement : register(t9);         // Height map (R channel)
 
 SamplerState g_Sampler : register(s0);           // Linear wrap
 SamplerState g_ClampSampler : register(s1);      // Linear clamp (for BRDF LUT)
+
+// ─── Parallax Occlusion Mapping ────────────────────────────
+
+static const int POM_MAX_STEPS = 32;
+static const int POM_MIN_STEPS = 8;
+
+float2 ParallaxOcclusionMapping(float2 uv, float3 viewDirTS, float heightScale)
+{
+    // Match Community Shaders scale: maxHeight = 0.1 * HeightScale
+    float maxHeight = 0.1 * heightScale;
+    float minHeight = maxHeight * 0.5;
+
+    // View direction compression matching CS: prevents blowup at grazing angles
+    float3 vd = viewDirTS;
+    vd.xy /= vd.z * 0.7 + 0.3;
+
+    float NdotV = abs(viewDirTS.z);
+    int numSteps = (int)lerp((float)POM_MAX_STEPS, (float)POM_MIN_STEPS, NdotV);
+    float layerDepth = 1.0 / (float)numSteps;
+    float currentLayerDepth = 0.0;
+
+    float2 deltaUV = vd.xy * maxHeight / (float)numSteps;
+
+    // Pre-offset by minHeight so height=0.5 stays in place
+    float2 currentUV = uv + vd.xy * minHeight;
+    // Convert height (1=high, 0=low) to depth (0=surface, 1=deep)
+    float currentDepth = 1.0 - g_Displacement.SampleLevel(g_Sampler, currentUV, 0).r;
+
+    [loop] for (int i = 0; i < POM_MAX_STEPS; ++i)
+    {
+        if (currentLayerDepth >= currentDepth || i >= numSteps)
+            break;
+        currentUV -= deltaUV;
+        currentDepth = 1.0 - g_Displacement.SampleLevel(g_Sampler, currentUV, 0).r;
+        currentLayerDepth += layerDepth;
+    }
+
+    // Linear interpolation between last two steps for sub-step precision
+    float2 prevUV = currentUV + deltaUV;
+    float afterDepth = currentDepth - currentLayerDepth;
+    float beforeDepth = (1.0 - g_Displacement.SampleLevel(g_Sampler, prevUV, 0).r) - currentLayerDepth + layerDepth;
+    float weight = afterDepth / (afterDepth - beforeDepth);
+    return lerp(currentUV, prevUV, weight);
+}
 
 // ─── Structures ────────────────────────────────────────────
 
@@ -139,16 +185,87 @@ PSInput VSMain(VSInput input)
 
 PSOutput PSMain(PSInput input)
 {
+    // ── Build TBN matrix ───────────────────────────────────
+    float3 N_geo = normalize(input.normalWS);
+    float3 T = normalize(input.tangentWS);
+    float3 B = normalize(input.bitangentWS);
+    float3x3 TBN = float3x3(T, B, N_geo);
+
+    float3 V = normalize(g_CameraPos - input.positionWS);
+
+    // ── Parallax UV displacement ───────────────────────────
+    float2 uv = input.uv;
+    float2 uvOriginal = input.uv; // Preserved for coat in interlayer parallax
+
+    [branch] if (g_FeatureFlags & PBR::Flags::HasDisplacement)
+    {
+        // Compute view direction in tangent space for POM
+        float3 viewDirTS;
+        viewDirTS.x = dot(V, T);
+        viewDirTS.y = dot(V, B);
+        viewDirTS.z = dot(V, N_geo);
+
+        float heightScale = g_DisplacementScale;
+
+        [branch] if (g_FeatureFlags & PBR::Flags::InterlayerParallax)
+        {
+            // For interlayer parallax, compute IOR-based refraction
+            float eta = lerp(1.0, (1.0 - sqrt(g_CoatSpecularLevel)) / (1.0 + sqrt(g_CoatSpecularLevel)), g_CoatStrength);
+
+            // Entry normal for refraction
+            float3 entryNormalTS;
+            [branch] if ((g_FeatureFlags & PBR::Flags::CoatNormal) && (g_FeatureFlags & PBR::Flags::HasFeatureTexture0))
+            {
+                entryNormalTS = g_FeatureTex0.SampleBias(g_Sampler, uvOriginal, g_MipBias).xyz;
+                entryNormalTS = entryNormalTS * 2.0 - 1.0;
+                entryNormalTS = normalize(entryNormalTS);
+            }
+            else
+            {
+                entryNormalTS = g_Normal.SampleBias(g_Sampler, uvOriginal, g_MipBias).rgb;
+                entryNormalTS = entryNormalTS * 2.0 - 1.0;
+                entryNormalTS = normalize(entryNormalTS);
+            }
+
+            float3 entryNormal = normalize(mul(entryNormalTS, TBN));
+            float3 refractedViewDir = -refract(-V, entryNormal, eta);
+
+            // Convert refracted view direction to tangent space for POM
+            viewDirTS.x = dot(refractedViewDir, T);
+            viewDirTS.y = dot(refractedViewDir, B);
+            viewDirTS.z = dot(refractedViewDir, N_geo);
+
+            // Interlayer parallax uses reduced displacement
+            heightScale *= 0.5;
+        }
+
+        // Correct for tangent/bitangent vs UV gradient misalignment.
+        // The mesh bitangent may point opposite to the dP/dV direction
+        // (common when UV V=0 is at top and V=1 at bottom).
+        float3 dPdx = ddx(input.positionWS);
+        float3 dPdy = ddy(input.positionWS);
+        float2 dUVdx = ddx(input.uv);
+        float2 dUVdy = ddy(input.uv);
+        float alignU = dot(dPdx, T) * dUVdx.x + dot(dPdy, T) * dUVdy.x;
+        float alignV = dot(dPdx, B) * dUVdx.y + dot(dPdy, B) * dUVdy.y;
+        viewDirTS.x *= (alignU >= 0.0) ? 1.0 : -1.0;
+        viewDirTS.y *= (alignV >= 0.0) ? 1.0 : -1.0;
+
+        viewDirTS = normalize(viewDirTS);
+
+        uv = ParallaxOcclusionMapping(uv, viewDirTS, heightScale);
+    }
+
     // ── Sample textures (biased mip selection) ───────────────
-    float4 albedoSample = g_Diffuse.SampleBias(g_Sampler, input.uv, g_MipBias);
+    float4 albedoSample = g_Diffuse.SampleBias(g_Sampler, uv, g_MipBias);
     // Hardware sRGB format → linear Rec.709; convert to ACEScg working space
     float3 albedo = ColorSpaces::sRGBToACEScg(albedoSample.rgb);
     float alpha = albedoSample.a;
 
-    float3 normalTS = g_Normal.SampleBias(g_Sampler, input.uv, g_MipBias).rgb;
+    float3 normalTS = g_Normal.SampleBias(g_Sampler, uv, g_MipBias).rgb;
     normalTS = normalTS * 2.0 - 1.0;
 
-    float4 rmaos = g_RMAOS.SampleBias(g_Sampler, input.uv, g_MipBias);
+    float4 rmaos = g_RMAOS.SampleBias(g_Sampler, uv, g_MipBias);
     float roughness = rmaos.r * g_RoughnessScale;
     float metallic = rmaos.g;
     float ao = rmaos.b;
@@ -156,12 +273,8 @@ PSOutput PSMain(PSInput input)
 
     roughness = clamp(roughness, PBR::Constants::MinRoughness, PBR::Constants::MaxRoughness);
 
-    // ── Build TBN and transform normal ─────────────────────
-    float3 N = normalize(input.normalWS);
-    float3 T = normalize(input.tangentWS);
-    float3 B = normalize(input.bitangentWS);
-    float3x3 TBN = float3x3(T, B, N);
-    N = normalize(mul(normalTS, TBN));
+    // ── Transform normal via TBN ───────────────────────────
+    float3 N = normalize(mul(normalTS, TBN));
 
     // ── Debug visualization (early out) ────────────────────
     if (g_DebugMode != 0)
@@ -188,7 +301,6 @@ PSOutput PSMain(PSInput input)
         return dbg;
     }
 
-    float3 V = normalize(g_CameraPos - input.positionWS);
     float NdotV = max(dot(N, V), EPSILON_DOT_CLAMP);
 
     // ── Populate PBRMaterial ───────────────────────────────
@@ -207,7 +319,7 @@ PSOutput PSMain(PSInput input)
         float3 ssColorACES = ColorSpaces::sRGBToACEScg(g_SubsurfaceColor);
         [branch] if (g_FeatureFlags & PBR::Flags::HasFeatureTexture1)
         {
-            float4 ssTex = g_FeatureTex1.SampleBias(g_Sampler, input.uv, g_MipBias);
+            float4 ssTex = g_FeatureTex1.SampleBias(g_Sampler, uv, g_MipBias);
             mat.SubsurfaceColor = ColorSpaces::sRGBToACEScg(ssTex.rgb) * ssColorACES;
             mat.Thickness = 1.0 - ssTex.a * g_SubsurfaceOpacity;
         }
@@ -219,6 +331,9 @@ PSOutput PSMain(PSInput input)
     }
 
     // Two-Layer (Coat)
+    float3 coatWorldNormal = N;
+    float3 refractedViewDir = V;
+
     [branch] if (g_FeatureFlags & PBR::Flags::TwoLayer)
     {
         mat.CoatF0 = float3(1, 1, 1) * g_CoatSpecularLevel;
@@ -226,17 +341,38 @@ PSOutput PSMain(PSInput input)
         mat.CoatStrength = g_CoatStrength;
         mat.CoatColor = float3(1, 1, 1);
 
+        // Coat textures use uvOriginal when interlayer parallax is active
+        float2 coatUV = uv;
+        [branch] if (g_FeatureFlags & PBR::Flags::InterlayerParallax)
+        {
+            coatUV = uvOriginal;
+        }
+
         [branch] if (g_FeatureFlags & PBR::Flags::HasFeatureTexture0)
         {
-            float4 coatTex = g_FeatureTex0.SampleBias(g_Sampler, input.uv, g_MipBias);
+            float4 coatTex = g_FeatureTex0.SampleBias(g_Sampler, coatUV, g_MipBias);
             mat.CoatRoughness = clamp(coatTex.a, PBR::Constants::MinRoughness, PBR::Constants::MaxRoughness);
+
+            // Extract coat normal from FeatureTex0.xyz
+            [branch] if (g_FeatureFlags & PBR::Flags::CoatNormal)
+            {
+                float3 coatNormalTS = coatTex.xyz * 2.0 - 1.0;
+                coatWorldNormal = normalize(mul(normalize(coatNormalTS), TBN));
+            }
         }
 
         [branch] if ((g_FeatureFlags & PBR::Flags::ColoredCoat) && (g_FeatureFlags & PBR::Flags::HasFeatureTexture1))
         {
-            float4 coatColorTex = g_FeatureTex1.SampleBias(g_Sampler, input.uv, g_MipBias);
+            float4 coatColorTex = g_FeatureTex1.SampleBias(g_Sampler, coatUV, g_MipBias);
             mat.CoatColor = ColorSpaces::sRGBToACEScg(coatColorTex.rgb);
             mat.CoatStrength *= coatColorTex.a;
+        }
+
+        // Compute refracted view direction for interlayer parallax lighting
+        [branch] if (g_FeatureFlags & PBR::Flags::InterlayerParallax)
+        {
+            float eta = lerp(1.0, (1.0 - sqrt(g_CoatSpecularLevel)) / (1.0 + sqrt(g_CoatSpecularLevel)), mat.CoatStrength);
+            refractedViewDir = -refract(-V, coatWorldNormal, eta);
         }
     }
 
@@ -248,7 +384,7 @@ PSOutput PSMain(PSInput input)
 
         [branch] if (g_FeatureFlags & PBR::Flags::HasFeatureTexture0)
         {
-            float4 fuzzTex = g_FeatureTex0.SampleBias(g_Sampler, input.uv, g_MipBias);
+            float4 fuzzTex = g_FeatureTex0.SampleBias(g_Sampler, uv, g_MipBias);
             mat.FuzzColor *= ColorSpaces::sRGBToACEScg(fuzzTex.rgb);
             mat.FuzzWeight *= fuzzTex.a;
         }
@@ -269,9 +405,9 @@ PSOutput PSMain(PSInput input)
             (Random::pcg2d(uint2(input.positionCS.xy)) / 4294967296.0).x);
         mat.GlintNoise = glintNoise;
 
-        float2 duvdx = ddx(input.uv);
-        float2 duvdy = ddy(input.uv);
-        Glints::PrecomputeGlints(glintNoise, input.uv, duvdx, duvdy,
+        float2 duvdx = ddx(uv);
+        float2 duvdy = ddy(uv);
+        Glints::PrecomputeGlints(glintNoise, uv, duvdx, duvdy,
             max(1, g_GlintScreenSpaceScale), mat.GlintCache);
     }
 
@@ -280,8 +416,18 @@ PSOutput PSMain(PSInput input)
     // Light color is authored in Rec.709; convert to ACEScg
     float3 radiance = ColorSpaces::sRGBToACEScg(g_LightColor) * g_LightIntensity;
 
+    // Compute coat-specific light direction for interlayer parallax
+    float3 coatL = L;
+    [branch] if ((g_FeatureFlags & PBR::Flags::TwoLayer) && (g_FeatureFlags & PBR::Flags::InterlayerParallax))
+    {
+        float eta = lerp(1.0, (1.0 - sqrt(g_CoatSpecularLevel)) / (1.0 + sqrt(g_CoatSpecularLevel)), mat.CoatStrength);
+        if (dot(L, coatWorldNormal) > 0)
+            coatL = -refract(-L, coatWorldNormal, eta);
+    }
+
     PBR::DirectLightResult directResult = PBR::GetDirectLight(
-        N, V, L, radiance, mat, g_FeatureFlags);
+        N, refractedViewDir, coatL, radiance, mat, g_FeatureFlags,
+        coatWorldNormal, V, L);
 
     float3 directDiffuse = directResult.diffuse;
     float3 directCoatDiffuse = 0;
@@ -299,7 +445,7 @@ PSOutput PSMain(PSInput input)
     {
         // Emissive texture is sRGB; hardware linearizes to Rec.709, convert to ACEScg
         // Then tint by emissive color (also sRGB → ACEScg) and scale
-        emissive = ColorSpaces::sRGBToACEScg(g_Emissive.SampleBias(g_Sampler, input.uv, g_MipBias).rgb)
+        emissive = ColorSpaces::sRGBToACEScg(g_Emissive.SampleBias(g_Sampler, uv, g_MipBias).rgb)
                  * ColorSpaces::sRGBToACEScg(g_EmissiveColor)
                  * g_EmissiveScale;
     }
@@ -359,19 +505,20 @@ PSOutput PSMain(PSInput input)
         float3 prefilteredColor = g_PrefilteredMap.SampleLevel(g_Sampler, Rr, specMip).rgb;
         float3 iblSpecular = prefilteredColor * lobes.specular;
 
-        // Coat specular IBL (separate mip due to different roughness)
+        // Coat specular IBL (separate mip and optionally separate reflection due to coat normal)
         [branch] if (g_FeatureFlags & PBR::Flags::TwoLayer)
         {
+            float3 coatR = reflect(-V, coatWorldNormal);
+            float3 coatRr = float3(envCs * coatR.x + envSn * coatR.z, coatR.y, -envSn * coatR.x + envCs * coatR.z);
             float coatMip = g_MaxPrefilteredMip - 1.0 + 1.2 * log2(max(mat.CoatRoughness, 0.001));
             coatMip = clamp(coatMip, 0, g_MaxPrefilteredMip);
-            float3 coatPref = g_PrefilteredMap.SampleLevel(g_Sampler, Rr, coatMip).rgb;
+            float3 coatPref = g_PrefilteredMap.SampleLevel(g_Sampler, coatRr, coatMip).rgb;
             iblSpecular += coatPref * lobes.coatSpecular;
         }
 
         // Horizon occlusion
         if (g_RenderFlags & 1u)
         {
-            float3 N_geo = normalize(input.normalWS);
             float horizon = saturate(1.0 + dot(R, N_geo));
             iblSpecular *= horizon * horizon;
         }

@@ -148,7 +148,8 @@ namespace PBR
 	};
 
 	DirectLightResult GetDirectLight(float3 N, float3 V, float3 L, float3 lightColor,
-		PBRMaterial material, uint featureFlags)
+		PBRMaterial material, uint featureFlags,
+		float3 coatN = float3(0, 0, 0), float3 coatV = float3(0, 0, 0), float3 coatL = float3(0, 0, 0))
 	{
 		DirectLightResult result = (DirectLightResult)0;
 
@@ -225,6 +226,20 @@ namespace PBR
 				float coatNdotV = satNdotV;
 				float coatNdotH = satNdotH;
 				float coatVdotH = satVdotH;
+
+				// Use separate coat view/light if provided (CoatNormal or InterlayerParallax)
+				float3 cL = ((featureFlags & (Flags::CoatNormal | Flags::InterlayerParallax)) != 0 && dot(coatN, coatN) > 0.5) ? coatL : L;
+				float3 cV = ((featureFlags & (Flags::CoatNormal | Flags::InterlayerParallax)) != 0 && dot(coatN, coatN) > 0.5) ? coatV : V;
+				float3 cN = ((featureFlags & Flags::CoatNormal) != 0 && dot(coatN, coatN) > 0.5) ? coatN : N;
+
+				[branch] if ((featureFlags & Flags::CoatNormal) != 0 && dot(coatN, coatN) > 0.5)
+				{
+					float3 coatH = normalize(cV + cL);
+					coatNdotL = clamp(dot(cN, cL), EPSILON_DOT_CLAMP, 1);
+					coatNdotV = saturate(abs(dot(cN, cV)) + EPSILON_DOT_CLAMP);
+					coatNdotH = saturate(dot(cN, coatH));
+					coatVdotH = saturate(dot(cV, coatH));
+				}
 
 				float3 coatF;
 				float3 coatSpecular = GetSpecularDirectLightMultiplierMicrofacet(

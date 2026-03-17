@@ -2028,8 +2028,8 @@ void MainWindow::refresh3DPreview()
 
     // Load feature textures
     {
-        std::vector<uint8_t> emissivePixels, feat0Pixels, feat1Pixels;
-        int ew = 0, eh = 0, f0w = 0, f0h = 0, f1w = 0, f1h = 0;
+        std::vector<uint8_t> emissivePixels, feat0Pixels, feat1Pixels, dispPixels;
+        int ew = 0, eh = 0, f0w = 0, f0h = 0, f1w = 0, f1h = 0, dw = 0, dh = 0;
 
         loadPixels(ts, PBRTextureSlot::Emissive, emissivePixels, ew, eh);
 
@@ -2045,9 +2045,14 @@ void MainWindow::refresh3DPreview()
         else if (ts.features.coatDiffuse)
             loadPixels(ts, PBRTextureSlot::CoatColor, feat1Pixels, f1w, f1h);
 
+        // Displacement (height map)
+        if (ts.features.parallax)
+            loadPixels(ts, PBRTextureSlot::Displacement, dispPixels, dw, dh);
+
         m_materialPreview->setFeatureTextures(emissivePixels.empty() ? nullptr : emissivePixels.data(), ew, eh,
                                               feat0Pixels.empty() ? nullptr : feat0Pixels.data(), f0w, f0h,
-                                              feat1Pixels.empty() ? nullptr : feat1Pixels.data(), f1w, f1h);
+                                              feat1Pixels.empty() ? nullptr : feat1Pixels.data(), f1w, f1h,
+                                              dispPixels.empty() ? nullptr : dispPixels.data(), dw, dh);
     }
 
     if (m_previewStack != nullptr)

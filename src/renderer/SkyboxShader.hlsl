@@ -34,7 +34,7 @@ cbuffer SceneCB : register(b0)
 
 // ─── Textures & Samplers ───────────────────────────────────
 
-TextureCube g_SkyboxMap : register(t9);
+TextureCube g_SkyboxMap : register(t10);
 SamplerState g_Sampler : register(s0);
 
 // ─── Structures ────────────────────────────────────────────

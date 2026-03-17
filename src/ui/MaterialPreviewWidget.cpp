@@ -145,10 +145,12 @@ void MaterialPreviewWidget::setFeatureParams(const PBRFeatureFlags& features, co
 }
 
 void MaterialPreviewWidget::setFeatureTextures(const uint8_t* emissiveRGBA, int ew, int eh, const uint8_t* feat0RGBA,
-                                               int f0w, int f0h, const uint8_t* feat1RGBA, int f1w, int f1h)
+                                               int f0w, int f0h, const uint8_t* feat1RGBA, int f1w, int f1h,
+                                               const uint8_t* displacementRGBA, int dw, int dh)
 {
     if (m_renderer)
-        m_renderer->setFeatureTextures(emissiveRGBA, ew, eh, feat0RGBA, f0w, f0h, feat1RGBA, f1w, f1h);
+        m_renderer->setFeatureTextures(emissiveRGBA, ew, eh, feat0RGBA, f0w, f0h, feat1RGBA, f1w, f1h, displacementRGBA,
+                                       dw, dh);
 }
 
 void MaterialPreviewWidget::setRenderFlags(uint32_t flags)

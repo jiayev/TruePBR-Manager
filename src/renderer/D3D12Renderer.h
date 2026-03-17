@@ -92,7 +92,8 @@ struct MaterialCBData
 
     uint32_t debugMode; // 0=off, 1=Normal, 2=Roughness, 3=Metallic, 4=AO, 5=Specular
     float mipBias;      // Mip LOD bias for material texture sampling
-    uint32_t _padDebug[2];
+    float displacementScale;
+    uint32_t _padDebug;
 };
 
 /// Per-frame resources for double-buffered rendering.
@@ -141,10 +142,11 @@ class D3D12Renderer
     /// Set full PBR feature flags and parameters for preview.
     void setFeatureParams(const PBRFeatureFlags& features, const PBRParameters& params);
 
-    /// Set feature textures (emissive, feature0=coat/fuzz, feature1=subsurface/coatColor).
+    /// Set feature textures (emissive, feature0=coat/fuzz, feature1=subsurface/coatColor, displacement).
     /// Pass nullptr/0 for any unused texture.
     void setFeatureTextures(const uint8_t* emissiveRGBA, int ew, int eh, const uint8_t* feat0RGBA, int f0w, int f0h,
-                            const uint8_t* feat1RGBA, int f1w, int f1h);
+                            const uint8_t* feat1RGBA, int f1w, int f1h, const uint8_t* displacementRGBA = nullptr,
+                            int dw = 0, int dh = 0);
 
     /// Set render flags (bit0=HorizonOcclusion, bit1=MultiBounceAO, bit2=SpecularOcclusion).
     void setRenderFlags(uint32_t flags);
@@ -362,15 +364,17 @@ class D3D12Renderer
     DescriptorHeap m_srvHeap; // Shader-visible, CBV/SRV/UAV
 
     // SRV slot indices within m_srvHeap
-    // SRV slots: diffuse, normal, rmaos, prefiltered, brdfLut, emissive, feat0, feat1, glintNoise, skyboxCubemap
-    static constexpr uint32_t SRVCount = 10;
+    // SRV slots: diffuse, normal, rmaos, prefiltered, brdfLut, emissive, feat0, feat1, glintNoise, displacement,
+    // skyboxCubemap
+    static constexpr uint32_t SRVCount = 11;
     uint32_t m_srvBaseIndex = 0; // First SRV slot index in heap
 
     // Depth
     ComPtr<ID3D12Resource> m_depthStencilBuffer;
 
-    // Textures (material): diffuse, normal, rmaos, (3..4 IBL), emissive, feat0, feat1, glintNoise
-    std::array<ComPtr<ID3D12Resource>, 7> m_textures; // [0..2]=material, [3..5]=feature, [6]=glintNoise
+    // Textures (material): diffuse, normal, rmaos, (3..5 feature), glintNoise, displacement
+    std::array<ComPtr<ID3D12Resource>, 8>
+        m_textures; // [0..2]=material, [3..5]=feature, [6]=glintNoise, [7]=displacement
 
     // IBL resources
     ComPtr<ID3D12Resource> m_prefilteredCubemap;
@@ -454,6 +458,7 @@ class D3D12Renderer
     float m_coatRoughness = 0.0f;
     float m_coatSpecularLevel = 0.04f;
     float m_emissiveScale = 0.0f;
+    float m_displacementScale = 1.0f;
     DirectX::XMFLOAT3 m_emissiveColor = {1.0f, 1.0f, 1.0f};
     DirectX::XMFLOAT3 m_fuzzColor = {1.0f, 1.0f, 1.0f};
     float m_fuzzWeight = 1.0f;

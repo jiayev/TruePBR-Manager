@@ -28,7 +28,8 @@ class MaterialPreviewWidget : public QWidget
     void setMaterialParams(float specularLevel, float roughnessScale);
     void setFeatureParams(const PBRFeatureFlags& features, const PBRParameters& params);
     void setFeatureTextures(const uint8_t* emissiveRGBA, int ew, int eh, const uint8_t* feat0RGBA, int f0w, int f0h,
-                            const uint8_t* feat1RGBA, int f1w, int f1h);
+                            const uint8_t* feat1RGBA, int f1w, int f1h, const uint8_t* displacementRGBA = nullptr,
+                            int dw = 0, int dh = 0);
     void setRenderFlags(uint32_t flags);
     void setLightColor(float r, float g, float b);
     void setLightIntensity(float intensity);
