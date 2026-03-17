@@ -300,6 +300,20 @@ static json textureSetToJson(const PBRTextureSet& ts)
     j["tags"] = ts.tags;
     j["notes"] = ts.notes;
 
+    // Match aliases (rename targets)
+    if (!ts.matchAliases.empty())
+    {
+        json aliasArr = json::array();
+        for (const auto& alias : ts.matchAliases)
+        {
+            json a;
+            a["match_texture"] = alias.matchTexture;
+            a["match_mode"] = textureMatchModeKey(alias.matchMode);
+            aliasArr.push_back(a);
+        }
+        j["match_aliases"] = aliasArr;
+    }
+
     // Landscape EDIDs
     if (!ts.landscapeEdids.empty())
     {
@@ -385,6 +399,26 @@ static PBRTextureSet textureSetFromJson(const json& j)
         ts.tags = j["tags"];
     if (j.contains("notes"))
         ts.notes = j["notes"];
+
+    // Match aliases
+    if (j.contains("match_aliases") && j["match_aliases"].is_array())
+    {
+        for (const auto& a : j["match_aliases"])
+        {
+            MatchAlias alias;
+            alias.matchTexture = a.value("match_texture", "");
+            if (a.contains("match_mode"))
+            {
+                TextureMatchMode mode;
+                if (tryParseTextureMatchMode(a["match_mode"].get<std::string>(), mode))
+                {
+                    alias.matchMode = mode;
+                }
+            }
+            ts.matchAliases.push_back(std::move(alias));
+        }
+    }
+
     if (j.contains("landscape_edids") && j["landscape_edids"].is_array())
     {
         for (const auto& edid : j["landscape_edids"])

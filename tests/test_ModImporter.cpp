@@ -563,3 +563,97 @@ TEST_F(ModImporterTest, ProjectMetadata)
     // Output mod folder is set to the mod directory
     EXPECT_EQ(result.project.outputModFolder, m_testDir);
 }
+
+// ─── Rename with Directory ─────────────────────────────────
+
+TEST_F(ModImporterTest, RenameWithDirectory_SingleEntry)
+{
+    // When rename specifies a different directory, matchTexture should be
+    // updated to the effective PBR path and the original vanilla match
+    // should become an alias.
+    createDummyTexture("textures/pbr/landscape/dirt02.dds");
+    createDummyTexture("textures/pbr/landscape/dirt02_n.dds");
+
+    json arr = json::array();
+    arr.push_back({{"texture", "landscape\\statics\\dirt02"},
+                   {"rename", "landscape\\dirt02"},
+                   {"specular_level", 0.04}});
+    writeJson("test.json", arr);
+
+    auto result = importFirst();
+    ASSERT_TRUE(result.success);
+    ASSERT_EQ(result.project.textureSets.size(), 1u);
+
+    auto& ts = result.project.textureSets[0];
+    EXPECT_EQ(ts.name, "dirt02");
+    // matchTexture is the effective PBR path (from rename)
+    EXPECT_EQ(ts.matchTexture, "landscape\\dirt02");
+    // Original vanilla path is stored as an alias
+    ASSERT_EQ(ts.matchAliases.size(), 1u);
+    EXPECT_EQ(ts.matchAliases[0].matchTexture, "landscape\\statics\\dirt02");
+
+    // Textures should be resolved from the rename directory
+    EXPECT_TRUE(ts.textures.count(PBRTextureSlot::Diffuse) > 0);
+    EXPECT_TRUE(ts.textures.count(PBRTextureSlot::Normal) > 0);
+}
+
+TEST_F(ModImporterTest, RenameWithDirectory_MergeMultipleEntries)
+{
+    // Two entries with the same rename but different vanilla textures
+    // should be merged into one texture set with aliases.
+    createDummyTexture("textures/pbr/landscape/dirt02.dds");
+    createDummyTexture("textures/pbr/landscape/dirt02_n.dds");
+
+    json arr = json::array();
+    arr.push_back({{"texture", "landscape\\statics\\dirt02"},
+                   {"rename", "landscape\\dirt02"},
+                   {"specular_level", 0.04}});
+    arr.push_back({{"texture", "landscape\\statics\\dirt02snow"},
+                   {"rename", "landscape\\dirt02"},
+                   {"specular_level", 0.04}});
+    writeJson("test.json", arr);
+
+    auto result = importFirst();
+    ASSERT_TRUE(result.success);
+    ASSERT_EQ(result.project.textureSets.size(), 1u);
+
+    auto& ts = result.project.textureSets[0];
+    EXPECT_EQ(ts.name, "dirt02");
+    EXPECT_EQ(ts.matchTexture, "landscape\\dirt02");
+    // Both original vanilla paths should be aliases
+    ASSERT_EQ(ts.matchAliases.size(), 2u);
+
+    // Check that both original paths are present (order may vary)
+    std::vector<std::string> aliasPaths;
+    for (const auto& a : ts.matchAliases)
+        aliasPaths.push_back(a.matchTexture);
+    EXPECT_TRUE(std::find(aliasPaths.begin(), aliasPaths.end(),
+                          "landscape\\statics\\dirt02") != aliasPaths.end());
+    EXPECT_TRUE(std::find(aliasPaths.begin(), aliasPaths.end(),
+                          "landscape\\statics\\dirt02snow") != aliasPaths.end());
+}
+
+TEST_F(ModImporterTest, RenameStemOnly_NoAliasCreated)
+{
+    // Stem-only rename should NOT create aliases — matchTexture stays as
+    // the original vanilla path.
+    createDummyTexture("textures/pbr/architecture/whiterun/custom_wood.dds");
+    createDummyTexture("textures/pbr/architecture/whiterun/custom_wood_n.dds");
+
+    json arr = json::array();
+    arr.push_back({{"texture", "architecture\\whiterun\\wrwoodplank01"},
+                   {"rename", "custom_wood"},
+                   {"specular_level", 0.04}});
+    writeJson("test.json", arr);
+
+    auto result = importFirst();
+    ASSERT_TRUE(result.success);
+    ASSERT_EQ(result.project.textureSets.size(), 1u);
+
+    auto& ts = result.project.textureSets[0];
+    EXPECT_EQ(ts.name, "custom_wood");
+    EXPECT_EQ(ts.matchTexture, "architecture\\whiterun\\wrwoodplank01");
+    EXPECT_TRUE(ts.matchAliases.empty());
+    EXPECT_TRUE(ts.textures.count(PBRTextureSlot::Diffuse) > 0);
+    EXPECT_TRUE(ts.textures.count(PBRTextureSlot::Normal) > 0);
+}

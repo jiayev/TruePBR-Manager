@@ -129,6 +129,9 @@ Primary references:
 - Textures are resolved on disk by convention-based path (`textures/pbr/<matchDir>/<stem><suffix>`) or explicit slot paths
 - Case-insensitive file lookup for texture resolution
 - When `rename` is present, tries both the renamed stem and the original match stem for texture lookup
+- When `rename` contains a directory path (e.g., `landscape\dirt02`), PBR textures are resolved from the rename directory instead of the original match directory. The original vanilla match is stored as an alias, and `matchTexture` is set to the effective PBR path.
+- When `rename` is a stem-only value (e.g., `custom_wood`), PBR textures stay in the original match directory and no alias is created.
+- Multiple entries sharing the same `rename` target are merged into a single texture set with the additional vanilla paths stored as match aliases. The primary entry is the one whose `matchTexture` stem matches the texture set name.
 - Entries with `delete: true` are skipped
 - Default fields are merged into each entry (entry fields take precedence)
 - Replaces the current project; sets the mod directory as the export folder; project name defaults to the JSON filename
@@ -144,6 +147,7 @@ Primary references:
   - Enabled features with missing corresponding textures
   - NIF slot conflicts (TX06: CoatNormalRoughness vs Fuzz; TX07: Subsurface vs CoatColor)
   - Empty vanilla match texture path
+  - Empty or duplicate match alias paths
 - Errors block export; warnings allow continue with user confirmation
 
 ### 3.10 Landscape support
@@ -308,8 +312,9 @@ The current parameter model stores:
 Each `PBRTextureSet` currently contains:
 
 - Display name
-- Vanilla match texture path
+- Vanilla match texture path (primary)
 - Vanilla match mode: auto, diffuse, or normal
+- Match aliases: additional vanilla texture paths that share this PBR texture set (used with PGPatcher `rename`). Each alias stores a `matchTexture` and `matchMode`.
 - Imported textures map
 - Per-slot export compression map
 - Per-slot export size override map (`{0,0}` = original, otherwise power-of-two target)
@@ -422,6 +427,7 @@ Conditional fields currently emitted by implementation:
 - `emissive_color` when emissive is enabled (RGB tint)
 - `match_normal` when a set is configured to match vanilla normal instead of diffuse
 - `rename` when exported PBR texture base name differs from the matched vanilla base name
+- Additional JSON entries for each match alias: each alias entry uses the alias's `matchTexture` as the match field and adds a `rename` pointing back to the primary `matchTexture` path, so PGPatcher maps multiple vanilla textures to the same PBR texture set
 - Explicit `slotN` paths when the generated path differs from what PGPatcher would infer by convention
 - `lock_diffuse`, `lock_normal`, `lock_emissive`, `lock_parallax`, `lock_rmaos`, `lock_subsurface`, `lock_cnr` when corresponding slots have no exported texture
 - Coat fields when multilayer or coat normal is enabled
@@ -499,8 +505,8 @@ Current defaults from the code:
 
 Current UI composition:
 
-- `TextureSetPanel`: list of texture sets with add/rename/remove actions
-- `SlotEditorWidget`: match path, match mode, slot imports, RMAOS mode, split-channel rows, compression selectors
+- `TextureSetPanel`: list of texture sets with add/rename/remove actions; shows `[+Landscape]` badge for sets with landscape EDIDs and `[+N alias(es)]` badge for sets with match aliases
+- `SlotEditorWidget`: match path, match mode, slot imports, RMAOS mode, split-channel rows, compression selectors, landscape EDID editor, match alias editor (one vanilla path per line)
 - `FeatureTogglePanel`: feature checkboxes
 - `ParameterPanel`: parameter editors grouped by feature
 - `TexturePreviewWidget`: basic image display with wheel zoom and drag pan

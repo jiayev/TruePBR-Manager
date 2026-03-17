@@ -180,6 +180,29 @@ static bool resolveTexture(PBRTextureSet& ts, PBRTextureSlot slot, const fs::pat
     entry.sourcePath = found;
     entry.slot = slot;
     entry.format = ".dds";
+
+    // Read DDS header to populate width/height (lightweight, no DirectXTex dependency).
+    // DDS layout: 4-byte magic "DDS " + DDS_HEADER (size 124).
+    // DDS_HEADER offsets: dwSize(0), dwFlags(4), dwHeight(8), dwWidth(12).
+    {
+        std::ifstream ifs(found, std::ios::binary);
+        if (ifs)
+        {
+            char magic[4]{};
+            ifs.read(magic, 4);
+            if (ifs.gcount() == 4 && magic[0] == 'D' && magic[1] == 'D' && magic[2] == 'S' && magic[3] == ' ')
+            {
+                uint32_t headerFields[4]{}; // dwSize, dwFlags, dwHeight, dwWidth
+                ifs.read(reinterpret_cast<char*>(headerFields), sizeof(headerFields));
+                if (ifs.gcount() == sizeof(headerFields))
+                {
+                    entry.height = static_cast<int>(headerFields[2]);
+                    entry.width = static_cast<int>(headerFields[3]);
+                }
+            }
+        }
+    }
+
     ts.textures[slot] = entry;
     return true;
 }
@@ -250,11 +273,42 @@ static PBRTextureSet parseEntry(const json& entry, const fs::path& modDir, std::
         ts.matchMode = TextureMatchMode::Diffuse;
     }
 
-    // Name: use rename if present, otherwise the match stem
-    ts.name = matchInfo.renamed.empty() ? matchInfo.stem : matchInfo.renamed;
+    // Name: use rename stem if present, otherwise the match stem
+    const std::string renameStem = [&]()
+    {
+        if (matchInfo.renamed.empty())
+            return std::string();
+        return fs::path(toForwardSlash(matchInfo.renamed)).stem().string();
+    }();
+    ts.name = renameStem.empty() ? matchInfo.stem : renameStem;
 
-    // The effective stem for texture file names is the rename (if any), else the match stem
-    const std::string textureStem = matchInfo.renamed.empty() ? matchInfo.stem : matchInfo.renamed;
+    // The effective stem and directory for texture file resolution.
+    // When rename is specified with a directory path (e.g., "landscape\\dirt02"),
+    // PBR textures live under the rename path's directory. When rename is just a
+    // stem (e.g., "custom_wood"), PBR textures stay in the original match directory.
+    const std::string textureStem = renameStem.empty() ? matchInfo.stem : renameStem;
+    const std::string textureRelDir = [&]()
+    {
+        if (matchInfo.renamed.empty())
+            return matchInfo.relDir;
+        auto renameParent = fs::path(toForwardSlash(matchInfo.renamed)).parent_path().string();
+        return renameParent.empty() ? matchInfo.relDir : renameParent;
+    }();
+
+    // When rename specifies a different directory than the original match, update
+    // matchTexture to the effective PBR path and store the original as an alias.
+    // This ensures export path computation uses the correct directory.
+    if (!matchInfo.renamed.empty() && textureRelDir != matchInfo.relDir)
+    {
+        MatchAlias originalAlias;
+        originalAlias.matchTexture = ts.matchTexture;
+        originalAlias.matchMode = ts.matchMode;
+        ts.matchAliases.push_back(std::move(originalAlias));
+
+        std::string normalizedDir = textureRelDir;
+        std::replace(normalizedDir.begin(), normalizedDir.end(), '/', '\\');
+        ts.matchTexture = normalizedDir.empty() ? textureStem : (normalizedDir + "\\" + textureStem);
+    }
 
     // ── Feature flags ──────────────────────────────────────
     ts.features.emissive = getBool(entry, "emissive", false);
@@ -385,10 +439,10 @@ static PBRTextureSet parseEntry(const json& entry, const fs::path& modDir, std::
         }
 
         // Fall back to convention-based path
-        fs::path expected = buildExpectedTexturePath(modDir, toForwardSlash(matchInfo.relDir), textureStem, slot);
+        fs::path expected = buildExpectedTexturePath(modDir, toForwardSlash(textureRelDir), textureStem, slot);
         if (!resolveTexture(ts, slot, expected, diagnostics))
         {
-            // If rename is in effect, also try with the original match stem
+            // If rename is in effect, also try with the original match stem in the original directory
             if (!matchInfo.renamed.empty() && matchInfo.renamed != matchInfo.stem)
             {
                 fs::path altPath =
@@ -548,6 +602,113 @@ std::vector<PBRTextureSet> ModImporter::parseJsonFile(const fs::path& jsonPath, 
         if (!ts.matchTexture.empty())
         {
             results.push_back(std::move(ts));
+        }
+    }
+
+    // ── Post-processing: merge entries that share the same PBR texture set ──
+    // When multiple entries use rename to point to the same PBR path, they should
+    // be merged into a single PBRTextureSet with the others as matchAliases.
+    {
+        // Compute the "effective PBR path" for each entry: the path whose stem
+        // matches the actual PBR texture filenames on disk.
+        // - If rename was applied: name != matchTexture stem → effective = name
+        //   (the rename target stem). We reconstruct the full effective path by
+        //   looking at the original rename value stored in the entry.
+        // - Otherwise: effective = matchTexture
+        auto effectivePbrKey = [](const PBRTextureSet& ts) -> std::string
+        {
+            // If name differs from matchTexture stem, this entry had a rename.
+            // The name IS the rename stem. But we need a grouping key that
+            // captures the full rename path. Since we don't store the raw rename
+            // value, we use the name (stem) as the grouping key — entries that
+            // share the same PBR textures will have the same name.
+            std::string matchStem = fs::path(toForwardSlash(ts.matchTexture)).stem().string();
+            if (toLowerAscii(ts.name) != toLowerAscii(matchStem))
+            {
+                // Renamed: group by the name (which is the rename stem)
+                return toLowerAscii(ts.name);
+            }
+            // Not renamed: group by the full matchTexture (case-insensitive)
+            return toLowerAscii(toForwardSlash(ts.matchTexture));
+        };
+
+        // Group indices by effective PBR key
+        std::map<std::string, std::vector<size_t>> groups;
+        for (size_t idx = 0; idx < results.size(); ++idx)
+        {
+            groups[effectivePbrKey(results[idx])].push_back(idx);
+        }
+
+        // For groups with >1 entries, merge into primary + aliases
+        std::vector<PBRTextureSet> merged;
+        std::vector<bool> consumed(results.size(), false);
+
+        for (auto& [key, indices] : groups)
+        {
+            if (indices.size() <= 1)
+                continue;
+
+            // Find the "primary": the entry whose matchTexture stem matches its name
+            // (i.e., no rename was needed — this IS the PBR path)
+            size_t primaryIdx = indices[0];
+            for (size_t idx : indices)
+            {
+                std::string matchStem = fs::path(toForwardSlash(results[idx].matchTexture)).stem().string();
+                if (toLowerAscii(results[idx].name) == toLowerAscii(matchStem))
+                {
+                    primaryIdx = idx;
+                    break;
+                }
+            }
+
+            auto& primary = results[primaryIdx];
+
+            // Merge other entries into primary's matchAliases
+            for (size_t idx : indices)
+            {
+                if (idx == primaryIdx)
+                    continue;
+
+                auto& other = results[idx];
+
+                // If the other entry's matchTexture differs from the primary's,
+                // add it as an alias
+                if (toLowerAscii(toForwardSlash(other.matchTexture)) !=
+                    toLowerAscii(toForwardSlash(primary.matchTexture)))
+                {
+                    MatchAlias alias;
+                    alias.matchTexture = other.matchTexture;
+                    alias.matchMode = other.matchMode;
+                    primary.matchAliases.push_back(std::move(alias));
+                }
+
+                // Transfer any existing aliases from the other entry to the primary
+                for (auto& existingAlias : other.matchAliases)
+                {
+                    primary.matchAliases.push_back(std::move(existingAlias));
+                }
+
+                consumed[idx] = true;
+            }
+
+            diagnostics.push_back(
+                {ImportDiagnostic::Severity::Info, "Merged " + std::to_string(indices.size()) +
+                                                       " entries sharing PBR textures into: " + primary.name + " (+" +
+                                                       std::to_string(primary.matchAliases.size()) + " aliases)"});
+        }
+
+        // Build final list: keep only non-consumed entries
+        if (std::any_of(consumed.begin(), consumed.end(), [](bool v) { return v; }))
+        {
+            std::vector<PBRTextureSet> deduplicated;
+            for (size_t idx = 0; idx < results.size(); ++idx)
+            {
+                if (!consumed[idx])
+                {
+                    deduplicated.push_back(std::move(results[idx]));
+                }
+            }
+            results = std::move(deduplicated);
         }
     }
 

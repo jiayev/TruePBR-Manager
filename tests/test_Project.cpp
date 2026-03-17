@@ -172,3 +172,28 @@ TEST_F(ProjectTest, Load_NonexistentFile_EmptyProject)
     // Should not crash, returns a default project
     EXPECT_TRUE(loaded.textureSets.empty());
 }
+
+TEST_F(ProjectTest, SaveLoad_MatchAliases)
+{
+    Project proj;
+    proj.name = "AliasTest";
+    proj.addTextureSet("dirt02", "landscape\\dirt02");
+
+    auto& ts = proj.textureSets[0];
+    ts.matchAliases.push_back({"landscape\\statics\\dirt02", TextureMatchMode::Diffuse});
+    ts.matchAliases.push_back({"landscape\\statics\\dirt02snow", TextureMatchMode::Diffuse});
+
+    auto path = tempProjectPath();
+    ASSERT_TRUE(proj.save(path));
+
+    Project loaded = Project::load(path);
+    ASSERT_EQ(loaded.textureSets.size(), 1u);
+
+    auto& lts = loaded.textureSets[0];
+    EXPECT_EQ(lts.matchTexture, "landscape\\dirt02");
+    ASSERT_EQ(lts.matchAliases.size(), 2u);
+    EXPECT_EQ(lts.matchAliases[0].matchTexture, "landscape\\statics\\dirt02");
+    EXPECT_EQ(lts.matchAliases[0].matchMode, TextureMatchMode::Diffuse);
+    EXPECT_EQ(lts.matchAliases[1].matchTexture, "landscape\\statics\\dirt02snow");
+    EXPECT_EQ(lts.matchAliases[1].matchMode, TextureMatchMode::Diffuse);
+}

@@ -184,14 +184,28 @@ struct PBRParameters
     float vertexColorSatMult = 1.0f;
 };
 
+// ─── Match Alias ───────────────────────────────────────────
+
+/// An alias vanilla texture path that shares the same PBR texture set via rename.
+struct MatchAlias
+{
+    std::string matchTexture; // e.g. "landscape\\statics\\dirt02snow"
+    TextureMatchMode matchMode = TextureMatchMode::Auto;
+};
+
 // ─── PBR Texture Set ───────────────────────────────────────
 
-/// One PBR texture set maps to one vanilla texture path.
+/// One PBR texture set maps to one or more vanilla texture paths.
+/// The primary matchTexture is the canonical path whose stem matches the PBR texture filenames.
+/// Additional vanilla paths that share this set via rename are stored in matchAliases.
 struct PBRTextureSet
 {
     std::string name;         // Display name (e.g. "WhiterunWoodPlank01")
     std::string matchTexture; // Vanilla diffuse path to match (e.g. "architecture\\whiterun\\wrwoodplank01")
     TextureMatchMode matchMode = TextureMatchMode::Auto;
+
+    /// Additional vanilla texture paths that share this PBR texture set (via rename).
+    std::vector<MatchAlias> matchAliases;
 
     /// Assigned textures per slot
     std::map<PBRTextureSlot, TextureEntry> textures;

@@ -148,7 +148,8 @@
       "Add": "Add",
       "Rename": "Rename",
       "Remove": "Remove",
-      " [+Landscape]": " [+Landscape]"
+      " [+Landscape]": " [+Landscape]",
+      " [+%1 alias(es)]": " [+%1 alias(es)]"
     },
     "tpbr::FeatureTogglePanel": {
       "Emissive / Glow": "Emissive / Glow",
@@ -225,6 +226,9 @@
       "Landscape EDIDs (optional)": "Landscape EDIDs (optional)",
       "One TXST EDID per line (e.g. LandscapeDirt02).\nLeave empty if this texture set is not used for landscape.": "One TXST EDID per line (e.g. LandscapeDirt02).\nLeave empty if this texture set is not used for landscape.",
       "LandscapeDirt02\nLandscapeGrass01": "LandscapeDirt02\nLandscapeGrass01",
+      "Match Aliases — Rename (optional)": "Match Aliases — Rename (optional)",
+      "Additional vanilla texture paths that share this PBR texture set.\nOne path per line. These are emitted with 'rename' in PGPatcher JSON.": "Additional vanilla texture paths that share this PBR texture set.\nOne path per line. These are emitted with 'rename' in PGPatcher JSON.",
+      "landscape\\statics\\dirt02\nlandscape\\statics\\dirt02snow": "landscape\\statics\\dirt02\nlandscape\\statics\\dirt02snow",
       "%1 x %2": "%1 x %2",
       " (original)": " (original)"
     },

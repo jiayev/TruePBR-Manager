@@ -770,6 +770,7 @@ void MainWindow::setupCentralWidget()
     connect(m_featurePanel, &FeatureTogglePanel::featuresChanged, this, &MainWindow::onFeaturesChanged);
     connect(m_paramPanel, &ParameterPanel::parametersChanged, this, &MainWindow::onParametersChanged);
     connect(m_slotEditor, &SlotEditorWidget::landscapeEdidsChanged, this, &MainWindow::onLandscapeEdidsChanged);
+    connect(m_slotEditor, &SlotEditorWidget::matchAliasesChanged, this, &MainWindow::onMatchAliasesChanged);
     connect(m_slotEditor, &SlotEditorWidget::slotPathOverrideChanged, this, &MainWindow::onSlotPathOverrideChanged);
 }
 
@@ -1687,6 +1688,22 @@ void MainWindow::onLandscapeEdidsChanged(const QStringList& edids)
         ts.landscapeEdids.push_back(edid.toStdString());
     }
     spdlog::debug("Landscape EDIDs updated: {} entries", ts.landscapeEdids.size());
+}
+
+void MainWindow::onMatchAliasesChanged(const QStringList& aliases)
+{
+    if (m_currentSetIndex < 0)
+        return;
+
+    auto& ts = m_project.textureSets[m_currentSetIndex];
+    ts.matchAliases.clear();
+    for (const auto& alias : aliases)
+    {
+        MatchAlias a;
+        a.matchTexture = alias.toStdString();
+        ts.matchAliases.push_back(std::move(a));
+    }
+    spdlog::debug("Match aliases updated: {} entries", ts.matchAliases.size());
 }
 
 void MainWindow::onSlotPathOverrideChanged(PBRTextureSlot slot, const QString& path)

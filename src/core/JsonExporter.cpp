@@ -416,6 +416,41 @@ std::string JsonExporter::serializeProject(const Project& project)
     for (const auto& ts : project.textureSets)
     {
         arr.push_back(serializeEntryToJson(ts));
+
+        // Emit additional entries for each match alias.
+        // Each alias references the primary's matchTexture via "rename".
+        for (const auto& alias : ts.matchAliases)
+        {
+            json aliasEntry = serializeEntryToJson(ts);
+
+            // Replace the match field with the alias's match texture
+            aliasEntry.erase("texture");
+            aliasEntry.erase("match_normal");
+            aliasEntry.erase("match_diffuse");
+
+            const auto aliasMatchField = [&]()
+            {
+                if (alias.matchMode == TextureMatchMode::Normal)
+                    return EffectiveMatchField::Normal;
+                if (alias.matchMode == TextureMatchMode::Diffuse)
+                    return EffectiveMatchField::Diffuse;
+                // Auto: detect from alias matchTexture stem
+                const std::string stem = lowercaseAscii(fs::path(alias.matchTexture).stem().string());
+                if ((stem.size() > 2 && stem.ends_with("_n")) || (stem.size() > 4 && stem.ends_with("_msn")))
+                    return EffectiveMatchField::Normal;
+                return EffectiveMatchField::Diffuse;
+            }();
+
+            if (aliasMatchField == EffectiveMatchField::Normal)
+                aliasEntry["match_normal"] = alias.matchTexture;
+            else
+                aliasEntry["texture"] = alias.matchTexture;
+
+            // Set rename to the primary's matchTexture (the PBR canonical path)
+            aliasEntry["rename"] = normalizeJsonPath(fs::path(ts.matchTexture));
+
+            arr.push_back(std::move(aliasEntry));
+        }
     }
     return arr.dump(4);
 }

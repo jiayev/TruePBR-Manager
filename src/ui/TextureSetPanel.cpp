@@ -60,6 +60,10 @@ void TextureSetPanel::setTextureSets(const std::vector<PBRTextureSet>& sets)
         {
             label += tr(" [+Landscape]");
         }
+        if (!ts.matchAliases.empty())
+        {
+            label += tr(" [+%1 alias(es)]").arg(ts.matchAliases.size());
+        }
         m_listWidget->addItem(label);
     }
 

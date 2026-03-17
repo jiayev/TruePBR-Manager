@@ -101,6 +101,9 @@ class SlotEditorWidget : public QWidget
     /// Emitted when the landscape EDID list changes
     void landscapeEdidsChanged(const QStringList& edids);
 
+    /// Emitted when the match aliases change
+    void matchAliasesChanged(const QStringList& aliases);
+
     /// Emitted when a slot's path override changes (empty string = disabled)
     void slotPathOverrideChanged(PBRTextureSlot slot, const QString& path);
 
@@ -147,6 +150,9 @@ class SlotEditorWidget : public QWidget
     QLabel* m_matchLabel = nullptr;
     QLabel* m_rmaosModeLabel = nullptr;
     QLabel* m_landscapeHintLabel = nullptr;
+    QPlainTextEdit* m_aliasEdit = nullptr;
+    QWidget* m_aliasSection = nullptr;
+    QLabel* m_aliasHintLabel = nullptr;
 
     void retranslateUi();
 

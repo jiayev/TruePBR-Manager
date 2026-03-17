@@ -487,6 +487,38 @@ void SlotEditorWidget::setupUI()
 
     mainLayout->addWidget(m_landscapeSection);
 
+    // ── Match Aliases Section ──────────────────────────────
+    m_aliasSection = new QGroupBox(tr("Match Aliases — Rename (optional)"), this);
+    auto* aliasLayout = new QVBoxLayout(m_aliasSection);
+    aliasLayout->setContentsMargins(8, 8, 8, 8);
+
+    m_aliasHintLabel = new QLabel(tr("Additional vanilla texture paths that share this PBR texture set.\n"
+                                     "One path per line. These are emitted with 'rename' in PGPatcher JSON."),
+                                  m_aliasSection);
+    m_aliasHintLabel->setWordWrap(true);
+    m_aliasHintLabel->setStyleSheet("QLabel { color: #999; font-size: 11px; }");
+    aliasLayout->addWidget(m_aliasHintLabel);
+
+    m_aliasEdit = new QPlainTextEdit(m_aliasSection);
+    m_aliasEdit->setMaximumHeight(80);
+    m_aliasEdit->setPlaceholderText(tr("landscape\\statics\\dirt02\nlandscape\\statics\\dirt02snow"));
+    aliasLayout->addWidget(m_aliasEdit);
+
+    connect(m_aliasEdit, &QPlainTextEdit::textChanged, this,
+            [this]()
+            {
+                QStringList aliases;
+                for (const auto& line : m_aliasEdit->toPlainText().split('\n'))
+                {
+                    auto trimmed = line.trimmed();
+                    if (!trimmed.isEmpty())
+                        aliases.append(trimmed);
+                }
+                emit matchAliasesChanged(aliases);
+            });
+
+    mainLayout->addWidget(m_aliasSection);
+
     mainLayout->addStretch();
 
     updateRmaosModeUI(RMAOSSourceMode::PackedTexture);
@@ -867,6 +899,18 @@ void SlotEditorWidget::setTextureSet(const PBRTextureSet& ts)
         m_landscapeEdidEdit->blockSignals(false);
     }
 
+    // Update match aliases
+    {
+        m_aliasEdit->blockSignals(true);
+        QStringList aliases;
+        for (const auto& alias : ts.matchAliases)
+        {
+            aliases.append(QString::fromStdString(alias.matchTexture));
+        }
+        m_aliasEdit->setPlainText(aliases.join('\n'));
+        m_aliasEdit->blockSignals(false);
+    }
+
     updateSlots(ts.features);
 }
 
@@ -947,6 +991,14 @@ void SlotEditorWidget::retranslateUi()
     m_landscapeHintLabel->setText(tr("One TXST EDID per line (e.g. LandscapeDirt02).\n"
                                      "Leave empty if this texture set is not used for landscape."));
     m_landscapeEdidEdit->setPlaceholderText(tr("LandscapeDirt02\nLandscapeGrass01"));
+
+    // Alias section
+    if (auto* group = qobject_cast<QGroupBox*>(m_aliasSection))
+        group->setTitle(tr("Match Aliases — Rename (optional)"));
+
+    m_aliasHintLabel->setText(tr("Additional vanilla texture paths that share this PBR texture set.\n"
+                                 "One path per line. These are emitted with 'rename' in PGPatcher JSON."));
+    m_aliasEdit->setPlaceholderText(tr("landscape\\statics\\dirt02\nlandscape\\statics\\dirt02snow"));
 }
 
 } // namespace tpbr

@@ -1,6 +1,8 @@
 #include "TextureSetValidator.h"
 
 #include <format>
+#include <algorithm>
+#include <set>
 
 namespace tpbr
 {
@@ -14,6 +16,7 @@ std::vector<ValidationIssue> TextureSetValidator::validate(const PBRTextureSet& 
 {
     std::vector<ValidationIssue> issues;
     checkMatchTexture(ts, issues);
+    checkMatchAliases(ts, issues);
     checkRequiredSlots(ts, issues);
     checkPowerOfTwo(ts, issues);
     checkFeatureTextures(ts, issues);
@@ -146,6 +149,37 @@ void TextureSetValidator::checkSlotConflicts(const PBRTextureSet& ts, std::vecto
         issues.push_back(
             {ValidationSeverity::Warning,
              "Fuzz and Coat Normal are both enabled — they use the same NIF slot (TX06). Only one will be exported."});
+    }
+}
+
+void TextureSetValidator::checkMatchAliases(const PBRTextureSet& ts, std::vector<ValidationIssue>& issues)
+{
+    std::set<std::string> seen;
+    // Normalize primary matchTexture for duplicate detection
+    std::string primaryLower = ts.matchTexture;
+    std::transform(primaryLower.begin(), primaryLower.end(), primaryLower.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    std::replace(primaryLower.begin(), primaryLower.end(), '/', '\\');
+    seen.insert(primaryLower);
+
+    for (size_t i = 0; i < ts.matchAliases.size(); ++i)
+    {
+        const auto& alias = ts.matchAliases[i];
+        if (alias.matchTexture.empty())
+        {
+            issues.push_back(
+                {ValidationSeverity::Warning, std::format("Match alias #{} has an empty texture path.", i + 1)});
+            continue;
+        }
+        std::string aliasLower = alias.matchTexture;
+        std::transform(aliasLower.begin(), aliasLower.end(), aliasLower.begin(),
+                       [](unsigned char c) { return std::tolower(c); });
+        std::replace(aliasLower.begin(), aliasLower.end(), '/', '\\');
+        if (!seen.insert(aliasLower).second)
+        {
+            issues.push_back(
+                {ValidationSeverity::Warning, std::format("Duplicate match alias: \"{}\".", alias.matchTexture)});
+        }
     }
 }
 

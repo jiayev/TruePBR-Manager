@@ -148,7 +148,8 @@
       "Add": "添加",
       "Rename": "重命名",
       "Remove": "移除",
-      " [+Landscape]": " [+地形]"
+      " [+Landscape]": " [+地形]",
+      " [+%1 alias(es)]": " [+%1 个别名]"
     },
     "tpbr::FeatureTogglePanel": {
       "Emissive / Glow": "自发光 / 辉光",
@@ -225,6 +226,9 @@
       "Landscape EDIDs (optional)": "地形 EDID（可选）",
       "One TXST EDID per line (e.g. LandscapeDirt02).\nLeave empty if this texture set is not used for landscape.": "每行一个 TXST EDID（例如 LandscapeDirt02）。\n如果此纹理集不用于地形，请留空。",
       "LandscapeDirt02\nLandscapeGrass01": "LandscapeDirt02\nLandscapeGrass01",
+      "Match Aliases — Rename (optional)": "匹配别名 — 重命名（可选）",
+      "Additional vanilla texture paths that share this PBR texture set.\nOne path per line. These are emitted with 'rename' in PGPatcher JSON.": "共享此 PBR 纹理集的其他原版纹理路径。\n每行一个路径，导出时将在 PGPatcher JSON 中生成 'rename' 条目。",
+      "landscape\\statics\\dirt02\nlandscape\\statics\\dirt02snow": "landscape\\statics\\dirt02\nlandscape\\statics\\dirt02snow",
       "%1 x %2": "%1 x %2",
       " (original)": "（原始）"
     },

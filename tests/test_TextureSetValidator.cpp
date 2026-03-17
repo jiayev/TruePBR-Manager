@@ -242,3 +242,66 @@ TEST(Validator, EmissiveEnabled_NoTexture_Warning)
     }
     EXPECT_TRUE(found) << "Expected warning about emissive enabled without texture";
 }
+
+// ─── Match Alias Validation ────────────────────────────────
+
+TEST(Validator, EmptyAlias_Warning)
+{
+    auto ts = makeMinimalValid();
+    ts.matchAliases.push_back({"", TextureMatchMode::Diffuse});
+
+    auto issues = TextureSetValidator::validate(ts);
+    bool found = false;
+    for (auto& issue : issues)
+    {
+        if (issue.severity == ValidationSeverity::Warning && issue.message.find("alias") != std::string::npos)
+            found = true;
+    }
+    EXPECT_TRUE(found) << "Expected warning about empty alias path";
+}
+
+TEST(Validator, DuplicateAlias_Warning)
+{
+    auto ts = makeMinimalValid();
+    ts.matchAliases.push_back({"landscape\\statics\\dirt02", TextureMatchMode::Diffuse});
+    ts.matchAliases.push_back({"landscape\\statics\\dirt02", TextureMatchMode::Diffuse});
+
+    auto issues = TextureSetValidator::validate(ts);
+    bool found = false;
+    for (auto& issue : issues)
+    {
+        if (issue.severity == ValidationSeverity::Warning && issue.message.find("uplicate") != std::string::npos)
+            found = true;
+    }
+    EXPECT_TRUE(found) << "Expected warning about duplicate alias";
+}
+
+TEST(Validator, AliasDuplicatesPrimary_Warning)
+{
+    auto ts = makeMinimalValid();
+    // Alias duplicates the primary matchTexture
+    ts.matchAliases.push_back({ts.matchTexture, TextureMatchMode::Diffuse});
+
+    auto issues = TextureSetValidator::validate(ts);
+    bool found = false;
+    for (auto& issue : issues)
+    {
+        if (issue.severity == ValidationSeverity::Warning && issue.message.find("uplicate") != std::string::npos)
+            found = true;
+    }
+    EXPECT_TRUE(found) << "Expected warning when alias duplicates primary matchTexture";
+}
+
+TEST(Validator, ValidAliases_NoAliasWarnings)
+{
+    auto ts = makeMinimalValid();
+    ts.matchAliases.push_back({"landscape\\statics\\dirt02", TextureMatchMode::Diffuse});
+    ts.matchAliases.push_back({"landscape\\statics\\dirt02snow", TextureMatchMode::Diffuse});
+
+    auto issues = TextureSetValidator::validate(ts);
+    for (auto& issue : issues)
+    {
+        if (issue.message.find("alias") != std::string::npos || issue.message.find("uplicate") != std::string::npos)
+            FAIL() << "Unexpected alias-related issue: " << issue.message;
+    }
+}
