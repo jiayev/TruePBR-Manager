@@ -1462,67 +1462,119 @@ void MainWindow::onConvertVanilla()
     }
 
     auto input = dialog.getConversionInput();
-    auto result = VanillaConverter::convert(input);
 
-    // Build diagnostic report
-    QString warnings;
-    QString errors;
-    int warnCount = 0;
-    int errCount = 0;
-    for (const auto& d : result.diagnostics)
-    {
-        switch (d.severity)
+    // Run conversion on a worker thread with progress dialog
+    auto* progressDialog = new QProgressDialog(tr("Converting..."), tr("Cancel"), 0, 100, this);
+    progressDialog->setWindowModality(Qt::WindowModal);
+    progressDialog->setAutoReset(false);
+    progressDialog->setAutoClose(false);
+    progressDialog->setMinimumDuration(0);
+    progressDialog->setValue(0);
+    progressDialog->show();
+
+    auto cancelled = std::make_shared<std::atomic<bool>>(false);
+    auto resultPtr = std::make_shared<VanillaConversionResult>();
+
+    const QString convertingFmt = tr("Converting: %1");
+
+    auto* thread = QThread::create(
+        [input, cancelled, resultPtr, progressDialog, convertingFmt]()
         {
-        case ImportDiagnostic::Severity::Error:
-            errors += QString::fromStdString(d.message) + "\n";
-            ++errCount;
-            break;
-        case ImportDiagnostic::Severity::Warning:
-            warnings += QString::fromStdString(d.message) + "\n";
-            ++warnCount;
-            break;
-        default:
-            break;
-        }
-    }
+            *resultPtr = VanillaConverter::convert(
+                input,
+                [cancelled, progressDialog, convertingFmt](int current, int total, const std::string& desc)
+                {
+                    if (cancelled->load())
+                        return false;
+                    QMetaObject::invokeMethod(
+                        progressDialog,
+                        [progressDialog, current, total, desc, convertingFmt]()
+                        {
+                            progressDialog->setMaximum(total);
+                            progressDialog->setValue(current);
+                            if (!desc.empty())
+                                progressDialog->setLabelText(convertingFmt.arg(QString::fromStdString(desc)));
+                        },
+                        Qt::QueuedConnection);
+                    return !cancelled->load();
+                });
+        });
 
-    if (!result.success)
-    {
-        QString msg = tr("Conversion failed.\n\n");
-        if (!errors.isEmpty())
-            msg += errors;
-        if (!warnings.isEmpty())
-            msg += "\n" + warnings;
-        QMessageBox::critical(this, tr("Convert Vanilla Textures"), msg);
-        return;
-    }
+    connect(progressDialog, &QProgressDialog::canceled, this, [cancelled]() { cancelled->store(true); });
 
-    // Add to project
-    m_project.addTextureSet(result.generatedSet.name, result.generatedSet.matchTexture);
-    const size_t newIndex = m_project.textureSets.size() - 1;
-    // Replace the newly created empty texture set with the converted one
-    m_project.textureSets[newIndex] = result.generatedSet;
+    connect(thread, &QThread::finished, this,
+            [this, thread, progressDialog, cancelled, resultPtr]()
+            {
+                progressDialog->disconnect();
+                progressDialog->close();
+                progressDialog->deleteLater();
+                thread->deleteLater();
 
-    // Select the new texture set
-    m_currentSetIndex = static_cast<int>(newIndex);
+                if (cancelled->load())
+                {
+                    statusBar()->showMessage(tr("Conversion cancelled"));
+                    return;
+                }
 
-    // Refresh UI
-    refreshUI();
-    onTextureSetSelected(m_currentSetIndex);
+                const auto& result = *resultPtr;
 
-    // Mark project as modified
-    setWindowModified(true);
+                // Build diagnostic report
+                QString warnings;
+                QString errors;
+                int warnCount = 0;
+                int errCount = 0;
+                for (const auto& d : result.diagnostics)
+                {
+                    switch (d.severity)
+                    {
+                    case ImportDiagnostic::Severity::Error:
+                        errors += QString::fromStdString(d.message) + "\n";
+                        ++errCount;
+                        break;
+                    case ImportDiagnostic::Severity::Warning:
+                        warnings += QString::fromStdString(d.message) + "\n";
+                        ++warnCount;
+                        break;
+                    default:
+                        break;
+                    }
+                }
 
-    int setCount = 1;
-    QString statusMsg = tr("Converted vanilla textures: %1").arg(QString::fromStdString(result.generatedSet.name));
-    statusBar()->showMessage(statusMsg);
+                if (!result.success)
+                {
+                    QString msg = tr("Conversion failed.\n\n");
+                    if (!errors.isEmpty())
+                        msg += errors;
+                    if (!warnings.isEmpty())
+                        msg += "\n" + warnings;
+                    QMessageBox::critical(this, tr("Convert Vanilla Textures"), msg);
+                    return;
+                }
 
-    // Show warnings if any
-    if (warnCount > 0)
-    {
-        QMessageBox::information(this, tr("Convert Vanilla Textures"),
-                                 tr("Conversion succeeded with %1 warning(s):\n\n%2").arg(warnCount).arg(warnings));
-    }
+                // Add to project
+                m_project.addTextureSet(result.generatedSet.name, result.generatedSet.matchTexture);
+                const size_t newIndex = m_project.textureSets.size() - 1;
+                m_project.textureSets[newIndex] = result.generatedSet;
+
+                m_currentSetIndex = static_cast<int>(newIndex);
+
+                refreshUI();
+                onTextureSetSelected(m_currentSetIndex);
+                setWindowModified(true);
+
+                QString statusMsg =
+                    tr("Converted vanilla textures: %1").arg(QString::fromStdString(result.generatedSet.name));
+                statusBar()->showMessage(statusMsg);
+
+                if (warnCount > 0)
+                {
+                    QMessageBox::information(
+                        this, tr("Convert Vanilla Textures"),
+                        tr("Conversion succeeded with %1 warning(s):\n\n%2").arg(warnCount).arg(warnings));
+                }
+            });
+
+    thread->start();
 }
 
 void MainWindow::onDroppedOnSlot(PBRTextureSlot slot, const QString& filePath)
