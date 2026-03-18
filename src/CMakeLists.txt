@@ -22,6 +22,8 @@ set(CORE_SOURCES
     core/AppSettings.cpp
     core/ModImporter.h
     core/ModImporter.cpp
+    core/VanillaConverter.h
+    core/VanillaConverter.cpp
 )
 
 set(UI_SOURCES
