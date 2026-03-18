@@ -50,6 +50,7 @@ class MainWindow : public QMainWindow
     void onImportChannel(ChannelMap channel);
     void onBatchImport();
     void onImportMod();
+    void onConvertVanilla();
     void onDroppedOnSlot(PBRTextureSlot slot, const QString& filePath);
     void onDroppedOnChannel(ChannelMap channel, const QString& filePath);
     void onSlotPreviewRequested(PBRTextureSlot slot);
@@ -150,6 +151,7 @@ class MainWindow : public QMainWindow
     QAction* m_projectNameAction = nullptr;
     QAction* m_batchImportAction = nullptr;
     QAction* m_importModAction = nullptr;
+    QAction* m_convertVanillaAction = nullptr;
     QAction* m_exitAction = nullptr;
 
     // Inline labels that need retranslation

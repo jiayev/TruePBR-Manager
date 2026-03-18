@@ -7,12 +7,14 @@
 #include "core/TextureImporter.h"
 #include "core/TextureSetValidator.h"
 #include "core/TranslationManager.h"
+#include "core/VanillaConverter.h"
 #include "ui/FeatureTogglePanel.h"
 #include "ui/ParameterPanel.h"
 #include "ui/SlotEditorWidget.h"
 #include "ui/TexturePreviewWidget.h"
 #include "ui/TextureSetPanel.h"
 #include "ui/MaterialPreviewWidget.h"
+#include "ui/VanillaConversionDialog.h"
 
 #include "renderer/IBLPipeline.h"
 
@@ -150,6 +152,9 @@ void MainWindow::setupMenuBar()
     m_fileMenu->addSeparator();
     m_batchImportAction = m_fileMenu->addAction(tr("&Batch Import Folder..."), this, &MainWindow::onBatchImport);
     m_importModAction = m_fileMenu->addAction(tr("&Import PBR Mod..."), this, &MainWindow::onImportMod);
+    m_convertVanillaAction =
+        m_fileMenu->addAction(tr("Convert &Vanilla Textures..."), this, &MainWindow::onConvertVanilla);
+    m_convertVanillaAction->setShortcut(QKeySequence("Ctrl+Shift+V"));
     m_fileMenu->addSeparator();
     m_exitAction = m_fileMenu->addAction(tr("E&xit"), this, &QWidget::close, QKeySequence::Quit);
 
@@ -1444,6 +1449,79 @@ void MainWindow::onImportMod()
         QMessageBox::information(
             this, tr("Import PBR Mod"),
             tr("Imported %1 texture set(s) with %2 warning(s):\n\n%3").arg(setCount).arg(warnCount).arg(warnings));
+    }
+}
+
+void MainWindow::onConvertVanilla()
+{
+    VanillaConversionDialog dialog(this);
+
+    if (dialog.exec() != QDialog::Accepted)
+    {
+        return;
+    }
+
+    auto input = dialog.getConversionInput();
+    auto result = VanillaConverter::convert(input);
+
+    // Build diagnostic report
+    QString warnings;
+    QString errors;
+    int warnCount = 0;
+    int errCount = 0;
+    for (const auto& d : result.diagnostics)
+    {
+        switch (d.severity)
+        {
+        case ImportDiagnostic::Severity::Error:
+            errors += QString::fromStdString(d.message) + "\n";
+            ++errCount;
+            break;
+        case ImportDiagnostic::Severity::Warning:
+            warnings += QString::fromStdString(d.message) + "\n";
+            ++warnCount;
+            break;
+        default:
+            break;
+        }
+    }
+
+    if (!result.success)
+    {
+        QString msg = tr("Conversion failed.\n\n");
+        if (!errors.isEmpty())
+            msg += errors;
+        if (!warnings.isEmpty())
+            msg += "\n" + warnings;
+        QMessageBox::critical(this, tr("Convert Vanilla Textures"), msg);
+        return;
+    }
+
+    // Add to project
+    m_project.addTextureSet(result.generatedSet.name, result.generatedSet.matchTexture);
+    const size_t newIndex = m_project.textureSets.size() - 1;
+    // Replace the newly created empty texture set with the converted one
+    m_project.textureSets[newIndex] = result.generatedSet;
+
+    // Select the new texture set
+    m_currentSetIndex = static_cast<int>(newIndex);
+
+    // Refresh UI
+    refreshUI();
+    onTextureSetSelected(m_currentSetIndex);
+
+    // Mark project as modified
+    setWindowModified(true);
+
+    int setCount = 1;
+    QString statusMsg = tr("Converted vanilla textures: %1").arg(QString::fromStdString(result.generatedSet.name));
+    statusBar()->showMessage(statusMsg);
+
+    // Show warnings if any
+    if (warnCount > 0)
+    {
+        QMessageBox::information(this, tr("Convert Vanilla Textures"),
+                                 tr("Conversion succeeded with %1 warning(s):\n\n%2").arg(warnCount).arg(warnings));
     }
 }
 
