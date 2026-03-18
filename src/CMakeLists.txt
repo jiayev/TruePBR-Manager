@@ -45,6 +45,8 @@ set(UI_SOURCES
     ui/MaterialPreviewWidget.cpp
     ui/ConversionFlowWidget.h
     ui/ConversionFlowWidget.cpp
+    ui/VanillaConversionDialog.h
+    ui/VanillaConversionDialog.cpp
 )
 
 set(APP_SOURCES
