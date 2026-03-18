@@ -1,6 +1,6 @@
 {
     "name": "truepbr-manager",
-    "version-string": "0.4.1",
+    "version-string": "0.5.0",
     "builtin-baseline": "389d14fa0e0692f36967e9eb5499e909317644d5",
     "dependencies": [
         {
