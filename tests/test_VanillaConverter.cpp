@@ -170,7 +170,7 @@ TEST(VanillaConverterTest, ValidateInput_MissingDiffuse)
     bool foundDiffuseError = false;
     for (const auto& diag : diags)
     {
-        if (diag.severity == DiagnosticSeverity::Error && diag.message.find("Diffuse") != std::string::npos)
+        if (diag.severity == ImportDiagnostic::Severity::Error && diag.message.find("Diffuse") != std::string::npos)
         {
             foundDiffuseError = true;
             break;
@@ -224,4 +224,51 @@ TEST(VanillaConverterTest, ValidateInput_AllOptionalPresent)
     bool valid = VanillaConverter::validateInput(input, diags);
 
     EXPECT_TRUE(valid) << "Should pass with all textures present";
+}
+
+// ─── GammaBrightnessParams and per-texture adjustment tests ──────────
+
+TEST(VanillaConverterTest, GammaBrightnessParams_DefaultIsIdentity)
+{
+    GammaBrightnessParams gb;
+    EXPECT_FLOAT_EQ(gb.gamma, 1.0f);
+    EXPECT_FLOAT_EQ(gb.brightness, 0.0f);
+}
+
+TEST(VanillaConverterTest, GetColorAdjustment_ReturnsIdentityWhenNotSet)
+{
+    VanillaConversionParams params;
+    // No colorAdjustments set → should return identity
+    auto gb = params.getColorAdjustment(VanillaTextureType::Diffuse);
+    EXPECT_FLOAT_EQ(gb.gamma, 1.0f);
+    EXPECT_FLOAT_EQ(gb.brightness, 0.0f);
+}
+
+TEST(VanillaConverterTest, GetColorAdjustment_ReturnsSetValues)
+{
+    VanillaConversionParams params;
+    params.colorAdjustments[VanillaTextureType::Diffuse] = {2.0f, 0.5f};
+    params.colorAdjustments[VanillaTextureType::Glow] = {0.5f, -0.3f};
+
+    auto diffuseGb = params.getColorAdjustment(VanillaTextureType::Diffuse);
+    EXPECT_FLOAT_EQ(diffuseGb.gamma, 2.0f);
+    EXPECT_FLOAT_EQ(diffuseGb.brightness, 0.5f);
+
+    auto glowGb = params.getColorAdjustment(VanillaTextureType::Glow);
+    EXPECT_FLOAT_EQ(glowGb.gamma, 0.5f);
+    EXPECT_FLOAT_EQ(glowGb.brightness, -0.3f);
+
+    // BackLight not set → identity
+    auto blGb = params.getColorAdjustment(VanillaTextureType::BackLight);
+    EXPECT_FLOAT_EQ(blGb.gamma, 1.0f);
+    EXPECT_FLOAT_EQ(blGb.brightness, 0.0f);
+}
+
+TEST(VanillaConverterTest, GetColorAdjustment_NonColorTypeReturnsIdentity)
+{
+    VanillaConversionParams params;
+    // Normal is not a color texture, but the helper should still work
+    auto gb = params.getColorAdjustment(VanillaTextureType::Normal);
+    EXPECT_FLOAT_EQ(gb.gamma, 1.0f);
+    EXPECT_FLOAT_EQ(gb.brightness, 0.0f);
 }

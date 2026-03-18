@@ -3,9 +3,9 @@
 #include "ModImporter.h"
 #include "PBRTextureSet.h"
 
-#include <array>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <optional>
 #include <string>
@@ -35,17 +35,23 @@ enum class SpecularMode
     DividePI, ///< Divide specular intensity by π for energy conservation
 };
 
+/// Per-texture gamma and brightness adjustment.
+struct GammaBrightnessParams
+{
+    float gamma = 1.0f;      ///< Gamma exponent (1.0 = identity, typical 0.1–5.0)
+    float brightness = 0.0f; ///< Brightness offset in linear space (-1.0–1.0)
+};
+
 /// Parameters controlling vanilla texture conversion.
 struct VanillaConversionParams
 {
     /// Blinn-Phong shininess exponent (default 50, typical range 0.1–10000)
     float shininess = 50.0f;
 
-    /// Gamma adjustment for all color channels (default 1.0, typical range 0.1–5.0)
-    float gamma = 1.0f;
-
-    /// Brightness adjustment in linear space (default 0.0, typical range -1.0–1.0)
-    float brightness = 0.0f;
+    /// Per-color-texture gamma/brightness adjustments.
+    /// Keys are color textures: Diffuse, Glow, BackLight.
+    /// Missing entries use identity (gamma=1.0, brightness=0.0).
+    std::map<VanillaTextureType, GammaBrightnessParams> colorAdjustments;
 
     /// Specular map conversion mode (default Direct)
     SpecularMode specularMode = SpecularMode::Direct;
@@ -55,6 +61,13 @@ struct VanillaConversionParams
 
     /// Optional roughness override for metallic regions when cubemap tint is applied
     std::optional<float> metallicRoughnessOverride;
+
+    /// Helper: get gamma/brightness for a texture type (returns identity if not set).
+    GammaBrightnessParams getColorAdjustment(VanillaTextureType type) const
+    {
+        auto it = colorAdjustments.find(type);
+        return it != colorAdjustments.end() ? it->second : GammaBrightnessParams{};
+    }
 };
 
 /// Input parameters for vanilla texture conversion.
@@ -110,11 +123,15 @@ struct VanillaConversionResult
 class VanillaConverter
 {
   public:
+    /// Progress callback: (current, total, description) → return false to cancel.
+    using ProgressCallback = std::function<bool(int current, int total, const std::string& desc)>;
+
     /// Convert vanilla textures to a True PBR texture set.
     ///
     /// \param input Conversion input with vanilla texture files and parameters
+    /// \param progress Optional progress callback for UI feedback
     /// \return Conversion result containing the generated PBRTextureSet and diagnostics
-    static VanillaConversionResult convert(const VanillaConversionInput& input);
+    static VanillaConversionResult convert(const VanillaConversionInput& input, ProgressCallback progress = nullptr);
 
     /// Convert Blinn-Phong shininess exponent to PBR roughness.
     ///
@@ -163,15 +180,6 @@ class VanillaConverter
     /// \param height Image height in pixels
     /// \return Vector of alpha values (one per pixel, width * height elements)
     static std::vector<uint8_t> extractAlphaChannel(const uint8_t* rgba, int width, int height);
-
-    /// Compute the average color of a cubemap across all faces.
-    ///
-    /// Loads a DDS cubemap, validates it as a standard 6-face cubemap,
-    /// and returns the averaged color in linear space.
-    ///
-    /// \param cubemapPath Path to DDS cubemap file
-    /// \return Average color as [R, G, B] in linear space [0.0, 1.0]
-    static std::array<float, 3> averageCubemapColor(const std::filesystem::path& cubemapPath);
 
     /// Validate conversion input for required and optional textures.
     ///
