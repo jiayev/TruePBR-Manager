@@ -43,6 +43,8 @@ set(UI_SOURCES
     ui/ImportDialog.cpp
     ui/MaterialPreviewWidget.h
     ui/MaterialPreviewWidget.cpp
+    ui/ConversionFlowWidget.h
+    ui/ConversionFlowWidget.cpp
 )
 
 set(APP_SOURCES
