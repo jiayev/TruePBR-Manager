@@ -27,6 +27,8 @@ The application currently supports:
 - PGPatcher JSON and DDS texture export
 - Export runs on a background thread with progress dialog (cancellable)
 - Skips unchanged textures on re-export (timestamp + format check)
+- Vanilla texture set conversion: converts Blinn-Phong textures (Diffuse, Normal, Specular, EnvMask, Cubemap, Glow, Parallax, BackLight) to True PBR with automatic RMAOS generation, cubemap metallic tint, per-texture gamma/brightness, and real-time output preview
+- Conversion runs on a background thread with progress dialog (cancellable)
 - Recent projects list (File menu, max 10 entries)
 - 3D preview settings persisted across sessions (light, HDRI, render flags, etc.)
 - Localization: auto-detects system language, supports runtime language switching, and hot-reloads translation files during development
@@ -202,11 +204,11 @@ Additional dependencies:
 ```text
 src/
 ├── app/        MainWindow and application shell
-├── core/       Project model, texture import, RMAOS packing, JSON export, mod export, landscape export, translation manager, app settings
+├── core/       Project model, texture import, RMAOS packing, JSON export, mod export, mod import, vanilla conversion, landscape export, translation manager, app settings
 ├── renderer/   D3D12 GPU backend, IBL pipeline, mesh generation, HLSL shaders
-├── ui/         Texture set list, slot editor, feature toggles, parameter editor, 3D preview widget
+├── ui/         Texture set list, slot editor, feature toggles, parameter editor, vanilla conversion dialog, 3D preview widget
 └── utils/      DDS helpers, image loading, file helpers, logging
-tests/          Unit tests (Google Test): PBRTextureSet, TextureSetValidator, Project
+tests/          Unit tests (Google Test): PBRTextureSet, TextureSetValidator, Project, VanillaConverter
 translations/   JSON translation files (en.json, zh_CN.json, ...)
 ```
 
@@ -230,7 +232,7 @@ translations/   JSON translation files (en.json, zh_CN.json, ...)
 
 Planned features:
 
-- [ ] Built-in vanilla texture set conversion
+- [x] Built-in vanilla texture set conversion
 - [x] Import existing PBR mod (read mod directory with PGPatcher JSON + textures, reconstruct project)
 - [ ] Undo/redo
 

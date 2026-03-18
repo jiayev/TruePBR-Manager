@@ -201,6 +201,65 @@ Primary references:
 
 - No undo/redo
 
+### 3.15 Vanilla texture set conversion
+
+Converts vanilla Skyrim Blinn-Phong textures into True PBR texture sets. Accessible from File > Convert Vanilla Textures...
+
+**Input textures** (one texture set per conversion):
+
+| Vanilla Slot | Required | Maps to PBR Output |
+|---|---|---|
+| Diffuse (TX00) | Yes | Albedo (with gamma/brightness and cubemap tint applied) |
+| Normal (TX01) | Yes | Normal (pass-through; alpha optionally used as specular source) |
+| Glow (TX02) | No | Emissive (with gamma/brightness applied) |
+| Parallax (TX03) | No | Displacement (pass-through) |
+| Specular (TX07 / Normal alpha) | No | RMAOS Specular channel (A) |
+| BackLight (TX07) | No | Subsurface (with gamma/brightness applied) |
+| EnvMask (TX02) | No | RMAOS Metallic channel (G); also used as blend mask for cubemap tint |
+| Cubemap (TX05) | No | Averaged to a single color for metallic tint overlay on Albedo |
+
+**Conversion parameters**:
+
+- **Shininess** (float, default 50): Blinn-Phong exponent, converted to roughness via `pow(2 / (2 + shininess), 0.25)`
+- **Specular Mode**: Direct (use specular map values as-is) or Divide by PI (divide by pi for energy conservation)
+- **Normal Alpha is Specular** (bool): when enabled and no separate Specular map is provided, extracts specular from the Normal map's alpha channel
+- **Metallic Roughness Override** (optional float, 0.0-1.0): when enabled, overrides the computed roughness value for pixels where EnvMask > 0 (metallic regions)
+- **Per-texture Gamma/Brightness**: independent gamma (0.1-5.0) and brightness (-1.0 to 1.0) controls for each color texture (Diffuse, Glow, BackLight, Cubemap). Applied non-destructively in linear space: `sRGB→linear → pow(linear, 1/gamma) → add brightness → linear→sRGB`
+
+**Cubemap metallic tint overlay**: when both EnvMask and Cubemap are provided, the Albedo output is blended with the cubemap's average color using the EnvMask as a blend mask: `albedo = lerp(diffuse, cubemapAvgColor, envMask.R)`. The cubemap average color is computed in linear space after applying the cubemap's gamma/brightness adjustments.
+
+**RMAOS channel synthesis**:
+
+| Channel | Source |
+|---|---|
+| R (Roughness) | `shininessToRoughness(shininess)`, or `metallicRoughnessOverride` where EnvMask > 0 |
+| G (Metallic) | EnvMask red channel (0 if absent) |
+| B (AO) | Solid white (255, no vanilla source) |
+| A (Specular) | Specular map, or Normal alpha (if enabled), or default 20 (~0.08 baseline) |
+
+**Dialog layout** (single-page, integrated flow):
+
+- Left panel: scrollable list of 8 vanilla input texture rows, each with thumbnail preview, browse/clear buttons, and per-texture gamma/brightness controls for color textures
+- Right panel: 3x2 grid of PBR output previews (Albedo, Normal, RMAOS, Emissive, Displacement, Subsurface) shown simultaneously
+- Bottom: conversion parameters, output settings (directory, texture set name, vanilla match path), and Convert/Cancel buttons
+- All output previews update in real-time (150ms debounce) as inputs or parameters change
+- Preview operations run on 256x256 downscaled copies for performance; full-resolution data is loaded from disk during final conversion
+
+**Conversion output**:
+
+- Albedo: `<name>.dds` (BC7 sRGB)
+- Normal: `<name>_n.dds` (BC5 linear)
+- RMAOS: `<name>_rmaos.dds` (BC7 linear)
+- Emissive: `<name>_g.dds` (BC7 sRGB, if Glow provided)
+- Displacement: `<name>_p.dds` (BC7 linear, if Parallax provided)
+- Subsurface: `<name>_s.dds` (BC7 sRGB, if BackLight provided)
+
+Files are saved to a user-specified output directory. The generated `PBRTextureSet` is automatically added to the current project.
+
+**Execution**: conversion runs on a background worker thread with a modal `QProgressDialog` (matching the export pattern). Progress reports per step (loading, processing, saving each DDS). Supports cancel via shared atomic flag.
+
+**Unit tests** (`test_VanillaConverter.cpp`): sRGB/linear round-trip, shininess-to-roughness mapping, gamma/brightness pixel processing, alpha extraction, input validation, per-texture `GammaBrightnessParams` helper.
+
 ## 4. Texture Slot Model
 
 ### 4.1 Slot reference
@@ -623,6 +682,7 @@ Important implementation modules:
 - `core/JsonExporter.*`: PGPatcher JSON generation
 - `core/ModExporter.*`: DDS and JSON export orchestration
 - `core/ModImporter.*`: import existing PBR mod directories (PGPatcher JSON + textures)
+- `core/VanillaConverter.*`: vanilla Blinn-Phong to True PBR conversion pipeline (math, RMAOS synthesis, DDS export)
 - `core/LandscapeExporter.*`: Landscape TXST JSON generation
 - `core/TextureSetValidator.*`: pre-export validation checks
 - `core/TranslationManager.*`: JSON-based i18n, locale detection, hot-reload
@@ -635,6 +695,7 @@ Important implementation modules:
 - `ui/MaterialPreviewWidget.*`: D3D12-based 3D preview Qt widget
 - `ui/SlotEditorWidget.*`: slot/channel authoring UI
 - `ui/ParameterPanel.*`: numeric material parameter UI
+- `ui/VanillaConversionDialog.*`: vanilla texture conversion dialog with integrated flow layout and real-time output previews
 
 ## 11. Build and Packaging
 
@@ -668,7 +729,7 @@ CMake presets:
 - Optional, enabled via `-DTRUEPBR_BUILD_TESTS=ON` or the `test` CMake preset
 - `TruePBR-Core` static library extracts testable core logic (Project, PBRTextureSet, TextureSetValidator, JsonExporter, LandscapeExporter) with no Qt or D3D12 dependency
 - `TruePBR-Tests` executable links `TruePBR-Core` + Google Test
-- Test suites: PBRTextureSet free functions, TextureSetValidator rules, Project save/load round-trip
+- Test suites: PBRTextureSet free functions, TextureSetValidator rules, Project save/load round-trip, VanillaConverter math (sRGB conversion, shininess-to-roughness, gamma/brightness, per-texture params)
 - Run: `cmake --preset test && cmake --build build --config Debug --target TruePBR-Tests && ctest --preset test`
 
 ### 11.4 Shader compilation
@@ -747,6 +808,6 @@ Git tags follow the format `vX.Y.Z` (e.g. `v0.2.0`). The `release.yml` GitHub Ac
 
 Planned features not yet implemented:
 
-- [ ] Built-in vanilla texture set conversion (内置 vanilla texture set 转换)
+- [x] Built-in vanilla texture set conversion (内置 vanilla texture set 转换)
 - [x] Import existing PBR mod: read a mod directory containing PGPatcher JSON and textures, reconstruct a `.tpbr` project automatically (导入已有 PBR Mod：读取含 JSON 和贴图的 Mod 目录，自动重建项目)
 - [ ] Undo/redo
