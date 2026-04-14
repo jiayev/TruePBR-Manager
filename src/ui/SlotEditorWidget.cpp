@@ -50,7 +50,6 @@ static std::vector<DDSCompressionMode> allowedCompressionModesForSlot(PBRTexture
     case PBRTextureSlot::Normal:
         return {
             DDSCompressionMode::BC7_Linear,
-            DDSCompressionMode::BC5_Linear,
         };
 
     case PBRTextureSlot::Displacement:
