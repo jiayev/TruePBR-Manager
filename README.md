@@ -1,3 +1,5 @@
+**English** | [中文](README_zh.md)
+
 # TruePBR Manager
 
 [![CI](https://github.com/jiayev/TruePBR-Manager/actions/workflows/ci.yml/badge.svg)](https://github.com/jiayev/TruePBR-Manager/actions/workflows/ci.yml)
