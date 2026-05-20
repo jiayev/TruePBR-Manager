@@ -377,6 +377,10 @@ static json textureSetToJson(const PBRTextureSet& ts)
         j["slot_path_overrides"] = overridesObj;
     }
 
+    // Flip Normal G flag
+    if (ts.flipNormalG)
+        j["flip_normal_g"] = true;
+
     return j;
 }
 
@@ -494,6 +498,9 @@ static PBRTextureSet textureSetFromJson(const json& j)
             ts.slotPathOverrides[slotFromString(key)] = val.get<std::string>();
         }
     }
+
+    if (j.contains("flip_normal_g"))
+        ts.flipNormalG = j["flip_normal_g"].get<bool>();
 
     if (!j.contains("rmaos_source_mode"))
     {

@@ -255,12 +255,16 @@ VanillaConversionResult VanillaConverter::convert(const VanillaConversionInput& 
                                 static_cast<float>(sumB / cubeCount)};
                 }
 
-                if (envW == diffW && envH == diffH)
+                if (envW > 0 && envH > 0)
                 {
                     const int count = diffW * diffH;
                     for (int i = 0; i < count; ++i)
                     {
-                        float mask = static_cast<float>(envPixels[i * 4 + 0]) / 255.0f;
+                        const int px = i % diffW;
+                        const int py = i / diffW;
+                        const int sx = px * envW / diffW;
+                        const int sy = py * envH / diffH;
+                        float mask = static_cast<float>(envPixels[(sy * envW + sx) * 4 + 0]) / 255.0f;
                         if (mask <= 0.0f)
                             continue;
                         for (int c = 0; c < 3; ++c)
@@ -299,17 +303,50 @@ VanillaConversionResult VanillaConverter::convert(const VanillaConversionInput& 
         bool hasEnv = envIt != input.inputFiles.end() && loadTextureFile(envIt->second, envW, envH, envPixels);
 
         bool useNormalAlpha = input.params.normalAlphaIsSpecular && !hasSpec;
+        bool deriveRoughness = input.params.deriveRoughnessFromSpecular;
 
         const int count = diffW * diffH;
         for (int i = 0; i < count; ++i)
         {
-            // Metallic from EnvMask
+            // Metallic from EnvMask (with nearest-neighbor sampling for size mismatch)
             uint8_t metallic = 0;
-            if (hasEnv && envW == diffW && envH == diffH)
-                metallic = envPixels[i * 4 + 0];
+            if (hasEnv && envW > 0 && envH > 0)
+            {
+                const int px = i % diffW;
+                const int py = i / diffW;
+                const int sx = px * envW / diffW;
+                const int sy = py * envH / diffH;
+                metallic = envPixels[(sy * envW + sx) * 4 + 0];
+            }
 
-            // Roughness — override for metallic areas
-            if (metallic > 0 && hasMetalRoughOverride)
+            // Determine specular value from available source
+            // Priority: separate Specular map > Normal alpha (if enabled) > default
+            uint8_t specValue = 20; // default ~0.08 baseline
+            bool hasSpecValue = false;
+            if (hasSpec && specW > 0 && specH > 0)
+            {
+                const int px = i % diffW;
+                const int py = i / diffW;
+                const int sx = px * specW / diffW;
+                const int sy = py * specH / diffH;
+                specValue = specPixels[(sy * specW + sx) * 4 + 0];
+                hasSpecValue = true;
+            }
+            else if (useNormalAlpha && normW == diffW && normH == diffH)
+            {
+                specValue = normalPixels[i * 4 + 3];
+                hasSpecValue = true;
+            }
+
+            // Roughness — derive from specular or use shininess-based value
+            if (deriveRoughness && hasSpecValue)
+            {
+                // Roughness = pow(1 - specular/255, roughnessPower) * 255
+                float specNorm = static_cast<float>(specValue) / 255.0f;
+                float r = std::pow(1.0f - specNorm, input.params.roughnessPower);
+                rmaosPixels[i * 4 + 0] = static_cast<uint8_t>(std::clamp(r * 255.0f + 0.5f, 0.0f, 255.0f));
+            }
+            else if (metallic > 0 && hasMetalRoughOverride)
                 rmaosPixels[i * 4 + 0] = metalRoughness;
             else
                 rmaosPixels[i * 4 + 0] = roughness;
@@ -318,13 +355,16 @@ VanillaConversionResult VanillaConverter::convert(const VanillaConversionInput& 
 
             rmaosPixels[i * 4 + 2] = 255; // AO = white
 
-            // Specular
-            if (hasSpec && specW == diffW && specH == diffH)
-                rmaosPixels[i * 4 + 3] = specPixels[i * 4 + 0];
-            else if (useNormalAlpha && normW == diffW && normH == diffH)
-                rmaosPixels[i * 4 + 3] = normalPixels[i * 4 + 3];
+            // Specular channel
+            if (deriveRoughness && hasSpecValue)
+            {
+                // In this mode, specular channel is white (255) and specularLevel = 0.04
+                rmaosPixels[i * 4 + 3] = 255;
+            }
             else
-                rmaosPixels[i * 4 + 3] = 20; // ~0.08 baseline
+            {
+                rmaosPixels[i * 4 + 3] = specValue;
+            }
         }
     }
 
@@ -462,6 +502,10 @@ VanillaConversionResult VanillaConverter::convert(const VanillaConversionInput& 
     result.generatedSet.name = baseName;
     result.generatedSet.matchTexture = input.vanillaMatchPath.empty() ? baseName : input.vanillaMatchPath;
     result.generatedSet.rmaosSourceMode = RMAOSSourceMode::PackedTexture;
+
+    // When deriving roughness from specular, set specularLevel to 0.04
+    if (input.params.deriveRoughnessFromSpecular)
+        result.generatedSet.params.specularLevel = 0.04f;
 
     result.success = allOk;
     return result;

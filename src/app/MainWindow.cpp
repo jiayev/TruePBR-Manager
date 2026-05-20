@@ -777,6 +777,7 @@ void MainWindow::setupCentralWidget()
     connect(m_slotEditor, &SlotEditorWidget::landscapeEdidsChanged, this, &MainWindow::onLandscapeEdidsChanged);
     connect(m_slotEditor, &SlotEditorWidget::matchAliasesChanged, this, &MainWindow::onMatchAliasesChanged);
     connect(m_slotEditor, &SlotEditorWidget::slotPathOverrideChanged, this, &MainWindow::onSlotPathOverrideChanged);
+    connect(m_slotEditor, &SlotEditorWidget::flipNormalGRequested, this, &MainWindow::onFlipNormalG);
 }
 
 void MainWindow::setupStatusBar()
@@ -1631,11 +1632,21 @@ void MainWindow::onSlotPreviewRequested(PBRTextureSlot slot)
         return;
     }
 
-    const QImage image = loadPreviewImage(it->second.sourcePath);
+    QImage image = loadPreviewImage(it->second.sourcePath);
     if (image.isNull())
     {
         statusBar()->showMessage(tr("Failed to load preview for %1").arg(slotDisplayName(slot)));
         return;
+    }
+
+    // Apply runtime Normal G flip if enabled
+    if (slot == PBRTextureSlot::Normal && ts.flipNormalG)
+    {
+        image = image.convertToFormat(QImage::Format_RGBA8888);
+        uint8_t* bits = image.bits();
+        const int count = image.width() * image.height();
+        for (int i = 0; i < count; ++i)
+            bits[i * 4 + 1] = 255 - bits[i * 4 + 1];
     }
 
     m_previewWidget->setImage(image);
@@ -1855,6 +1866,20 @@ void MainWindow::onSlotPathOverrideChanged(PBRTextureSlot slot, const QString& p
     spdlog::debug("Slot path override updated: {} -> {}", slotDisplayName(slot), path.toStdString());
 }
 
+void MainWindow::onFlipNormalG()
+{
+    if (m_currentSetIndex < 0)
+        return;
+
+    auto& ts = m_project.textureSets[m_currentSetIndex];
+    ts.flipNormalG = !ts.flipNormalG;
+
+    // Refresh UI and preview to reflect the new state
+    m_slotEditor->setTextureSet(ts);
+    refreshPreview();
+    statusBar()->showMessage(tr("Flipped Normal G channel"));
+}
+
 // ─── Refresh ───────────────────────────────────────────────
 
 void MainWindow::refreshUI()
@@ -1956,10 +1981,20 @@ void MainWindow::refreshPreview()
             return false;
         }
 
-        const QImage image = loadPreviewImage(it->second.sourcePath);
+        QImage image = loadPreviewImage(it->second.sourcePath);
         if (image.isNull())
         {
             return false;
+        }
+
+        // Apply runtime Normal G flip if enabled
+        if (slot == PBRTextureSlot::Normal && set.flipNormalG)
+        {
+            image = image.convertToFormat(QImage::Format_RGBA8888);
+            uint8_t* bits = image.bits();
+            const int count = image.width() * image.height();
+            for (int i = 0; i < count; ++i)
+                bits[i * 4 + 1] = 255 - bits[i * 4 + 1];
         }
 
         m_previewWidget->setImage(image);
@@ -2087,6 +2122,14 @@ void MainWindow::refresh3DPreview()
 
     loadPixels(ts, PBRTextureSlot::Diffuse, diffusePixels, dw, dh);
     loadPixels(ts, PBRTextureSlot::Normal, normalPixels, nw, nh);
+
+    // Apply runtime Normal G flip if enabled
+    if (ts.flipNormalG && !normalPixels.empty())
+    {
+        const int count = nw * nh;
+        for (int i = 0; i < count; ++i)
+            normalPixels[i * 4 + 1] = 255 - normalPixels[i * 4 + 1];
+    }
 
     // RMAOS: respect the authoring mode
     if (ts.rmaosSourceMode == RMAOSSourceMode::SeparateChannels && !ts.channelMaps.empty())

@@ -107,6 +107,9 @@ class SlotEditorWidget : public QWidget
     /// Emitted when a slot's path override changes (empty string = disabled)
     void slotPathOverrideChanged(PBRTextureSlot slot, const QString& path);
 
+    /// Emitted when the user requests to flip the Normal map's G channel
+    void flipNormalGRequested();
+
   private:
     void setupUI();
     void addSlotRow(PBRTextureSlot slot, const QString& label, bool visible);
@@ -124,6 +127,7 @@ class SlotEditorWidget : public QWidget
         DropZoneLabel* dropZone = nullptr;
         QPushButton* importButton = nullptr;
         QPushButton* clearButton = nullptr;
+        QPushButton* flipGButton = nullptr; ///< "Flip G" button (Normal slot only)
         QComboBox* compressionCombo = nullptr;
         QComboBox* exportSizeCombo = nullptr;
         QWidget* container = nullptr;

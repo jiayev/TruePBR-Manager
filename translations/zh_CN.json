@@ -150,7 +150,9 @@
       "Conversion failed.\n\n": "转换失败。\n\n",
       "Convert Vanilla Textures": "转换原版纹理",
       "Converted vanilla textures: %1": "已转换原版纹理：%1",
-      "Conversion succeeded with %1 warning(s):\n\n%2": "转换成功，%1 个警告：\n\n%2"
+      "Conversion succeeded with %1 warning(s):\n\n%2": "转换成功，%1 个警告：\n\n%2",
+      "Flipped Normal G channel": "已翻转法线 G 通道",
+      "Failed to save %1": "保存 %1 失败"
     },
     "tpbr::TextureSetPanel": {
       "Add": "添加",
@@ -238,7 +240,9 @@
       "Additional vanilla texture paths that share this PBR texture set.\nOne path per line. These are emitted with 'rename' in PGPatcher JSON.": "共享此 PBR 纹理集的其他原版纹理路径。\n每行一个路径，导出时将在 PGPatcher JSON 中生成 'rename' 条目。",
       "landscape\\statics\\dirt02\nlandscape\\statics\\dirt02snow": "landscape\\statics\\dirt02\nlandscape\\statics\\dirt02snow",
       "%1 x %2": "%1 x %2",
-      " (original)": "（原始）"
+      " (original)": "（原始）",
+      "Flip G": "翻转 G",
+      "Flip the Normal map's Green channel (for DirectX/OpenGL conversion)": "翻转法线贴图的绿色通道（用于 DirectX/OpenGL 转换）"
     },
     "tpbr::DropZoneLabel": {
       "Click to browse or drop an image here": "点击浏览或将图像拖放到此处",
@@ -285,6 +289,8 @@
       "Shininess:": "光泽度：",
       "Specular Mode:": "镜面反射模式：",
       "Normal Alpha is Specular": "法线 Alpha 为镜面反射",
+      "Derive Roughness from Specular": "从高光导出粗糙度",
+      "Roughness Power:": "粗糙度指数：",
       "Metallic Roughness Override:": "金属度粗糙度覆写：",
       "Gamma:": "伽玛：",
       "Brightness:": "亮度：",

@@ -383,9 +383,52 @@ bool ModExporter::exportTextures(const PBRTextureSet& textureSet, const fs::path
         }
 
         // Skip export if output is already up-to-date
-        if (isOutputUpToDate(entry.sourcePath, outPath, compressionMode, targetW, targetH))
+        // (Skip this optimization for Normal with flipNormalG since the output differs from source)
+        if (!(slot == PBRTextureSlot::Normal && textureSet.flipNormalG) &&
+            isOutputUpToDate(entry.sourcePath, outPath, compressionMode, targetW, targetH))
         {
             spdlog::info("ModExporter: skipping unchanged {}", outPath.filename().string());
+            continue;
+        }
+
+        // For Normal slot with flipNormalG enabled, we need custom export logic
+        // to flip the G channel without modifying the source file
+        if (slot == PBRTextureSlot::Normal && textureSet.flipNormalG)
+        {
+            fs::create_directories(outPath.parent_path());
+            int width = 0, height = 0;
+            std::vector<uint8_t> rgbaPixels;
+            if (!loadTextureRGBA(entry.sourcePath, width, height, rgbaPixels))
+            {
+                spdlog::error("ModExporter: failed to load {}", entry.sourcePath.string());
+                allOk = false;
+                continue;
+            }
+
+            // Flip G channel
+            const int count = width * height;
+            for (int i = 0; i < count; ++i)
+                rgbaPixels[i * 4 + 1] = 255 - rgbaPixels[i * 4 + 1];
+
+            // Resize if needed
+            if (targetW > 0 && targetH > 0 && (targetW != width || targetH != height))
+            {
+                std::vector<uint8_t> resized;
+                resizeRGBA(rgbaPixels, width, height, resized, targetW, targetH);
+                rgbaPixels = std::move(resized);
+                width = targetW;
+                height = targetH;
+            }
+
+            if (!saveTextureWithCompression(outPath, entry.slot, width, height, rgbaPixels, compressionMode))
+            {
+                spdlog::error("ModExporter: failed to export {} -> {}", entry.sourcePath.string(), outPath.string());
+                allOk = false;
+            }
+            else
+            {
+                spdlog::info("ModExporter: exported {} (G flipped)", outPath.string());
+            }
             continue;
         }
 

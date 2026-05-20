@@ -150,7 +150,9 @@
       "Conversion failed.\n\n": "Conversion failed.\n\n",
       "Convert Vanilla Textures": "Convert Vanilla Textures",
       "Converted vanilla textures: %1": "Converted vanilla textures: %1",
-      "Conversion succeeded with %1 warning(s):\n\n%2": "Conversion succeeded with %1 warning(s):\n\n%2"
+      "Conversion succeeded with %1 warning(s):\n\n%2": "Conversion succeeded with %1 warning(s):\n\n%2",
+      "Flipped Normal G channel": "Flipped Normal G channel",
+      "Failed to save %1": "Failed to save %1"
     },
     "tpbr::TextureSetPanel": {
       "Add": "Add",
@@ -238,7 +240,9 @@
       "Additional vanilla texture paths that share this PBR texture set.\nOne path per line. These are emitted with 'rename' in PGPatcher JSON.": "Additional vanilla texture paths that share this PBR texture set.\nOne path per line. These are emitted with 'rename' in PGPatcher JSON.",
       "landscape\\statics\\dirt02\nlandscape\\statics\\dirt02snow": "landscape\\statics\\dirt02\nlandscape\\statics\\dirt02snow",
       "%1 x %2": "%1 x %2",
-      " (original)": " (original)"
+      " (original)": " (original)",
+      "Flip G": "Flip G",
+      "Flip the Normal map's Green channel (for DirectX/OpenGL conversion)": "Flip the Normal map's Green channel (for DirectX/OpenGL conversion)"
     },
     "tpbr::DropZoneLabel": {
       "Click to browse or drop an image here": "Click to browse or drop an image here",
@@ -285,6 +289,8 @@
       "Shininess:": "Shininess:",
       "Specular Mode:": "Specular Mode:",
       "Normal Alpha is Specular": "Normal Alpha is Specular",
+      "Derive Roughness from Specular": "Derive Roughness from Specular",
+      "Roughness Power:": "Roughness Power:",
       "Metallic Roughness Override:": "Metallic Roughness Override:",
       "Gamma:": "Gamma:",
       "Brightness:": "Brightness:",

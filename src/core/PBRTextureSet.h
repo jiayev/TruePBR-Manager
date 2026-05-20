@@ -236,6 +236,11 @@ struct PBRTextureSet
     /// slot command instead of deriving the path automatically.
     std::map<PBRTextureSlot, std::string> slotPathOverrides;
 
+    /// When true, the Normal map's Green channel is inverted (255 - G) at preview
+    /// and export time. The source file is never modified. Used for DirectX↔OpenGL
+    /// normal map convention conversion.
+    bool flipNormalG = false;
+
     std::string tags;
     std::string notes;
 };

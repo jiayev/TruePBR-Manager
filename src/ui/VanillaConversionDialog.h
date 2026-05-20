@@ -122,6 +122,9 @@ class VanillaConversionDialog : public QDialog
     QDoubleSpinBox* shininessSpin_ = nullptr;
     QComboBox* specularModeCombo_ = nullptr;
     QCheckBox* normalAlphaCheck_ = nullptr;
+    QCheckBox* deriveRoughnessCheck_ = nullptr;
+    QDoubleSpinBox* roughnessPowerSpin_ = nullptr;
+    QLabel* roughnessPowerLabel_ = nullptr;
     QCheckBox* metallicRoughnessCheck_ = nullptr;
     QDoubleSpinBox* metallicRoughnessSpin_ = nullptr;
 

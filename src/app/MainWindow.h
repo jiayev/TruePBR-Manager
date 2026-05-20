@@ -67,6 +67,7 @@ class MainWindow : public QMainWindow
     void onLandscapeEdidsChanged(const QStringList& edids);
     void onMatchAliasesChanged(const QStringList& aliases);
     void onSlotPathOverrideChanged(PBRTextureSlot slot, const QString& path);
+    void onFlipNormalG();
 
   private:
     void setupMenuBar();

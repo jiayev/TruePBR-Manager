@@ -50,6 +50,7 @@ Primary references:
 - Separate Import and Clear buttons per slot and per channel row
 - Click a slot's DropZone to preview that texture (does not open import dialog)
 - Persist imported file metadata: source path, dimensions, channel count, format
+- **Flip Normal G**: per-slot toggle button on the Normal row that inverts the Green channel at preview and export time (for DirectX/OpenGL normal map convention conversion). The source file is never modified; the flag is persisted in the project file and applied non-destructively.
 
 ### 3.3 Material authoring
 
@@ -223,19 +224,21 @@ Converts vanilla Skyrim Blinn-Phong textures into True PBR texture sets. Accessi
 - **Shininess** (float, default 50): Blinn-Phong exponent, converted to roughness via `pow(2 / (2 + shininess), 0.25)`
 - **Specular Mode**: Direct (use specular map values as-is) or Divide by PI (divide by pi for energy conservation)
 - **Normal Alpha is Specular** (bool): when enabled and no separate Specular map is provided, extracts specular from the Normal map's alpha channel
+- **Derive Roughness from Specular** (bool): when enabled, uses the specular value (from separate Specular map or Normal alpha if that option is enabled) to compute per-pixel roughness. Formula: `Roughness = pow(1 - specular/255, roughnessPower) * 255`. In this mode, RMAOS Specular channel (A) is set to white (255) and `specularLevel` is automatically set to 0.04 on the generated texture set. Works with any specular source.
+- **Roughness Power** (float, 0.1–10.0, default 1.0): exponent for the roughness derivation formula. Only active when Derive Roughness from Specular is enabled.
 - **Metallic Roughness Override** (optional float, 0.0-1.0): when enabled, overrides the computed roughness value for pixels where EnvMask > 0 (metallic regions)
 - **Per-texture Gamma/Brightness**: independent gamma (0.1-5.0) and brightness (-1.0 to 1.0) controls for each color texture (Diffuse, Glow, BackLight, Cubemap). Applied non-destructively in linear space: `sRGB→linear → pow(linear, 1/gamma) → add brightness → linear→sRGB`
 
-**Cubemap metallic tint overlay**: when both EnvMask and Cubemap are provided, the Albedo output is blended with the cubemap's average color using the EnvMask as a blend mask: `albedo = lerp(diffuse, cubemapAvgColor, envMask.R)`. The cubemap average color is computed in linear space after applying the cubemap's gamma/brightness adjustments.
+**Cubemap metallic tint overlay**: when both EnvMask and Cubemap are provided, the Albedo output is blended with the cubemap's average color using the EnvMask as a blend mask: `albedo = lerp(diffuse, cubemapAvgColor, envMask.R)`. The cubemap average color is computed in linear space after applying the cubemap's gamma/brightness adjustments. When EnvMask dimensions differ from Diffuse, nearest-neighbor sampling is used for coordinate mapping.
 
 **RMAOS channel synthesis**:
 
 | Channel | Source |
 |---|---|
-| R (Roughness) | `shininessToRoughness(shininess)`, or `metallicRoughnessOverride` where EnvMask > 0 |
-| G (Metallic) | EnvMask red channel (0 if absent) |
+| R (Roughness) | `shininessToRoughness(shininess)`, or `metallicRoughnessOverride` where EnvMask > 0, or `pow(1 - normalAlpha, roughnessPower)` when Derive Roughness from Alpha is enabled |
+| G (Metallic) | EnvMask red channel (0 if absent); nearest-neighbor sampled when dimensions differ from Diffuse |
 | B (AO) | Solid white (255, no vanilla source) |
-| A (Specular) | Specular map, or Normal alpha (if enabled), or default 20 (~0.08 baseline) |
+| A (Specular) | Specular map (nearest-neighbor sampled), or Normal alpha (if enabled), or white (255, when Derive Roughness from Alpha mode), or default 20 (~0.08 baseline) |
 
 **Dialog layout** (single-page, integrated flow):
 

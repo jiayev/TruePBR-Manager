@@ -554,6 +554,18 @@ void SlotEditorWidget::addSlotRow(PBRTextureSlot slot, const QString& label, boo
     layout->addWidget(row.dropZone, 1);
     layout->addWidget(row.importButton);
     layout->addWidget(row.clearButton);
+
+    // Add "Flip G" button only for the Normal slot
+    if (slot == PBRTextureSlot::Normal)
+    {
+        row.flipGButton = new QPushButton(tr("Flip G"), row.container);
+        row.flipGButton->setFixedWidth(50);
+        row.flipGButton->setCheckable(true);
+        row.flipGButton->setToolTip(tr("Flip the Normal map's Green channel (for DirectX/OpenGL conversion)"));
+        layout->addWidget(row.flipGButton);
+        connect(row.flipGButton, &QPushButton::clicked, this, [this]() { emit flipNormalGRequested(); });
+    }
+
     layout->addWidget(row.exportSizeCombo);
     layout->addWidget(row.compressionCombo);
 
@@ -867,6 +879,17 @@ void SlotEditorWidget::setTextureSet(const PBRTextureSet& ts)
         row.pathOverrideEdit->blockSignals(false);
     }
 
+    // Update Flip G button state for Normal slot
+    {
+        auto it = m_slotRows.find(PBRTextureSlot::Normal);
+        if (it != m_slotRows.end() && it->second.flipGButton)
+        {
+            it->second.flipGButton->blockSignals(true);
+            it->second.flipGButton->setChecked(ts.flipNormalG);
+            it->second.flipGButton->blockSignals(false);
+        }
+    }
+
     // Update channel rows
     for (auto& [ch, row] : m_channelRows)
     {
@@ -960,6 +983,17 @@ void SlotEditorWidget::retranslateUi()
     setSlotLabel(PBRTextureSlot::CoatNormalRoughness, tr("Coat Normal+Rough"));
     setSlotLabel(PBRTextureSlot::Fuzz, tr("Fuzz"));
     setSlotLabel(PBRTextureSlot::CoatColor, tr("Coat Color+Strength"));
+
+    // Normal slot Flip G button
+    {
+        auto it = m_slotRows.find(PBRTextureSlot::Normal);
+        if (it != m_slotRows.end() && it->second.flipGButton)
+        {
+            it->second.flipGButton->setText(tr("Flip G"));
+            it->second.flipGButton->setToolTip(
+                tr("Flip the Normal map's Green channel (for DirectX/OpenGL conversion)"));
+        }
+    }
 
     // Channel section title
     if (auto* group = qobject_cast<QGroupBox*>(m_channelSection))

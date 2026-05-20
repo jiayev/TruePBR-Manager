@@ -59,6 +59,18 @@ struct VanillaConversionParams
     /// Extract specular from Normal's alpha channel when enabled (default false)
     bool normalAlphaIsSpecular = false;
 
+    /// When true, use the specular value (from separate Specular map, or Normal Alpha
+    /// if normalAlphaIsSpecular is enabled) to derive per-pixel roughness.
+    /// Roughness = pow(1 - specular/255, roughnessPower) * 255.
+    /// RMAOS.A (Specular) is set to white (255), and specularLevel should be set to 0.04.
+    /// Works with both separate Specular map and Normal Alpha as specular source.
+    bool deriveRoughnessFromSpecular = false;
+
+    /// Power exponent for roughness derivation from specular.
+    /// Only used when deriveRoughnessFromSpecular is true.
+    /// Formula: Roughness = pow(1 - specular/255, roughnessPower) * 255
+    float roughnessPower = 1.0f;
+
     /// Optional roughness override for metallic regions when cubemap tint is applied
     std::optional<float> metallicRoughnessOverride;
 

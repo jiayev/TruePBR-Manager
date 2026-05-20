@@ -335,6 +335,25 @@ void VanillaConversionDialog::setupUi()
     normalAlphaCheck_ = new QCheckBox(tr("Normal Alpha is Specular"), this);
     paramLayout->addRow(normalAlphaCheck_);
 
+    // Derive Roughness from Specular sub-option
+    auto* deriveRoughRow = new QHBoxLayout();
+    deriveRoughnessCheck_ = new QCheckBox(tr("Derive Roughness from Specular"), this);
+    deriveRoughRow->addWidget(deriveRoughnessCheck_);
+    roughnessPowerLabel_ = new QLabel(tr("Roughness Power:"), this);
+    deriveRoughRow->addWidget(roughnessPowerLabel_);
+    roughnessPowerSpin_ = new QDoubleSpinBox(this);
+    roughnessPowerSpin_->setRange(0.1, 10.0);
+    roughnessPowerSpin_->setValue(1.0);
+    roughnessPowerSpin_->setDecimals(2);
+    roughnessPowerSpin_->setSingleStep(0.1);
+    roughnessPowerSpin_->setEnabled(false);
+    deriveRoughRow->addWidget(roughnessPowerSpin_);
+    deriveRoughRow->addStretch();
+    paramLayout->addRow(deriveRoughRow);
+
+    connect(deriveRoughnessCheck_, &QCheckBox::toggled, this,
+            [this](bool checked) { roughnessPowerSpin_->setEnabled(checked); });
+
     // Metallic roughness override: checkbox + spinbox on same row
     auto* metalRoughRow = new QHBoxLayout();
     metallicRoughnessCheck_ = new QCheckBox(tr("Metallic Roughness Override:"), this);
@@ -409,6 +428,9 @@ void VanillaConversionDialog::setupUi()
     connect(specularModeCombo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             &VanillaConversionDialog::onParameterChanged);
     connect(normalAlphaCheck_, &QCheckBox::toggled, this, &VanillaConversionDialog::onParameterChanged);
+    connect(deriveRoughnessCheck_, &QCheckBox::toggled, this, &VanillaConversionDialog::onParameterChanged);
+    connect(roughnessPowerSpin_, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+            &VanillaConversionDialog::onParameterChanged);
     connect(metallicRoughnessCheck_, &QCheckBox::toggled, this, &VanillaConversionDialog::onParameterChanged);
     connect(metallicRoughnessSpin_, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
             &VanillaConversionDialog::onParameterChanged);
@@ -768,6 +790,8 @@ void VanillaConversionDialog::generateOutputPreviews()
 
                 const InputZone* normalZone = getZone(VanillaTextureType::Normal);
                 bool useNormalAlpha = normalAlphaCheck_->isChecked() && normalZone && !specZone;
+                bool deriveRoughness = deriveRoughnessCheck_->isChecked();
+                const float roughnessPower = static_cast<float>(roughnessPowerSpin_->value());
 
                 for (int i = 0; i < w * h; ++i)
                 {
@@ -776,8 +800,28 @@ void VanillaConversionDialog::generateOutputPreviews()
                     if (envZone && envZone->previewWidth == w && envZone->previewHeight == h)
                         metallic = envZone->previewPixels[i * 4 + 0];
 
-                    // R = Roughness (override for metallic areas)
-                    if (metallic > 0 && hasMetalRoughOverride)
+                    // Determine specular value from available source
+                    uint8_t specValue = 20; // default
+                    bool hasSpecValue = false;
+                    if (specZone && specZone->previewWidth == w && specZone->previewHeight == h)
+                    {
+                        specValue = specZone->previewPixels[i * 4 + 0];
+                        hasSpecValue = true;
+                    }
+                    else if (useNormalAlpha && normalZone->previewWidth == w && normalZone->previewHeight == h)
+                    {
+                        specValue = normalZone->previewPixels[i * 4 + 3];
+                        hasSpecValue = true;
+                    }
+
+                    // R = Roughness
+                    if (deriveRoughness && hasSpecValue)
+                    {
+                        float specNorm = static_cast<float>(specValue) / 255.0f;
+                        float r = std::pow(1.0f - specNorm, roughnessPower);
+                        rmaos[i * 4 + 0] = static_cast<uint8_t>(std::clamp(r * 255.0f + 0.5f, 0.0f, 255.0f));
+                    }
+                    else if (metallic > 0 && hasMetalRoughOverride)
                         rmaos[i * 4 + 0] = metalRoughness;
                     else
                         rmaos[i * 4 + 0] = roughness;
@@ -787,17 +831,13 @@ void VanillaConversionDialog::generateOutputPreviews()
                     rmaos[i * 4 + 2] = 255; // B = AO (always white)
 
                     // A = Specular
-                    if (specZone && specZone->previewWidth == w && specZone->previewHeight == h)
+                    if (deriveRoughness && hasSpecValue)
                     {
-                        rmaos[i * 4 + 3] = specZone->previewPixels[i * 4 + 0];
-                    }
-                    else if (useNormalAlpha && normalZone->previewWidth == w && normalZone->previewHeight == h)
-                    {
-                        rmaos[i * 4 + 3] = normalZone->previewPixels[i * 4 + 3];
+                        rmaos[i * 4 + 3] = 255; // White specular in this mode
                     }
                     else
                     {
-                        rmaos[i * 4 + 3] = 20; // Default ~0.08 * 255
+                        rmaos[i * 4 + 3] = specValue;
                     }
                 }
 
@@ -927,6 +967,8 @@ VanillaConversionInput VanillaConversionDialog::getConversionInput() const
         input.params.specularMode = static_cast<SpecularMode>(specularModeCombo_->itemData(specIdx).toInt());
 
     input.params.normalAlphaIsSpecular = normalAlphaCheck_->isChecked();
+    input.params.deriveRoughnessFromSpecular = deriveRoughnessCheck_->isChecked();
+    input.params.roughnessPower = static_cast<float>(roughnessPowerSpin_->value());
 
     // Metallic roughness override
     if (metallicRoughnessCheck_->isChecked())
@@ -976,6 +1018,8 @@ void VanillaConversionDialog::retranslateUi()
     shininessLabel_->setText(tr("Shininess:"));
     specularModeLabel_->setText(tr("Specular Mode:"));
     normalAlphaCheck_->setText(tr("Normal Alpha is Specular"));
+    deriveRoughnessCheck_->setText(tr("Derive Roughness from Specular"));
+    roughnessPowerLabel_->setText(tr("Roughness Power:"));
     metallicRoughnessCheck_->setText(tr("Metallic Roughness Override:"));
 
     // Specular mode combo items
