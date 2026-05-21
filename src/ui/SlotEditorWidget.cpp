@@ -566,6 +566,30 @@ void SlotEditorWidget::addSlotRow(PBRTextureSlot slot, const QString& label, boo
         connect(row.flipGButton, &QPushButton::clicked, this, [this]() { emit flipNormalGRequested(); });
     }
 
+    // Add "Auto-Detect" button only for the Diffuse slot
+    if (slot == PBRTextureSlot::Diffuse)
+    {
+        m_autoDetectButton = new QPushButton(tr("Auto-Detect"), row.container);
+        m_autoDetectButton->setFixedWidth(80);
+        m_autoDetectButton->setEnabled(false); // Disabled until a diffuse texture is imported
+        m_autoDetectButton->setToolTip(tr("Auto-detect matching textures from the same folder by suffix.\n\n"
+                                          "Recognized suffixes:\n"
+                                          "  Normal:        _n, _nrm, _normal, _nor\n"
+                                          "  RMAOS:         _rmaos\n"
+                                          "  Roughness:     _r, _roughness, _rough\n"
+                                          "  Metallic:      _m, _metallic, _metal, _metalness\n"
+                                          "  AO:            _o, _ao, _occlusion\n"
+                                          "  Specular:      _s, _specular, _spec\n"
+                                          "  Subsurface:    _sss, _sk, _subsurface\n"
+                                          "  Emissive:      _e, _g, _emissive, _glow, _emission\n"
+                                          "  Displacement:  _p, _h, _height, _parallax, _displacement, _disp\n"
+                                          "  Fuzz:          _f, _fuzz\n"
+                                          "  Coat Normal:   _cnr\n\n"
+                                          "RMAOS packed takes priority over individual channel files."));
+        layout->addWidget(m_autoDetectButton);
+        connect(m_autoDetectButton, &QPushButton::clicked, this, [this]() { emit autoDetectRequested(); });
+    }
+
     layout->addWidget(row.exportSizeCombo);
     layout->addWidget(row.compressionCombo);
 
@@ -890,6 +914,14 @@ void SlotEditorWidget::setTextureSet(const PBRTextureSet& ts)
         }
     }
 
+    // Update Auto-Detect button enabled state (requires diffuse to be imported)
+    if (m_autoDetectButton)
+    {
+        auto diffuseIt = ts.textures.find(PBRTextureSlot::Diffuse);
+        const bool hasDiffuse = diffuseIt != ts.textures.end() && !diffuseIt->second.sourcePath.empty();
+        m_autoDetectButton->setEnabled(hasDiffuse);
+    }
+
     // Update channel rows
     for (auto& [ch, row] : m_channelRows)
     {
@@ -993,6 +1025,26 @@ void SlotEditorWidget::retranslateUi()
             it->second.flipGButton->setToolTip(
                 tr("Flip the Normal map's Green channel (for DirectX/OpenGL conversion)"));
         }
+    }
+
+    // Diffuse slot Auto-Detect button
+    if (m_autoDetectButton)
+    {
+        m_autoDetectButton->setText(tr("Auto-Detect"));
+        m_autoDetectButton->setToolTip(tr("Auto-detect matching textures from the same folder by suffix.\n\n"
+                                          "Recognized suffixes:\n"
+                                          "  Normal:        _n, _nrm, _normal, _nor\n"
+                                          "  RMAOS:         _rmaos\n"
+                                          "  Roughness:     _r, _roughness, _rough\n"
+                                          "  Metallic:      _m, _metallic, _metal, _metalness\n"
+                                          "  AO:            _o, _ao, _occlusion\n"
+                                          "  Specular:      _s, _specular, _spec\n"
+                                          "  Subsurface:    _sss, _sk, _subsurface\n"
+                                          "  Emissive:      _e, _g, _emissive, _glow, _emission\n"
+                                          "  Displacement:  _p, _h, _height, _parallax, _displacement, _disp\n"
+                                          "  Fuzz:          _f, _fuzz\n"
+                                          "  Coat Normal:   _cnr\n\n"
+                                          "RMAOS packed takes priority over individual channel files."));
     }
 
     // Channel section title

@@ -78,6 +78,9 @@ class SlotEditorWidget : public QWidget
     void matchTextureModeChanged(TextureMatchMode mode);
     void exportCompressionChanged(PBRTextureSlot slot, DDSCompressionMode mode);
 
+    /// Emitted when the user clicks the Auto-Detect button
+    void autoDetectRequested();
+
     /// Emitted when a slot's export size changes. {0,0} means use original size.
     void exportSizeChanged(PBRTextureSlot slot, int width, int height);
 
@@ -157,6 +160,7 @@ class SlotEditorWidget : public QWidget
     QPlainTextEdit* m_aliasEdit = nullptr;
     QWidget* m_aliasSection = nullptr;
     QLabel* m_aliasHintLabel = nullptr;
+    QPushButton* m_autoDetectButton = nullptr;
 
     void retranslateUi();
 

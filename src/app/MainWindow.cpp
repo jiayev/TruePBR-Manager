@@ -778,6 +778,7 @@ void MainWindow::setupCentralWidget()
     connect(m_slotEditor, &SlotEditorWidget::matchAliasesChanged, this, &MainWindow::onMatchAliasesChanged);
     connect(m_slotEditor, &SlotEditorWidget::slotPathOverrideChanged, this, &MainWindow::onSlotPathOverrideChanged);
     connect(m_slotEditor, &SlotEditorWidget::flipNormalGRequested, this, &MainWindow::onFlipNormalG);
+    connect(m_slotEditor, &SlotEditorWidget::autoDetectRequested, this, &MainWindow::onAutoDetect);
 }
 
 void MainWindow::setupStatusBar()
@@ -1878,6 +1879,131 @@ void MainWindow::onFlipNormalG()
     m_slotEditor->setTextureSet(ts);
     refreshPreview();
     statusBar()->showMessage(tr("Flipped Normal G channel"));
+}
+
+void MainWindow::onAutoDetect()
+{
+    if (m_currentSetIndex < 0)
+        return;
+
+    auto& ts = m_project.textureSets[m_currentSetIndex];
+
+    // Verify diffuse is assigned
+    auto diffuseIt = ts.textures.find(PBRTextureSlot::Diffuse);
+    if (diffuseIt == ts.textures.end() || diffuseIt->second.sourcePath.empty())
+    {
+        QMessageBox::information(this, tr("Auto-Detect"),
+                                 tr("Import a Diffuse/Albedo texture first to enable auto-detection."));
+        return;
+    }
+
+    // Run auto-detection
+    auto detectResult = TextureImporter::autoDetectFromDiffuse(diffuseIt->second.sourcePath);
+
+    if (detectResult.slotFiles.empty() && detectResult.channelFiles.empty())
+    {
+        QMessageBox::information(this, tr("Auto-Detect"),
+                                 tr("No matching textures found in the same folder.\n\n"
+                                    "Expected files with the same base name and recognized suffixes.\n"
+                                    "Hover over the Auto-Detect button for the full suffix list."));
+        return;
+    }
+
+    // Check for conflicts (slots that already have textures)
+    QStringList conflictSlots;
+    for (const auto& [slot, path] : detectResult.slotFiles)
+    {
+        auto existing = ts.textures.find(slot);
+        if (existing != ts.textures.end() && !existing->second.sourcePath.empty())
+        {
+            conflictSlots.append(QString::fromUtf8(slotDisplayName(slot)));
+        }
+    }
+    for (const auto& [ch, path] : detectResult.channelFiles)
+    {
+        auto existing = ts.channelMaps.find(ch);
+        if (existing != ts.channelMaps.end() && !existing->second.sourcePath.empty())
+        {
+            conflictSlots.append(QString::fromUtf8(channelDisplayName(ch)));
+        }
+    }
+
+    bool overwrite = true;
+    if (!conflictSlots.isEmpty())
+    {
+        auto* msgBox = new QMessageBox(this);
+        msgBox->setWindowTitle(tr("Auto-Detect — Overwrite?"));
+        msgBox->setText(tr("The following slots already have textures assigned:\n\n%1\n\n"
+                           "Do you want to overwrite them with the newly detected files?")
+                            .arg(conflictSlots.join("\n")));
+        auto* overwriteBtn = msgBox->addButton(tr("Overwrite All"), QMessageBox::AcceptRole);
+        msgBox->addButton(tr("Keep Existing"), QMessageBox::RejectRole);
+        auto* cancelBtn = msgBox->addButton(tr("Cancel"), QMessageBox::DestructiveRole);
+        msgBox->setDefaultButton(overwriteBtn);
+        msgBox->exec();
+
+        if (msgBox->clickedButton() == cancelBtn)
+        {
+            delete msgBox;
+            return;
+        }
+        overwrite = (msgBox->clickedButton() == overwriteBtn);
+        delete msgBox;
+    }
+
+    int imported = 0;
+
+    // Import slot files
+    for (const auto& [slot, path] : detectResult.slotFiles)
+    {
+        if (!overwrite)
+        {
+            auto existing = ts.textures.find(slot);
+            if (existing != ts.textures.end() && !existing->second.sourcePath.empty())
+                continue; // Keep existing
+        }
+        auto entry = TextureImporter::importTexture(path, slot);
+        ts.textures[slot] = entry;
+        ++imported;
+    }
+
+    // Import channel files
+    for (const auto& [ch, path] : detectResult.channelFiles)
+    {
+        if (!overwrite)
+        {
+            auto existing = ts.channelMaps.find(ch);
+            if (existing != ts.channelMaps.end() && !existing->second.sourcePath.empty())
+                continue; // Keep existing
+        }
+        auto entry = TextureImporter::importChannelMap(path, ch);
+        ts.channelMaps[ch] = entry;
+        ++imported;
+    }
+
+    // Set RMAOS source mode based on results
+    if (detectResult.hasRmaos)
+    {
+        ts.rmaosSourceMode = RMAOSSourceMode::PackedTexture;
+    }
+    else if (!detectResult.channelFiles.empty())
+    {
+        ts.rmaosSourceMode = RMAOSSourceMode::SeparateChannels;
+    }
+
+    // Refresh UI
+    m_slotEditor->setTextureSet(ts);
+    m_featurePanel->setFeatures(ts.features);
+    refreshPreview();
+
+    if (imported > 0)
+    {
+        statusBar()->showMessage(tr("Auto-detect: %1 textures imported").arg(imported));
+    }
+    else
+    {
+        statusBar()->showMessage(tr("Auto-detect: no new textures imported (all kept existing)"));
+    }
 }
 
 // ─── Refresh ───────────────────────────────────────────────

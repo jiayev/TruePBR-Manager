@@ -152,7 +152,16 @@
       "Converted vanilla textures: %1": "已转换原版纹理：%1",
       "Conversion succeeded with %1 warning(s):\n\n%2": "转换成功，%1 个警告：\n\n%2",
       "Flipped Normal G channel": "已翻转法线 G 通道",
-      "Failed to save %1": "保存 %1 失败"
+      "Failed to save %1": "保存 %1 失败",
+      "Auto-Detect": "自动检测",
+      "Import a Diffuse/Albedo texture first to enable auto-detection.": "请先导入漫反射/反照率纹理以启用自动检测。",
+      "No matching textures found in the same folder.\n\nExpected files with the same base name and recognized suffixes.\nHover over the Auto-Detect button for the full suffix list.": "在同一文件夹中未找到匹配的纹理。\n\n预期与当前纹理同名但具有已识别后缀的文件。\n将鼠标悬停在「自动检测」按钮上可查看完整后缀列表。",
+      "Auto-Detect — Overwrite?": "自动检测 — 覆盖？",
+      "The following slots already have textures assigned:\n\n%1\n\nDo you want to overwrite them with the newly detected files?": "以下插槽已分配纹理：\n\n%1\n\n是否用新检测到的文件覆盖它们？",
+      "Overwrite All": "全部覆盖",
+      "Keep Existing": "保留现有",
+      "Auto-detect: %1 textures imported": "自动检测：已导入 %1 个纹理",
+      "Auto-detect: no new textures imported (all kept existing)": "自动检测：未导入新纹理（全部保留现有）"
     },
     "tpbr::TextureSetPanel": {
       "Add": "添加",
@@ -242,7 +251,9 @@
       "%1 x %2": "%1 x %2",
       " (original)": "（原始）",
       "Flip G": "翻转 G",
-      "Flip the Normal map's Green channel (for DirectX/OpenGL conversion)": "翻转法线贴图的绿色通道（用于 DirectX/OpenGL 转换）"
+      "Flip the Normal map's Green channel (for DirectX/OpenGL conversion)": "翻转法线贴图的绿色通道（用于 DirectX/OpenGL 转换）",
+      "Auto-Detect": "自动检测",
+      "Auto-detect matching textures from the same folder by suffix.\n\nRecognized suffixes:\n  Normal:        _n, _nrm, _normal, _nor\n  RMAOS:         _rmaos\n  Roughness:     _r, _roughness, _rough\n  Metallic:      _m, _metallic, _metal, _metalness\n  AO:            _o, _ao, _occlusion\n  Specular:      _s, _specular, _spec\n  Subsurface:    _sss, _sk, _subsurface\n  Emissive:      _e, _g, _emissive, _glow, _emission\n  Displacement:  _p, _h, _height, _parallax, _displacement, _disp\n  Fuzz:          _f, _fuzz\n  Coat Normal:   _cnr\n\nRMAOS packed takes priority over individual channel files.": "根据后缀自动检测同文件夹中匹配的纹理。\n\n已识别的后缀：\n  法线：         _n, _nrm, _normal, _nor\n  RMAOS：        _rmaos\n  粗糙度：       _r, _roughness, _rough\n  金属度：       _m, _metallic, _metal, _metalness\n  AO：           _o, _ao, _occlusion\n  高光：         _s, _specular, _spec\n  次表面：       _sss, _sk, _subsurface\n  自发光：       _e, _g, _emissive, _glow, _emission\n  置换：         _p, _h, _height, _parallax, _displacement, _disp\n  绒毛：         _f, _fuzz\n  涂层法线：     _cnr\n\n打包 RMAOS 优先于独立通道文件。"
     },
     "tpbr::DropZoneLabel": {
       "Click to browse or drop an image here": "点击浏览或将图像拖放到此处",

@@ -106,10 +106,39 @@ Primary references:
 ### 3.7 Batch import
 
 - Scan a folder and auto-assign textures to slots by suffix convention
-- Recognized slot suffixes: `_n`, `_g`, `_p`, `_rmaos`, `_cnr`, `_f`, `_s`
-- Recognized channel suffixes: `_roughness`, `_metallic`, `_ao`, `_specular` (and abbreviations)
-- Files with no recognized suffix are assigned as Diffuse
+- Recognized slot suffixes: `_n`, `_nrm`, `_normal`, `_nor`, `_g`, `_e`, `_emissive`, `_emission`, `_glow`, `_p`, `_h`, `_height`, `_parallax`, `_displacement`, `_disp`, `_rmaos`, `_cnr`, `_f`, `_fuzz`, `_sss`, `_sk`, `_subsurface`
+- Recognized channel suffixes: `_r`, `_roughness`, `_rough`, `_m`, `_metallic`, `_metal`, `_metalness`, `_o`, `_ao`, `_occlusion`, `_s`, `_specular`, `_spec`
+- Files with no recognized suffix (or `_d`, `_diffuse`, `_albedo`, `_basecolor`) are assigned as Diffuse
 - If channel maps are found, RMAOS source mode is automatically set to SeparateChannels
+- Suffix `_s` is unified as Specular (channel), not Subsurface; use `_sss`/`_sk`/`_subsurface` for the Subsurface slot
+
+### 3.7.1 Auto-Detect from Diffuse
+
+- Once a Diffuse/Albedo texture is imported, the "Auto-Detect" button (in the Diffuse slot row) scans the **same directory** for files sharing the same **base name** with recognized PBR suffixes
+- Base name extraction: strips known diffuse suffixes (`_d`, `_diffuse`, `_albedo`, `_basecolor`) from the filename stem; if no known suffix is present, the full stem is used as the base name
+- Case-insensitive suffix matching
+- Supported file types: `.png`, `.dds`, `.tga`, `.bmp`, `.jpg`, `.jpeg`
+- RMAOS priority rule: if a packed `_rmaos` file is found, individual channel files (`_r`, `_m`, `_o`, `_s`) are discarded; RMAOS mode is set to PackedTexture
+- If only individual channels are found (no `_rmaos`), mode is set to SeparateChannels
+- Conflict handling: if target slots already have textures, a dialog asks the user to "Overwrite All", "Keep Existing", or "Cancel"
+- The button is disabled until a Diffuse texture is imported
+- The full suffix reference table is displayed in the button's tooltip
+
+**Recognized suffix table:**
+
+| Target | Suffixes |
+|--------|----------|
+| Normal (slot) | `_n`, `_nrm`, `_normal`, `_nor` |
+| RMAOS (slot) | `_rmaos` |
+| Emissive (slot) | `_e`, `_g`, `_emissive`, `_glow`, `_emission` |
+| Displacement (slot) | `_p`, `_h`, `_height`, `_parallax`, `_displacement`, `_disp` |
+| Subsurface (slot) | `_sss`, `_sk`, `_subsurface` |
+| Fuzz (slot) | `_f`, `_fuzz` |
+| Coat Normal (slot) | `_cnr` |
+| Roughness (channel) | `_r`, `_roughness`, `_rough` |
+| Metallic (channel) | `_m`, `_metallic`, `_metal`, `_metalness` |
+| AO (channel) | `_o`, `_ao`, `_occlusion` |
+| Specular (channel) | `_s`, `_specular`, `_spec` |
 
 ### 3.8 Import existing PBR mod
 

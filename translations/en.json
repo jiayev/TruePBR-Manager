@@ -152,7 +152,16 @@
       "Converted vanilla textures: %1": "Converted vanilla textures: %1",
       "Conversion succeeded with %1 warning(s):\n\n%2": "Conversion succeeded with %1 warning(s):\n\n%2",
       "Flipped Normal G channel": "Flipped Normal G channel",
-      "Failed to save %1": "Failed to save %1"
+      "Failed to save %1": "Failed to save %1",
+      "Auto-Detect": "Auto-Detect",
+      "Import a Diffuse/Albedo texture first to enable auto-detection.": "Import a Diffuse/Albedo texture first to enable auto-detection.",
+      "No matching textures found in the same folder.\n\nExpected files with the same base name and recognized suffixes.\nHover over the Auto-Detect button for the full suffix list.": "No matching textures found in the same folder.\n\nExpected files with the same base name and recognized suffixes.\nHover over the Auto-Detect button for the full suffix list.",
+      "Auto-Detect — Overwrite?": "Auto-Detect — Overwrite?",
+      "The following slots already have textures assigned:\n\n%1\n\nDo you want to overwrite them with the newly detected files?": "The following slots already have textures assigned:\n\n%1\n\nDo you want to overwrite them with the newly detected files?",
+      "Overwrite All": "Overwrite All",
+      "Keep Existing": "Keep Existing",
+      "Auto-detect: %1 textures imported": "Auto-detect: %1 textures imported",
+      "Auto-detect: no new textures imported (all kept existing)": "Auto-detect: no new textures imported (all kept existing)"
     },
     "tpbr::TextureSetPanel": {
       "Add": "Add",
@@ -242,7 +251,9 @@
       "%1 x %2": "%1 x %2",
       " (original)": " (original)",
       "Flip G": "Flip G",
-      "Flip the Normal map's Green channel (for DirectX/OpenGL conversion)": "Flip the Normal map's Green channel (for DirectX/OpenGL conversion)"
+      "Flip the Normal map's Green channel (for DirectX/OpenGL conversion)": "Flip the Normal map's Green channel (for DirectX/OpenGL conversion)",
+      "Auto-Detect": "Auto-Detect",
+      "Auto-detect matching textures from the same folder by suffix.\n\nRecognized suffixes:\n  Normal:        _n, _nrm, _normal, _nor\n  RMAOS:         _rmaos\n  Roughness:     _r, _roughness, _rough\n  Metallic:      _m, _metallic, _metal, _metalness\n  AO:            _o, _ao, _occlusion\n  Specular:      _s, _specular, _spec\n  Subsurface:    _sss, _sk, _subsurface\n  Emissive:      _e, _g, _emissive, _glow, _emission\n  Displacement:  _p, _h, _height, _parallax, _displacement, _disp\n  Fuzz:          _f, _fuzz\n  Coat Normal:   _cnr\n\nRMAOS packed takes priority over individual channel files.": "Auto-detect matching textures from the same folder by suffix.\n\nRecognized suffixes:\n  Normal:        _n, _nrm, _normal, _nor\n  RMAOS:         _rmaos\n  Roughness:     _r, _roughness, _rough\n  Metallic:      _m, _metallic, _metal, _metalness\n  AO:            _o, _ao, _occlusion\n  Specular:      _s, _specular, _spec\n  Subsurface:    _sss, _sk, _subsurface\n  Emissive:      _e, _g, _emissive, _glow, _emission\n  Displacement:  _p, _h, _height, _parallax, _displacement, _disp\n  Fuzz:          _f, _fuzz\n  Coat Normal:   _cnr\n\nRMAOS packed takes priority over individual channel files."
     },
     "tpbr::DropZoneLabel": {
       "Click to browse or drop an image here": "Click to browse or drop an image here",

@@ -68,6 +68,7 @@ class MainWindow : public QMainWindow
     void onMatchAliasesChanged(const QStringList& aliases);
     void onSlotPathOverrideChanged(PBRTextureSlot slot, const QString& path);
     void onFlipNormalG();
+    void onAutoDetect();
 
   private:
     void setupMenuBar();
