@@ -51,6 +51,12 @@ Primary references:
 - Click a slot's DropZone to preview that texture (does not open import dialog)
 - Persist imported file metadata: source path, dimensions, channel count, format
 - **Flip Normal G**: per-slot toggle button on the Normal row that inverts the Green channel at preview and export time (for DirectX/OpenGL normal map convention conversion). The source file is never modified; the flag is persisted in the project file and applied non-destructively.
+- **Performance optimizations**:
+  - `getDDSInfo()` reads only the DDS header (148 bytes) via `GetMetadataFromDDSFile` — no pixel data is loaded or decompressed
+  - Alpha mode at import time is inferred from the file format without pixel scanning (conservative: assumes Opaque for formats with alpha capability)
+  - Thumbnails use mip-aware DDS loading (`loadDDSAtMaxSize`) to decompress only a ~64×64 mip level (~16 KB) instead of the full 4K image (~67 MB)
+  - Raster thumbnails use `QImageReader::setScaledSize()` for pre-scaled decode
+  - `TextureCache` singleton caches decoded RGBA8 pixel data keyed by `(canonicalPath, lastWriteTime)`, shared across 2D preview, 3D preview, and channel packing — eliminates redundant disk reads on repeated preview refreshes
 
 ### 3.3 Material authoring
 
@@ -728,6 +734,7 @@ Important implementation modules:
 - `ui/SlotEditorWidget.*`: slot/channel authoring UI
 - `ui/ParameterPanel.*`: numeric material parameter UI
 - `ui/VanillaConversionDialog.*`: vanilla texture conversion dialog with integrated flow layout and real-time output previews
+- `utils/TextureCache.*`: singleton RGBA8 pixel cache, keyed by canonical path + write time; shared across thumbnails, 2D/3D preview, and import; thread-safe
 
 ## 11. Build and Packaging
 

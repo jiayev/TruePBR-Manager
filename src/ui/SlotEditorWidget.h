@@ -53,6 +53,7 @@ class DropZoneLabel : public QLabel
     QString m_detailText;
     bool m_dragHover = false;
 
+  public:
     static constexpr int ThumbnailSize = 48;
 };
 

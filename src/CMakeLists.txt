@@ -63,6 +63,8 @@ set(UTIL_SOURCES
     utils/ImageUtils.cpp
     utils/DDSUtils.h
     utils/DDSUtils.cpp
+    utils/TextureCache.h
+    utils/TextureCache.cpp
 )
 
 set(RENDERER_SOURCES

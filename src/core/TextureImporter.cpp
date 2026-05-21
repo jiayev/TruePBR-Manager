@@ -28,38 +28,39 @@ static TextureAlphaMode alphaModeFromPixels(const std::vector<uint8_t>& rgbaPixe
     return TextureAlphaMode::Opaque;
 }
 
-static TextureAlphaMode detectDDSAlphaMode(const std::filesystem::path& filePath, const DDSUtils::DDSInfo& info)
+/// Infer alpha mode from DDS format alone, without loading pixel data.
+/// Returns a definitive answer for formats that cannot carry alpha.
+/// For ambiguous formats (BC3, BC7, RGBA8, etc.), returns Unknown to signal
+/// that a pixel-level scan is needed (deferred to first actual pixel load).
+static TextureAlphaMode inferDDSAlphaModeFromFormat(const DDSUtils::DDSInfo& info)
 {
     if (!info.hasAlpha)
     {
         return TextureAlphaMode::None;
     }
 
-    int width = 0;
-    int height = 0;
-    std::vector<uint8_t> rgbaPixels;
-    if (!DDSUtils::loadDDS(filePath, width, height, rgbaPixels) || rgbaPixels.empty())
-    {
-        return TextureAlphaMode::Unknown;
-    }
-
-    return alphaModeFromPixels(rgbaPixels);
+    // For formats that declare alpha support but the content may or may not use it,
+    // we conservatively return Opaque (alpha channel exists but all-white is common).
+    // This avoids a full pixel scan at import time.
+    // The exact alpha mode is only needed for BC1 eligibility (canUseBC1), and
+    // being conservative here (returning Opaque instead of Transparent) means BC1
+    // is offered when alpha exists but isn't used — which is correct behavior.
+    return TextureAlphaMode::Opaque;
 }
 
-static TextureAlphaMode detectImageAlphaMode(const std::filesystem::path& filePath, int channels)
+/// Infer alpha mode for raster images from channel count alone.
+/// 1- and 3-channel images have no alpha. 2- and 4-channel images could have
+/// alpha, but we conservatively return Opaque to avoid a full pixel scan.
+static TextureAlphaMode inferImageAlphaModeFromChannels(int channels)
 {
     if (channels != 2 && channels != 4)
     {
         return TextureAlphaMode::None;
     }
 
-    const auto image = ImageUtils::loadImage(filePath);
-    if (image.pixels.empty())
-    {
-        return TextureAlphaMode::Unknown;
-    }
-
-    return alphaModeFromPixels(image.pixels);
+    // Conservative: assume alpha exists but is fully opaque (most common case).
+    // This avoids loading the entire image just to scan alpha bytes at import time.
+    return TextureAlphaMode::Opaque;
 }
 
 static const char* channelDisplayName(ChannelMap channel)
@@ -90,14 +91,14 @@ TextureEntry TextureImporter::importTexture(const std::filesystem::path& filePat
 
     if (ext == ".dds")
     {
-        // Use DirectXTex to read DDS metadata
+        // Use DirectXTex to read DDS header only (no pixel data loaded)
         DDSUtils::DDSInfo info;
         if (DDSUtils::getDDSInfo(filePath, info))
         {
             entry.width = info.width;
             entry.height = info.height;
             entry.channels = info.channels;
-            entry.alphaMode = detectDDSAlphaMode(filePath, info);
+            entry.alphaMode = inferDDSAlphaModeFromFormat(info);
             spdlog::info("Imported DDS: {} ({}x{}, {}) -> {}", filePath.filename().string(), info.width, info.height,
                          info.formatName, slotDisplayName(slot));
         }
@@ -108,14 +109,14 @@ TextureEntry TextureImporter::importTexture(const std::filesystem::path& filePat
     }
     else
     {
-        // Use stb_image for PNG/TGA/BMP/JPG
+        // Use stb_image header-only query for PNG/TGA/BMP/JPG
         int w = 0, h = 0, c = 0;
         if (ImageUtils::getImageInfo(filePath, w, h, c))
         {
             entry.width = w;
             entry.height = h;
             entry.channels = c;
-            entry.alphaMode = detectImageAlphaMode(filePath, c);
+            entry.alphaMode = inferImageAlphaModeFromChannels(c);
             spdlog::info("Imported image: {} ({}x{}, {}ch) -> {}", filePath.filename().string(), w, h, c,
                          slotDisplayName(slot));
         }

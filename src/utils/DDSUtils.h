@@ -34,6 +34,13 @@ class DDSUtils
     static bool loadDDS(const std::filesystem::path& path, int& width, int& height, std::vector<uint8_t>& rgbaPixels,
                         bool* isSRGB = nullptr);
 
+    /// Load a DDS file at a reduced resolution by selecting the mip level closest to maxSize.
+    /// For a 4096x4096 DDS with maxSize=64, this loads the ~64x64 mip (~16 KB) instead of
+    /// the full 67 MB mip-0. Ideal for thumbnails and viewport-scaled previews.
+    /// If the DDS has no mip chain, falls back to loading mip 0.
+    static bool loadDDSAtMaxSize(const std::filesystem::path& path, int maxSize, int& width, int& height,
+                                 std::vector<uint8_t>& rgbaPixels);
+
     /// Save RGBA8 pixels to a BC7_UNORM compressed DDS file.
     static bool saveDDS_BC7(const std::filesystem::path& path, int width, int height, const uint8_t* rgbaPixels,
                             bool srgb = false);

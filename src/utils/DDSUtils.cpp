@@ -185,13 +185,13 @@ static bool compressAndSave(const DirectX::ScratchImage& source, DXGI_FORMAT tar
 bool DDSUtils::getDDSInfo(const std::filesystem::path& path, DDSInfo& info)
 {
     DirectX::TexMetadata metadata{};
-    DirectX::ScratchImage scratch;
 
-    HRESULT hr = DirectX::LoadFromDDSFile(toWide(path).c_str(), DirectX::DDS_FLAGS_NONE, &metadata, scratch);
+    // Read only the DDS header — no pixel data is loaded or decompressed.
+    HRESULT hr = DirectX::GetMetadataFromDDSFile(toWide(path).c_str(), DirectX::DDS_FLAGS_NONE, metadata);
 
     if (FAILED(hr))
     {
-        spdlog::error("getDDSInfo: failed to load {} (0x{:08X})", path.string(), static_cast<unsigned>(hr));
+        spdlog::error("getDDSInfo: failed to read header {} (0x{:08X})", path.string(), static_cast<unsigned>(hr));
         return false;
     }
 
@@ -285,6 +285,105 @@ bool DDSUtils::loadDDS(const std::filesystem::path& path, int& width, int& heigh
     }
 
     spdlog::debug("loadDDS: {} ({}x{}, {})", path.string(), width, height, dxgiFormatName(metadata.format));
+    return true;
+}
+
+// ─── loadDDSAtMaxSize ──────────────────────────────────────
+
+bool DDSUtils::loadDDSAtMaxSize(const std::filesystem::path& path, int maxSize, int& width, int& height,
+                                std::vector<uint8_t>& rgbaPixels)
+{
+    DirectX::TexMetadata metadata{};
+    DirectX::ScratchImage scratch;
+
+    HRESULT hr = DirectX::LoadFromDDSFile(toWide(path).c_str(), DirectX::DDS_FLAGS_NONE, &metadata, scratch);
+
+    if (FAILED(hr))
+    {
+        spdlog::error("loadDDSAtMaxSize: failed to load {} (0x{:08X})", path.string(), static_cast<unsigned>(hr));
+        return false;
+    }
+
+    // Select the mip level closest to maxSize (without going below it, unless we must)
+    size_t selectedMip = 0;
+    if (maxSize > 0 && metadata.mipLevels > 1)
+    {
+        for (size_t mip = 0; mip < metadata.mipLevels; ++mip)
+        {
+            size_t mipW = std::max<size_t>(1, metadata.width >> mip);
+            size_t mipH = std::max<size_t>(1, metadata.height >> mip);
+            size_t maxDim = std::max(mipW, mipH);
+
+            selectedMip = mip;
+            if (maxDim <= static_cast<size_t>(maxSize))
+                break;
+        }
+    }
+
+    const DXGI_FORMAT targetRGBAFormat = preferredRGBAFormat(metadata.format);
+
+    // Decompress if needed
+    DirectX::ScratchImage decompressed;
+    const DirectX::ScratchImage* source = &scratch;
+
+    if (DirectX::IsCompressed(metadata.format))
+    {
+        hr = DirectX::Decompress(scratch.GetImages(), scratch.GetImageCount(), scratch.GetMetadata(),
+                                 DXGI_FORMAT_UNKNOWN, decompressed);
+        if (FAILED(hr))
+        {
+            spdlog::error("loadDDSAtMaxSize: decompress failed for {} (0x{:08X})", path.string(),
+                          static_cast<unsigned>(hr));
+            return false;
+        }
+        source = &decompressed;
+    }
+
+    // Convert to RGBA if needed
+    DirectX::ScratchImage converted;
+    const auto& srcMeta = source->GetMetadata();
+
+    if (srcMeta.format != targetRGBAFormat)
+    {
+        hr = DirectX::Convert(source->GetImages(), source->GetImageCount(), srcMeta, targetRGBAFormat,
+                              DirectX::TEX_FILTER_DEFAULT, DirectX::TEX_THRESHOLD_DEFAULT, converted);
+        if (FAILED(hr))
+        {
+            spdlog::error("loadDDSAtMaxSize: convert failed for {} (0x{:08X})", path.string(),
+                          static_cast<unsigned>(hr));
+            return false;
+        }
+        source = &converted;
+    }
+
+    // Extract selected mip level
+    const DirectX::Image* img = source->GetImage(selectedMip, 0, 0);
+    if (!img || !img->pixels)
+    {
+        // Fallback to mip 0 if selected mip doesn't exist
+        img = source->GetImage(0, 0, 0);
+        if (!img || !img->pixels)
+        {
+            spdlog::error("loadDDSAtMaxSize: no image data in {}", path.string());
+            return false;
+        }
+    }
+
+    width = static_cast<int>(img->width);
+    height = static_cast<int>(img->height);
+
+    const size_t dstRowPitch = static_cast<size_t>(width) * 4;
+    rgbaPixels.resize(dstRowPitch * height);
+
+    for (int y = 0; y < height; ++y)
+    {
+        const uint8_t* srcRow = img->pixels + y * img->rowPitch;
+        uint8_t* dstRow = rgbaPixels.data() + y * dstRowPitch;
+        std::memcpy(dstRow, srcRow, dstRowPitch);
+    }
+
+    spdlog::debug("loadDDSAtMaxSize: {} mip {} ({}x{}, requested max {})", path.string(), selectedMip, width, height,
+                  maxSize);
     return true;
 }
 

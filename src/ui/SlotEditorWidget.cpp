@@ -11,6 +11,7 @@
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QImage>
+#include <QImageReader>
 #include <QFontMetrics>
 #include <QMimeData>
 #include <QMouseEvent>
@@ -138,10 +139,13 @@ static QPixmap loadThumbnailPixmap(const std::filesystem::path& path)
 
     if (ext == ".dds")
     {
+        // Load at thumbnail resolution — selects a small mip level instead of
+        // decompressing the full 4K image (~67 MB → ~16 KB for a 64×64 mip).
         int width = 0;
         int height = 0;
         std::vector<uint8_t> rgbaPixels;
-        if (!DDSUtils::loadDDS(path, width, height, rgbaPixels) || rgbaPixels.empty())
+        if (!DDSUtils::loadDDSAtMaxSize(path, DropZoneLabel::ThumbnailSize * 2, width, height, rgbaPixels) ||
+            rgbaPixels.empty())
         {
             return {};
         }
@@ -150,9 +154,28 @@ static QPixmap loadThumbnailPixmap(const std::filesystem::path& path)
         return QPixmap::fromImage(image.copy());
     }
 
-    QPixmap pix;
-    pix.load(QString::fromStdString(path.string()));
-    return pix;
+    // Raster images (PNG/TGA/BMP/JPG): use QImageReader with pre-scaled decode
+    // to avoid decoding the full image into memory.
+    QImageReader reader(QString::fromStdString(path.string()));
+    if (!reader.canRead())
+    {
+        return {};
+    }
+
+    const QSize nativeSize = reader.size();
+    if (nativeSize.isValid() && (nativeSize.width() > DropZoneLabel::ThumbnailSize * 2 ||
+                                 nativeSize.height() > DropZoneLabel::ThumbnailSize * 2))
+    {
+        const int maxDim = DropZoneLabel::ThumbnailSize * 2;
+        reader.setScaledSize(nativeSize.scaled(maxDim, maxDim, Qt::KeepAspectRatio));
+    }
+
+    QImage img = reader.read();
+    if (img.isNull())
+    {
+        return {};
+    }
+    return QPixmap::fromImage(std::move(img));
 }
 
 // ─── DropZoneLabel ─────────────────────────────────────────

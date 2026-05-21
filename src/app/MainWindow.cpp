@@ -21,6 +21,7 @@
 #include "utils/DDSUtils.h"
 #include "utils/FileUtils.h"
 #include "utils/ImageUtils.h"
+#include "utils/TextureCache.h"
 #include <QApplication>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -65,23 +66,16 @@ static const char* channelDisplayName(ChannelMap channel)
 
 static QImage loadPreviewImage(const std::filesystem::path& path)
 {
-    const auto ext = FileUtils::getExtensionLower(path);
-
-    if (ext == ".dds")
+    // Use the shared texture cache — avoids redundant disk I/O and decompression.
+    const auto* cached = TextureCache::instance().get(path);
+    if (cached && !cached->rgbaPixels.empty())
     {
-        int width = 0;
-        int height = 0;
-        std::vector<uint8_t> rgbaPixels;
-        if (!DDSUtils::loadDDS(path, width, height, rgbaPixels) || rgbaPixels.empty())
-        {
-            return {};
-        }
-
-        QImage image(rgbaPixels.data(), width, height, width * 4, QImage::Format_RGBA8888);
-        return image.copy();
+        QImage image(cached->rgbaPixels.data(), cached->width, cached->height, cached->width * 4,
+                     QImage::Format_RGBA8888);
+        return image.copy(); // Deep copy: the cache entry owns the pixel buffer
     }
 
-    return QImage(QString::fromStdString(path.string()));
+    return {};
 }
 
 static QString defaultProjectName(const Project& project)
@@ -872,6 +866,7 @@ void MainWindow::onNewProject()
     m_project.name = "Untitled";
     m_projectFilePath.clear();
     m_currentSetIndex = -1;
+    TextureCache::instance().clear();
     refreshUI();
     statusBar()->showMessage(tr("New project created"));
 }
@@ -888,6 +883,7 @@ void MainWindow::onOpenProject()
     m_project = Project::load(path.toStdString());
     m_projectFilePath = path.toStdString();
     m_currentSetIndex = -1;
+    TextureCache::instance().clear();
     rebuildRecentProjectsMenu();
     refreshUI();
     statusBar()->showMessage(tr("Opened: %1").arg(path));
@@ -2218,7 +2214,8 @@ void MainWindow::refresh3DPreview()
 
     const auto& ts = m_project.textureSets[m_currentSetIndex];
 
-    // Load RGBA pixel data for each PBR texture
+    // Load RGBA pixel data for each PBR texture via the shared cache.
+    // Returns a pointer to cached data — no redundant disk I/O or decompression.
     auto loadPixels = [](const PBRTextureSet& set, PBRTextureSlot slot, std::vector<uint8_t>& pixels, int& w,
                          int& h) -> bool
     {
@@ -2226,21 +2223,14 @@ void MainWindow::refresh3DPreview()
         if (it == set.textures.end() || it->second.sourcePath.empty())
             return false;
 
-        const auto ext = FileUtils::getExtensionLower(it->second.sourcePath);
-        if (ext == ".dds")
-        {
-            return DDSUtils::loadDDS(it->second.sourcePath, w, h, pixels);
-        }
-        else
-        {
-            auto img = ImageUtils::loadImage(it->second.sourcePath);
-            if (img.pixels.empty())
-                return false;
-            w = img.width;
-            h = img.height;
-            pixels = std::move(img.pixels);
-            return true;
-        }
+        const auto* cached = TextureCache::instance().get(it->second.sourcePath);
+        if (!cached || cached->rgbaPixels.empty())
+            return false;
+
+        w = cached->width;
+        h = cached->height;
+        pixels = cached->rgbaPixels; // copy — 3D preview may mutate (e.g., Normal G flip)
+        return true;
     };
 
     std::vector<uint8_t> diffusePixels, normalPixels, rmaosPixels;
@@ -2268,23 +2258,13 @@ void MainWindow::refresh3DPreview()
             if (it == ts.channelMaps.end() || it->second.sourcePath.empty())
                 return false;
 
-            std::vector<uint8_t> rgba;
-            int cw = 0, ch2 = 0;
-            const auto ext = FileUtils::getExtensionLower(it->second.sourcePath);
-            if (ext == ".dds")
-            {
-                if (!DDSUtils::loadDDS(it->second.sourcePath, cw, ch2, rgba))
-                    return false;
-            }
-            else
-            {
-                auto img = ImageUtils::loadImage(it->second.sourcePath);
-                if (img.pixels.empty())
-                    return false;
-                cw = img.width;
-                ch2 = img.height;
-                rgba = std::move(img.pixels);
-            }
+            const auto* cached = TextureCache::instance().get(it->second.sourcePath);
+            if (!cached || cached->rgbaPixels.empty())
+                return false;
+
+            int cw = cached->width;
+            int ch2 = cached->height;
+            const auto& rgba = cached->rgbaPixels;
 
             // Extract R channel and resize if needed
             const size_t srcCount = static_cast<size_t>(cw) * ch2;
