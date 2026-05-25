@@ -406,12 +406,12 @@ VanillaConversionResult VanillaConverter::convert(const VanillaConversionInput& 
     // Albedo (sRGB)
     allOk &= saveOutput("", diffusePixels.data(), diffW, diffH, PBRTextureSlot::Diffuse, true);
 
-    // Normal (linear) — save with BC5 for better quality
+    // Normal (linear) — BC7 to preserve RGB channels (Skyrim/CS requires full RGB normals)
     if (!reportProgress("Saving Normal DDS..."))
         return result;
     {
         fs::path outPath = outputDir / (baseName + "_n.dds");
-        bool ok = DDSUtils::saveDDS_BC5(outPath, normW, normH, normalPixels.data());
+        bool ok = DDSUtils::saveDDS_BC7(outPath, normW, normH, normalPixels.data(), false);
         if (ok)
         {
             result.generatedFiles[PBRTextureSlot::Normal] = outPath;

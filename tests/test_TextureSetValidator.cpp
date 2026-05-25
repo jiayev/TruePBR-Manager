@@ -305,3 +305,66 @@ TEST(Validator, ValidAliases_NoAliasWarnings)
             FAIL() << "Unexpected alias-related issue: " << issue.message;
     }
 }
+
+// ─── Compression compatibility ─────────────────────────────
+
+TEST(Validator, NormalBC5_Error)
+{
+    auto ts = makeMinimalValid();
+    ts.exportCompression[PBRTextureSlot::Normal] = DDSCompressionMode::BC5_Linear;
+
+    auto issues = TextureSetValidator::validate(ts);
+    bool found = false;
+    for (auto& issue : issues)
+    {
+        if (issue.severity == ValidationSeverity::Error && issue.message.find("Normal") != std::string::npos &&
+            issue.message.find("BC5") != std::string::npos)
+            found = true;
+    }
+    EXPECT_TRUE(found) << "Expected error about BC5 on Normal slot";
+}
+
+TEST(Validator, NormalBC4_Error)
+{
+    auto ts = makeMinimalValid();
+    ts.exportCompression[PBRTextureSlot::Normal] = DDSCompressionMode::BC4_Linear;
+
+    auto issues = TextureSetValidator::validate(ts);
+    bool found = false;
+    for (auto& issue : issues)
+    {
+        if (issue.severity == ValidationSeverity::Error && issue.message.find("Normal") != std::string::npos &&
+            issue.message.find("BC4") != std::string::npos)
+            found = true;
+    }
+    EXPECT_TRUE(found) << "Expected error about BC4 on Normal slot";
+}
+
+TEST(Validator, CoatNormalBC5_Error)
+{
+    auto ts = makeMinimalValid();
+    ts.exportCompression[PBRTextureSlot::CoatNormalRoughness] = DDSCompressionMode::BC5_Linear;
+
+    auto issues = TextureSetValidator::validate(ts);
+    bool found = false;
+    for (auto& issue : issues)
+    {
+        if (issue.severity == ValidationSeverity::Error && issue.message.find("Coat") != std::string::npos &&
+            issue.message.find("BC5") != std::string::npos)
+            found = true;
+    }
+    EXPECT_TRUE(found) << "Expected error about BC5 on CoatNormalRoughness slot";
+}
+
+TEST(Validator, NormalBC7_NoCompressionError)
+{
+    auto ts = makeMinimalValid();
+    ts.exportCompression[PBRTextureSlot::Normal] = DDSCompressionMode::BC7_Linear;
+
+    auto issues = TextureSetValidator::validate(ts);
+    for (auto& issue : issues)
+    {
+        if (issue.severity == ValidationSeverity::Error && issue.message.find("compression") != std::string::npos)
+            FAIL() << "Should not error for BC7 on Normal: " << issue.message;
+    }
+}

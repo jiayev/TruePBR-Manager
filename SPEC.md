@@ -286,7 +286,7 @@ Converts vanilla Skyrim Blinn-Phong textures into True PBR texture sets. Accessi
 **Conversion output**:
 
 - Albedo: `<name>.dds` (BC7 sRGB)
-- Normal: `<name>_n.dds` (BC5 linear)
+- Normal: `<name>_n.dds` (BC7 linear)
 - RMAOS: `<name>_rmaos.dds` (BC7 linear)
 - Emissive: `<name>_g.dds` (BC7 sRGB, if Glow provided)
 - Displacement: `<name>_p.dds` (BC7 linear, if Parallax provided)

@@ -37,6 +37,7 @@ class TextureSetValidator
     static void checkMatchTexture(const PBRTextureSet& ts, std::vector<ValidationIssue>& issues);
     static void checkMatchAliases(const PBRTextureSet& ts, std::vector<ValidationIssue>& issues);
     static void checkSlotConflicts(const PBRTextureSet& ts, std::vector<ValidationIssue>& issues);
+    static void checkCompressionCompatibility(const PBRTextureSet& ts, std::vector<ValidationIssue>& issues);
 };
 
 } // namespace tpbr

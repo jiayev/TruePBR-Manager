@@ -21,6 +21,7 @@ std::vector<ValidationIssue> TextureSetValidator::validate(const PBRTextureSet& 
     checkPowerOfTwo(ts, issues);
     checkFeatureTextures(ts, issues);
     checkSlotConflicts(ts, issues);
+    checkCompressionCompatibility(ts, issues);
     return issues;
 }
 
@@ -181,6 +182,30 @@ void TextureSetValidator::checkMatchAliases(const PBRTextureSet& ts, std::vector
                 {ValidationSeverity::Warning, std::format("Duplicate match alias: \"{}\".", alias.matchTexture)});
         }
     }
+}
+
+void TextureSetValidator::checkCompressionCompatibility(const PBRTextureSet& ts, std::vector<ValidationIssue>& issues)
+{
+    // BC5 and BC4 are RG-only or R-only formats — incompatible with Normal maps which require RGB.
+    // Skyrim and Community Shaders do not support RG-only normal maps.
+    auto checkSlot = [&](PBRTextureSlot slot)
+    {
+        auto it = ts.exportCompression.find(slot);
+        if (it == ts.exportCompression.end())
+            return;
+
+        if (it->second == DDSCompressionMode::BC5_Linear || it->second == DDSCompressionMode::BC4_Linear)
+        {
+            issues.push_back(
+                {ValidationSeverity::Error,
+                 std::format("{} uses {} compression which discards the Blue channel. "
+                             "Skyrim and Community Shaders require full RGB normal maps. Use BC7 Linear instead.",
+                             slotDisplayName(slot), compressionModeDisplayName(it->second))});
+        }
+    };
+
+    checkSlot(PBRTextureSlot::Normal);
+    checkSlot(PBRTextureSlot::CoatNormalRoughness);
 }
 
 } // namespace tpbr
