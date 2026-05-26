@@ -4,14 +4,10 @@ on:
   push:
     branches:
       - master
-    paths:
-      - 'CMakeLists.txt'
-      - 'vcpkg.json'
-      - '.github/workflows/release.yml'
   workflow_dispatch:
     inputs:
       force_release:
-        description: 'Force release from current version (skip tag creation)'
+        description: 'Force release from current version (skip tag existence check)'
         required: false
         default: 'false'
 
@@ -20,9 +16,9 @@ permissions:
   actions: read    # needed to download artifacts from CI workflow
 
 jobs:
-  # ── Job 1: Detect version bump and create tag ─────────────
-  auto-tag:
-    name: Detect Version & Create Tag
+  # ── Job 1: Detect version and check if release is needed ───
+  detect-version:
+    name: Detect Version
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.result.outputs.TAG }}
@@ -68,17 +64,8 @@ jobs:
             echo "Tag $tag already exists."
           else
             echo "EXISTS=false" >> "$GITHUB_OUTPUT"
-            echo "Tag $tag does not exist, will create."
+            echo "Tag $tag does not exist yet."
           fi
-
-      - name: Create and push tag
-        if: steps.check_tag.outputs.EXISTS == 'false'
-        run: |
-          tag="v${{ steps.cmake_ver.outputs.VERSION }}"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -a "$tag" -m "Release $tag"
-          git push origin "$tag"
 
       - name: Set outputs
         id: result
@@ -88,15 +75,17 @@ jobs:
           echo "VERSION=${{ steps.cmake_ver.outputs.VERSION }}" >> "$GITHUB_OUTPUT"
           if [ "${{ steps.check_tag.outputs.EXISTS }}" == "false" ] || [ "${{ inputs.force_release }}" == "true" ]; then
             echo "SHOULD_RELEASE=true" >> "$GITHUB_OUTPUT"
+            echo "Release needed."
           else
             echo "SHOULD_RELEASE=false" >> "$GITHUB_OUTPUT"
+            echo "No release needed (tag already exists)."
           fi
 
-  # ── Job 2: Wait for CI build, then publish release ────────
+  # ── Job 2: Wait for CI, then tag and publish ──────────────
   publish-release:
     name: Publish Release
-    needs: auto-tag
-    if: needs.auto-tag.outputs.should_release == 'true'
+    needs: detect-version
+    if: needs.detect-version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -110,6 +99,25 @@ jobs:
           wait-interval: 15
           allowed-conclusions: success
 
+      # Only create tag AFTER CI passes — avoids orphan tags on build failure
+      - name: Checkout (for tag creation)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create and push tag
+        run: |
+          tag="${{ needs.detect-version.outputs.tag }}"
+          if git rev-parse "refs/tags/$tag" >/dev/null 2>&1; then
+            echo "Tag $tag already exists, skipping creation."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$tag" -m "Release $tag"
+            git push origin "$tag"
+            echo "Created and pushed tag $tag"
+          fi
+
       # Download the artifact produced by CI's build-windows job
       - name: Download build artifact from CI
         uses: dawidd6/action-download-artifact@v6
@@ -121,7 +129,7 @@ jobs:
 
       - name: Create release archive
         run: |
-          tag="${{ needs.auto-tag.outputs.tag }}"
+          tag="${{ needs.detect-version.outputs.tag }}"
           archiveName="TruePBR-Manager-${tag}-windows-x64.zip"
           mkdir -p release
           cd dist/TruePBR-Manager
@@ -130,7 +138,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.auto-tag.outputs.tag }}
-          name: TruePBR Manager ${{ needs.auto-tag.outputs.tag }}
+          tag_name: ${{ needs.detect-version.outputs.tag }}
+          name: TruePBR Manager ${{ needs.detect-version.outputs.tag }}
           files: release/*.zip
           generate_release_notes: true
