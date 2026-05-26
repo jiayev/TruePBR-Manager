@@ -93,6 +93,7 @@
       "Rename Texture Set": "重命名纹理集",
       "Texture Set name:": "纹理集名称：",
       "Renamed texture set to: %1": "纹理集已重命名为：%1",
+      "Duplicated texture set: %1": "已复制纹理集：%1",
       "Remove": "移除",
       "Remove texture set '%1'?": "确定移除纹理集「%1」？",
       "Import %1": "导入 %1",
@@ -166,6 +167,7 @@
     "tpbr::TextureSetPanel": {
       "Add": "添加",
       "Rename": "重命名",
+      "Duplicate": "复制",
       "Remove": "移除",
       " [+Landscape]": " [+地形]",
       " [+%1 alias(es)]": " [+%1 个别名]"
@@ -208,7 +210,8 @@
       "Vertex Color": "顶点颜色",
       "Enable Vertex Colors": "启用顶点颜色",
       "Luminance Multiplier": "亮度乘数",
-      "Saturation Multiplier": "饱和度乘数"
+      "Saturation Multiplier": "饱和度乘数",
+      "Toggle between 0.0-1.0 and 0-255 display": "切换 0.0-1.0 和 0-255 显示模式"
     },
     "tpbr::SlotEditorWidget": {
       "Vanilla Match:": "原版匹配：",

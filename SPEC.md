@@ -40,7 +40,7 @@ Primary references:
 - New project in memory
 - Save project to `.tpbr`
 - Load project from `.tpbr`
-- Add and remove texture sets
+- Add, duplicate, rename, and remove texture sets
 
 ### 3.2 Texture authoring
 
@@ -55,13 +55,14 @@ Primary references:
   - `getDDSInfo()` reads only the DDS header (148 bytes) via `GetMetadataFromDDSFile` — no pixel data is loaded or decompressed
   - Alpha mode at import time is inferred from the file format without pixel scanning (conservative: assumes Opaque for formats with alpha capability)
   - Thumbnails use mip-aware DDS loading (`loadDDSAtMaxSize`) to decompress only a ~64×64 mip level (~16 KB) instead of the full 4K image (~67 MB)
-  - Raster thumbnails use `QImageReader::setScaledSize()` for pre-scaled decode
+  - Raster thumbnails use `stb_image` (via `ImageUtils::loadImage`) for format coverage (TGA, PNG, BMP, JPG) with post-load downscale to thumbnail size
   - `TextureCache` singleton caches decoded RGBA8 pixel data keyed by `(canonicalPath, lastWriteTime)`, shared across 2D preview, 3D preview, and channel packing — eliminates redundant disk reads on repeated preview refreshes
 
 ### 3.3 Material authoring
 
 - Edit feature flags in the UI
 - Edit base, emissive, parallax, subsurface, coat, fuzz, and glint parameters in the UI
+- Color parameters support per-row display mode toggle between 0.0-1.0 (float) and 0-255 (integer) ranges; internal model always stores normalized float values
 - Store per-slot export compression overrides
 - Store RMAOS source mode per texture set
 
@@ -521,7 +522,7 @@ Representative entry shape:
 Conditional fields currently emitted by implementation:
 
 - `emissive_scale` when emissive is enabled
-- `emissive_color` when emissive is enabled (RGB tint)
+- `emissive_color` when emissive is enabled (RGBA array `[R, G, B, A]` per PGPatcher spec; alpha defaults to 1.0)
 - `match_normal` when a set is configured to match vanilla normal instead of diffuse
 - `rename` when exported PBR texture base name differs from the matched vanilla base name
 - Additional JSON entries for each match alias: each alias entry uses the alias's `matchTexture` as the match field and adds a `rename` pointing back to the primary `matchTexture` path, so PGPatcher maps multiple vanilla textures to the same PBR texture set
@@ -602,10 +603,10 @@ Current defaults from the code:
 
 Current UI composition:
 
-- `TextureSetPanel`: list of texture sets with add/rename/remove actions; shows `[+Landscape]` badge for sets with landscape EDIDs and `[+N alias(es)]` badge for sets with match aliases
+- `TextureSetPanel`: list of texture sets with add/rename/duplicate/remove actions; shows `[+Landscape]` badge for sets with landscape EDIDs and `[+N alias(es)]` badge for sets with match aliases. Duplicate creates a full copy of the selected set with " (Copy)" appended to the name.
 - `SlotEditorWidget`: match path, match mode, slot imports, RMAOS mode, split-channel rows, compression selectors, landscape EDID editor, match alias editor (one vanilla path per line)
 - `FeatureTogglePanel`: feature checkboxes
-- `ParameterPanel`: parameter editors grouped by feature
+- `ParameterPanel`: parameter editors grouped by feature; color rows include a per-row toggle button to switch between float (0.0-1.0) and integer (0-255) display
 - `TexturePreviewWidget`: basic image display with wheel zoom and drag pan
 - `DropZoneLabel`: custom widget for drag-and-drop with thumbnail preview, click-to-browse, and DDS thumbnail loading
 

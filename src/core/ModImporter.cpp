@@ -73,6 +73,7 @@ static std::array<float, 3> getFloat3(const json& j, const char* key,
 {
     if (j.contains(key) && j[key].is_array() && j[key].size() >= 3)
     {
+        // Accepts both 3-element (RGB) and 4-element (RGBA) arrays; alpha is ignored.
         return {j[key][0].get<float>(), j[key][1].get<float>(), j[key][2].get<float>()};
     }
     return fallback;

@@ -45,6 +45,7 @@ class MainWindow : public QMainWindow
     void onTextureSetSelected(int index);
     void onAddTextureSet();
     void onRenameTextureSet(int index);
+    void onDuplicateTextureSet(int index);
     void onRemoveTextureSet(int index);
     void onImportTexture(PBRTextureSlot slot);
     void onImportChannel(ChannelMap channel);

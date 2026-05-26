@@ -752,6 +752,7 @@ void MainWindow::setupCentralWidget()
     connect(m_textureSetPanel, &TextureSetPanel::textureSetSelected, this, &MainWindow::onTextureSetSelected);
     connect(m_textureSetPanel, &TextureSetPanel::addRequested, this, &MainWindow::onAddTextureSet);
     connect(m_textureSetPanel, &TextureSetPanel::renameRequested, this, &MainWindow::onRenameTextureSet);
+    connect(m_textureSetPanel, &TextureSetPanel::duplicateRequested, this, &MainWindow::onDuplicateTextureSet);
     connect(m_textureSetPanel, &TextureSetPanel::removeRequested, this, &MainWindow::onRemoveTextureSet);
     connect(m_slotEditor, &SlotEditorWidget::importRequested, this, &MainWindow::onImportTexture);
     connect(m_slotEditor, &SlotEditorWidget::importChannelRequested, this, &MainWindow::onImportChannel);
@@ -1206,6 +1207,21 @@ void MainWindow::onRenameTextureSet(int index)
         onTextureSetSelected(index);
     }
     statusBar()->showMessage(tr("Renamed texture set to: %1").arg(newName));
+}
+
+void MainWindow::onDuplicateTextureSet(int index)
+{
+    if (index < 0 || index >= static_cast<int>(m_project.textureSets.size()))
+        return;
+
+    PBRTextureSet clone = m_project.textureSets[index];
+    clone.name += " (Copy)";
+    m_project.textureSets.insert(m_project.textureSets.begin() + index + 1, std::move(clone));
+    m_currentSetIndex = index + 1;
+    refreshUI();
+    onTextureSetSelected(m_currentSetIndex);
+    statusBar()->showMessage(
+        tr("Duplicated texture set: %1").arg(QString::fromStdString(m_project.textureSets[m_currentSetIndex].name)));
 }
 
 void MainWindow::onRemoveTextureSet(int index)

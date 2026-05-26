@@ -27,12 +27,14 @@ class TextureSetPanel : public QWidget
     void textureSetSelected(int index);
     void addRequested();
     void renameRequested(int index);
+    void duplicateRequested(int index);
     void removeRequested(int index);
 
   private:
     QListWidget* m_listWidget = nullptr;
     QPushButton* m_addButton = nullptr;
     QPushButton* m_renameButton = nullptr;
+    QPushButton* m_duplicateButton = nullptr;
     QPushButton* m_removeButton = nullptr;
 
     void setupUI();

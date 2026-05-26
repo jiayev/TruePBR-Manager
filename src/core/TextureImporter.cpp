@@ -200,7 +200,8 @@ bool TextureImporter::isPackedRMAOS(const std::filesystem::path& ddsPath)
 
 const char* TextureImporter::fileFilter()
 {
-    return "Images (*.png *.dds *.tga *.bmp);;DDS Files (*.dds);;PNG Files (*.png);;All Files (*)";
+    return "Images (*.png *.dds *.tga *.bmp *.jpg *.jpeg);;DDS Files (*.dds);;PNG Files (*.png);;TGA Files "
+           "(*.tga);;All Files (*)";
 }
 
 // ─── Suffix detection ──────────────────────────────────────

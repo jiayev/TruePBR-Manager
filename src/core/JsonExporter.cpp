@@ -29,6 +29,11 @@ static json rounded3Array(const std::array<float, 3>& values)
     return json::array({rounded3(values[0]), rounded3(values[1]), rounded3(values[2])});
 }
 
+static json rounded4Array(const std::array<float, 3>& rgb, float a = 1.0f)
+{
+    return json::array({rounded3(rgb[0]), rounded3(rgb[1]), rounded3(rgb[2]), rounded3(a)});
+}
+
 static std::string sanitizedTextureSetStem(const PBRTextureSet& ts)
 {
     std::string stem = ts.name;
@@ -276,7 +281,7 @@ static json serializeEntryToJson(const PBRTextureSet& ts)
     if (ts.features.emissive)
     {
         entry["emissive_scale"] = rounded3(ts.params.emissiveScale);
-        entry["emissive_color"] = rounded3Array(ts.params.emissiveColor);
+        entry["emissive_color"] = rounded4Array(ts.params.emissiveColor);
         if (!hasExportedSlot(ts, PBRTextureSlot::Emissive))
         {
             entry["lock_emissive"] = true;

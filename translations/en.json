@@ -93,6 +93,7 @@
       "Rename Texture Set": "Rename Texture Set",
       "Texture Set name:": "Texture Set name:",
       "Renamed texture set to: %1": "Renamed texture set to: %1",
+      "Duplicated texture set: %1": "Duplicated texture set: %1",
       "Remove": "Remove",
       "Remove texture set '%1'?": "Remove texture set '%1'?",
       "Import %1": "Import %1",
@@ -166,6 +167,7 @@
     "tpbr::TextureSetPanel": {
       "Add": "Add",
       "Rename": "Rename",
+      "Duplicate": "Duplicate",
       "Remove": "Remove",
       " [+Landscape]": " [+Landscape]",
       " [+%1 alias(es)]": " [+%1 alias(es)]"
@@ -208,7 +210,8 @@
       "Vertex Color": "Vertex Color",
       "Enable Vertex Colors": "Enable Vertex Colors",
       "Luminance Multiplier": "Luminance Multiplier",
-      "Saturation Multiplier": "Saturation Multiplier"
+      "Saturation Multiplier": "Saturation Multiplier",
+      "Toggle between 0.0-1.0 and 0-255 display": "Toggle between 0.0-1.0 and 0-255 display"
     },
     "tpbr::SlotEditorWidget": {
       "Vanilla Match:": "Vanilla Match:",

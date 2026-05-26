@@ -2,6 +2,7 @@
 
 #include "utils/DDSUtils.h"
 #include "utils/FileUtils.h"
+#include "utils/ImageUtils.h"
 
 #include <QDragEnterEvent>
 #include <QCheckBox>
@@ -11,7 +12,6 @@
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QImage>
-#include <QImageReader>
 #include <QFontMetrics>
 #include <QMimeData>
 #include <QMouseEvent>
@@ -154,28 +154,21 @@ static QPixmap loadThumbnailPixmap(const std::filesystem::path& path)
         return QPixmap::fromImage(image.copy());
     }
 
-    // Raster images (PNG/TGA/BMP/JPG): use QImageReader with pre-scaled decode
-    // to avoid decoding the full image into memory.
-    QImageReader reader(QString::fromStdString(path.string()));
-    if (!reader.canRead())
+    // Raster images (PNG/TGA/BMP/JPG): use stb_image which natively supports all
+    // these formats including TGA (Qt's QImageReader lacks TGA without qtimageformats plugin).
+    auto imgData = ImageUtils::loadImage(path);
+    if (imgData.pixels.empty())
     {
         return {};
     }
 
-    const QSize nativeSize = reader.size();
-    if (nativeSize.isValid() && (nativeSize.width() > DropZoneLabel::ThumbnailSize * 2 ||
-                                 nativeSize.height() > DropZoneLabel::ThumbnailSize * 2))
+    QImage img(imgData.pixels.data(), imgData.width, imgData.height, imgData.width * 4, QImage::Format_RGBA8888);
+    const int maxDim = DropZoneLabel::ThumbnailSize * 2;
+    if (img.width() > maxDim || img.height() > maxDim)
     {
-        const int maxDim = DropZoneLabel::ThumbnailSize * 2;
-        reader.setScaledSize(nativeSize.scaled(maxDim, maxDim, Qt::KeepAspectRatio));
+        img = img.scaled(maxDim, maxDim, Qt::KeepAspectRatio, Qt::SmoothTransformation);
     }
-
-    QImage img = reader.read();
-    if (img.isNull())
-    {
-        return {};
-    }
-    return QPixmap::fromImage(std::move(img));
+    return QPixmap::fromImage(img.copy());
 }
 
 // ─── DropZoneLabel ─────────────────────────────────────────

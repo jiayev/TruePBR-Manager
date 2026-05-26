@@ -5,6 +5,7 @@
 #include <QCheckBox>
 #include <QDoubleSpinBox>
 #include <QGroupBox>
+#include <QPushButton>
 #include <QWidget>
 
 namespace tpbr
@@ -30,6 +31,20 @@ class ParameterPanel : public QWidget
     void onAnyChanged();
     void retranslateUi();
 
+    /// A color row containing 3 spinboxes and a mode toggle button.
+    struct ColorRow
+    {
+        QDoubleSpinBox* r = nullptr;
+        QDoubleSpinBox* g = nullptr;
+        QDoubleSpinBox* b = nullptr;
+        QPushButton* modeButton = nullptr;
+        bool intMode = false; // false = 0.0-1.0, true = 0-255
+    };
+
+    QWidget* makeColorRow(ColorRow& row);
+    void toggleColorMode(ColorRow& row);
+    void setColorRowValues(ColorRow& row, float rv, float gv, float bv);
+
   protected:
     void changeEvent(QEvent* event) override;
 
@@ -46,16 +61,12 @@ class ParameterPanel : public QWidget
     // Emissive
     QGroupBox* m_emissiveSection = nullptr;
     QDoubleSpinBox* m_emissiveScale = nullptr;
-    QDoubleSpinBox* m_emissiveColorR = nullptr;
-    QDoubleSpinBox* m_emissiveColorG = nullptr;
-    QDoubleSpinBox* m_emissiveColorB = nullptr;
+    ColorRow m_emissiveColorRow;
 
     // Subsurface
     QGroupBox* m_subsurfaceSection = nullptr;
     QDoubleSpinBox* m_subsurfaceOpacity = nullptr;
-    QDoubleSpinBox* m_subsurfaceColorR = nullptr;
-    QDoubleSpinBox* m_subsurfaceColorG = nullptr;
-    QDoubleSpinBox* m_subsurfaceColorB = nullptr;
+    ColorRow m_subsurfaceColorRow;
 
     // Coat / Multilayer
     QGroupBox* m_coatSection = nullptr;
@@ -65,9 +76,7 @@ class ParameterPanel : public QWidget
 
     // Fuzz
     QGroupBox* m_fuzzSection = nullptr;
-    QDoubleSpinBox* m_fuzzColorR = nullptr;
-    QDoubleSpinBox* m_fuzzColorG = nullptr;
-    QDoubleSpinBox* m_fuzzColorB = nullptr;
+    ColorRow m_fuzzColorRow;
     QDoubleSpinBox* m_fuzzWeight = nullptr;
 
     // Glint

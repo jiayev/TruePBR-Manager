@@ -23,9 +23,11 @@ void TextureSetPanel::setupUI()
     auto* buttonLayout = new QHBoxLayout();
     m_addButton = new QPushButton(tr("Add"), this);
     m_renameButton = new QPushButton(tr("Rename"), this);
+    m_duplicateButton = new QPushButton(tr("Duplicate"), this);
     m_removeButton = new QPushButton(tr("Remove"), this);
     buttonLayout->addWidget(m_addButton);
     buttonLayout->addWidget(m_renameButton);
+    buttonLayout->addWidget(m_duplicateButton);
     buttonLayout->addWidget(m_removeButton);
     layout->addLayout(buttonLayout);
 
@@ -46,6 +48,13 @@ void TextureSetPanel::setupUI()
                 int idx = m_listWidget->currentRow();
                 if (idx >= 0)
                     emit removeRequested(idx);
+            });
+    connect(m_duplicateButton, &QPushButton::clicked, this,
+            [this]()
+            {
+                int idx = m_listWidget->currentRow();
+                if (idx >= 0)
+                    emit duplicateRequested(idx);
             });
 }
 
@@ -69,6 +78,7 @@ void TextureSetPanel::setTextureSets(const std::vector<PBRTextureSet>& sets)
 
     const bool hasSets = !sets.empty();
     m_renameButton->setEnabled(hasSets);
+    m_duplicateButton->setEnabled(hasSets);
     m_removeButton->setEnabled(hasSets);
 }
 
@@ -94,6 +104,7 @@ void TextureSetPanel::retranslateUi()
 {
     m_addButton->setText(tr("Add"));
     m_renameButton->setText(tr("Rename"));
+    m_duplicateButton->setText(tr("Duplicate"));
     m_removeButton->setText(tr("Remove"));
 }
 
