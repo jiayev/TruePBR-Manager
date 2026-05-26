@@ -826,7 +826,7 @@ void D3D12Renderer::createDefaultTextures()
     // Matches CS noisegen.cs.hlsl output format.
     {
         constexpr int noiseSize = 128;
-        constexpr int offset = noiseSize * noiseSize * 0x69420;
+        constexpr uint32_t offset = static_cast<uint32_t>(noiseSize) * noiseSize * 0x69420u;
 
         auto wangHash = [](uint32_t seed) -> uint32_t
         {
