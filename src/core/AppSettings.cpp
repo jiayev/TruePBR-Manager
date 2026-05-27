@@ -98,6 +98,16 @@ void AppSettings::setLastProjectDir(const QString& dir)
     m_settings.setValue("Paths/lastProjectDir", dir);
 }
 
+QString AppSettings::baseTexturePath() const
+{
+    return m_settings.value("Paths/baseTexturePath").toString();
+}
+
+void AppSettings::setBaseTexturePath(const QString& path)
+{
+    m_settings.setValue("Paths/baseTexturePath", path);
+}
+
 QStringList AppSettings::recentProjects() const
 {
     return m_settings.value("RecentProjects/paths").toStringList();

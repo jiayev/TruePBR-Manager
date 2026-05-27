@@ -39,6 +39,11 @@ class AppSettings
     QString lastProjectDir() const;
     void setLastProjectDir(const QString& dir);
 
+    /// Base vanilla texture path prefix (e.g. "architecture\\whiterun\\").
+    /// Pre-fills the vanilla match path dialog when creating new texture sets.
+    QString baseTexturePath() const;
+    void setBaseTexturePath(const QString& path);
+
     /// Returns the recent projects list (most recent first, max 10).
     QStringList recentProjects() const;
 

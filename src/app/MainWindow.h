@@ -155,6 +155,7 @@ class MainWindow : public QMainWindow
     QAction* m_batchImportAction = nullptr;
     QAction* m_importModAction = nullptr;
     QAction* m_convertVanillaAction = nullptr;
+    QAction* m_baseTexturePathAction = nullptr;
     QAction* m_exitAction = nullptr;
 
     // Inline labels that need retranslation

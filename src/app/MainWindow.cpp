@@ -35,6 +35,7 @@
 #include <QMessageBox>
 #include <QProgressDialog>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QScrollArea>
 #include <QSplitter>
 #include <QStackedWidget>
@@ -149,6 +150,26 @@ void MainWindow::setupMenuBar()
     m_convertVanillaAction =
         m_fileMenu->addAction(tr("Convert &Vanilla Textures..."), this, &MainWindow::onConvertVanilla);
     m_convertVanillaAction->setShortcut(QKeySequence("Ctrl+Shift+V"));
+    m_fileMenu->addSeparator();
+    m_baseTexturePathAction =
+        m_fileMenu->addAction(tr("Set &Base Texture Path..."), this,
+                              [this]()
+                              {
+                                  bool ok = false;
+                                  QString current = AppSettings::instance().baseTexturePath();
+                                  auto path = QInputDialog::getText(this, tr("Base Texture Path"),
+                                                                    tr("Vanilla path prefix (e.g. "
+                                                                       "architecture\\whiterun\\).\n"
+                                                                       "Leave empty to clear:"),
+                                                                    QLineEdit::Normal, current, &ok);
+                                  if (!ok)
+                                      return;
+                                  AppSettings::instance().setBaseTexturePath(path);
+                                  if (path.isEmpty())
+                                      statusBar()->showMessage(tr("Base texture path cleared"));
+                                  else
+                                      statusBar()->showMessage(tr("Base texture path set to: %1").arg(path));
+                              });
     m_fileMenu->addSeparator();
     m_exitAction = m_fileMenu->addAction(tr("E&xit"), this, &QWidget::close, QKeySequence::Quit);
 
@@ -1164,14 +1185,24 @@ void MainWindow::onTextureSetSelected(int index)
 void MainWindow::onAddTextureSet()
 {
     bool ok = false;
-    auto name = QInputDialog::getText(this, tr("New Texture Set"), tr("Name:"), QLineEdit::Normal, "", &ok);
-    if (!ok || name.isEmpty())
-        return;
 
+    // Dialog 1: Vanilla match path (pre-filled with base texture path if set)
+    QString defaultPath = AppSettings::instance().baseTexturePath();
     auto match = QInputDialog::getText(this, tr("Vanilla Texture Match"),
                                        tr("Vanilla albedo path (e.g. architecture\\whiterun\\wrwoodplank01):"),
-                                       QLineEdit::Normal, "", &ok);
+                                       QLineEdit::Normal, defaultPath, &ok);
     if (!ok || match.isEmpty())
+        return;
+
+    // Auto-derive name from path: everything after the last separator
+    QString suggestedName = match;
+    int lastSep = match.lastIndexOf(QRegularExpression(QStringLiteral("[/\\\\]")));
+    if (lastSep >= 0)
+        suggestedName = match.mid(lastSep + 1);
+
+    // Dialog 2: Name (pre-filled with derived name)
+    auto name = QInputDialog::getText(this, tr("New Texture Set"), tr("Name:"), QLineEdit::Normal, suggestedName, &ok);
+    if (!ok || name.isEmpty())
         return;
 
     m_project.addTextureSet(name.toStdString(), match.toStdString());
@@ -2469,6 +2500,8 @@ void MainWindow::retranslateUi()
     m_projectNameAction->setText(tr("Project &Name..."));
     m_batchImportAction->setText(tr("&Batch Import Folder..."));
     m_importModAction->setText(tr("&Import PBR Mod..."));
+    m_convertVanillaAction->setText(tr("Convert &Vanilla Textures..."));
+    m_baseTexturePathAction->setText(tr("Set &Base Texture Path..."));
     m_exitAction->setText(tr("E&xit"));
 
     // Language menu title

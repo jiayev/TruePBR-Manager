@@ -41,6 +41,8 @@ Primary references:
 - Save project to `.tpbr`
 - Load project from `.tpbr`
 - Add, duplicate, rename, and remove texture sets
+- **Add texture set flow**: the path dialog is shown first (pre-filled with the base texture path setting if configured), then the name dialog is shown pre-filled with the last segment of the entered path (everything after the last `\` or `/`). The user can edit the suggested name freely.
+- **Base texture path**: configurable vanilla path prefix (e.g. `architecture\whiterun\`) persisted in app settings; accessible via File > Set Base Texture Path...
 
 ### 3.2 Texture authoring
 
@@ -219,6 +221,7 @@ Primary references:
   - `MainWindow/state`: toolbar and dock widget layout
   - `Paths/lastProjectDir`: last directory used for open/save project dialogs
   - `Paths/lastExportPath`: last used export folder
+  - `Paths/baseTexturePath`: vanilla path prefix for the "Add Texture Set" dialog (e.g. `architecture\whiterun\`)
   - `RecentProjects/paths`: ordered list of recently opened/saved project file paths (max 10)
   - `Preview3D/*`: 3D preview settings (light intensity, light color, exposure, HDRI selection, IBL intensity/resolution/samples, render flags, display options, shape)
 - Window geometry and state are saved on close and restored on launch
