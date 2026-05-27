@@ -321,12 +321,12 @@ PSOutput PSMain(PSInput input)
         {
             float4 ssTex = g_FeatureTex1.SampleBias(g_Sampler, uv, g_MipBias);
             mat.SubsurfaceColor = ColorSpaces::sRGBToACEScg(ssTex.rgb) * ssColorACES;
-            mat.Thickness = 1.0 - ssTex.a * g_SubsurfaceOpacity;
+            mat.Thickness = ssTex.a * g_SubsurfaceOpacity;
         }
         else
         {
             mat.SubsurfaceColor = ssColorACES;
-            mat.Thickness = 1.0 - g_SubsurfaceOpacity;
+            mat.Thickness = g_SubsurfaceOpacity;
         }
     }
 
