@@ -167,7 +167,16 @@
       "Overwrite All": "Overwrite All",
       "Keep Existing": "Keep Existing",
       "Auto-detect: %1 textures imported": "Auto-detect: %1 textures imported",
-      "Auto-detect: no new textures imported (all kept existing)": "Auto-detect: no new textures imported (all kept existing)"
+      "Auto-detect: no new textures imported (all kept existing)": "Auto-detect: no new textures imported (all kept existing)",
+      "Register .tpbr File &Association": "Register .tpbr File &Association",
+      "File Association": "File Association",
+      "File association registered successfully.": "File association registered successfully.",
+      "Failed to register file association.": "Failed to register file association.",
+      "Would you like to register .tpbr files to open with TruePBR Manager?": "Would you like to register .tpbr files to open with TruePBR Manager?",
+      "Save Changes?": "Save Changes?",
+      "The current project has unsaved changes.\n\nDo you want to save before continuing?": "The current project has unsaved changes.\n\nDo you want to save before continuing?",
+      "Save": "Save",
+      "Discard": "Discard"
     },
     "tpbr::TextureSetPanel": {
       "Add": "Add",

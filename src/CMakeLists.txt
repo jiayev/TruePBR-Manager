@@ -59,6 +59,8 @@ set(UTIL_SOURCES
     utils/Log.cpp
     utils/FileUtils.h
     utils/FileUtils.cpp
+    utils/FileAssociation.h
+    utils/FileAssociation.cpp
     utils/ImageUtils.h
     utils/ImageUtils.cpp
     utils/DDSUtils.h

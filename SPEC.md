@@ -43,6 +43,9 @@ Primary references:
 - Add, duplicate, rename, and remove texture sets
 - **Add texture set flow**: the path dialog is shown first (pre-filled with the base texture path setting if configured), then the name dialog is shown pre-filled with the last segment of the entered path (everything after the last `\` or `/`). The user can edit the suggested name freely.
 - **Base texture path**: configurable vanilla path prefix (e.g. `architecture\whiterun\`) persisted in app settings; accessible via File > Set Base Texture Path...
+- **Command-line open**: passing a `.tpbr` file path as the first argument opens that project on launch (enables Windows shell "open" verb from file association)
+- **Drag-and-drop open**: `.tpbr` files can be dragged onto the main window to open them as the current project
+- **Project switch confirmation**: when a project is already loaded (has texture sets or has been saved), opening or creating a new project shows a Save/Discard/Cancel dialog to protect against accidental data loss
 
 ### 3.2 Texture authoring
 
@@ -217,6 +220,7 @@ Primary references:
 - Settings file: `TruePBR-Manager.ini` next to the executable
 - Currently persisted settings:
   - `General/language`: selected UI locale (restored on startup instead of re-detecting system language)
+  - `General/fileAssocRegistered`: whether the first-launch file association prompt has been shown (bool)
   - `MainWindow/geometry`: window position and size
   - `MainWindow/state`: toolbar and dock widget layout
   - `Paths/lastProjectDir`: last directory used for open/save project dialogs
@@ -301,6 +305,18 @@ Files are saved to a user-specified output directory. The generated `PBRTextureS
 **Execution**: conversion runs on a background worker thread with a modal `QProgressDialog` (matching the export pattern). Progress reports per step (loading, processing, saving each DDS). Supports cancel via shared atomic flag.
 
 **Unit tests** (`test_VanillaConverter.cpp`): sRGB/linear round-trip, shininess-to-roughness mapping, gamma/brightness pixel processing, alpha extraction, input validation, per-texture `GammaBrightnessParams` helper.
+
+### 3.16 File association and shell integration
+
+- **ProgId**: `TruePBR.Project` registered under `HKCU\Software\Classes`
+- **Registry scope**: per-user (HKCU), no admin elevation required
+- **Open verb**: `shell\open\command` set to `"<exe_path>" "%1"`, enabling double-click-to-open in Windows Explorer
+- **Default icon**: application executable icon (`DefaultIcon` = `"<exe_path>",0`)
+- **First-launch prompt**: on first startup (tracked via `General/fileAssocRegistered` in AppSettings), a `QMessageBox::question` asks the user whether to register the file association. The prompt is shown only once regardless of the answer.
+- **Manual registration**: accessible via File > Register .tpbr File Association menu action; shows success/failure feedback
+- **Shell notification**: `SHChangeNotify(SHCNE_ASSOCCHANGED, ...)` is called after registration to refresh Explorer icons and context menus immediately
+- **Unregistration**: `FileAssociation::unregisterAssociation()` is available but not exposed in the UI (reserved for future settings or uninstaller use)
+- **Command-line integration**: the application checks `argv[1]` on startup; if it is a valid `.tpbr` file path, it is opened automatically after the main window is shown
 
 ## 4. Texture Slot Model
 
@@ -739,6 +755,7 @@ Important implementation modules:
 - `ui/ParameterPanel.*`: numeric material parameter UI
 - `ui/VanillaConversionDialog.*`: vanilla texture conversion dialog with integrated flow layout and real-time output previews
 - `utils/TextureCache.*`: singleton RGBA8 pixel cache, keyed by canonical path + write time; shared across thumbnails, 2D/3D preview, and import; thread-safe
+- `utils/FileAssociation.*`: Windows shell integration for `.tpbr` file extension registration (HKCU registry, no elevation required)
 
 ## 11. Build and Packaging
 
@@ -853,4 +870,5 @@ Planned features not yet implemented:
 
 - [x] Built-in vanilla texture set conversion (内置 vanilla texture set 转换)
 - [x] Import existing PBR mod: read a mod directory containing PGPatcher JSON and textures, reconstruct a `.tpbr` project automatically (导入已有 PBR Mod：读取含 JSON 和贴图的 Mod 目录，自动重建项目)
+- [x] File association & shell integration: register `.tpbr` as default open tool, drag-to-open, command-line open, project switch confirmation (文件关联和 Shell 集成：注册 .tpbr 为默认打开工具、拖拽打开、命令行打开、项目切换确认)
 - [ ] Undo/redo

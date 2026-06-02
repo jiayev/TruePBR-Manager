@@ -19,6 +19,7 @@
 #include "renderer/IBLPipeline.h"
 
 #include "utils/DDSUtils.h"
+#include "utils/FileAssociation.h"
 #include "utils/FileUtils.h"
 #include "utils/ImageUtils.h"
 #include "utils/TextureCache.h"
@@ -33,6 +34,7 @@
 #include <QLabel>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QMimeData>
 #include <QProgressDialog>
 #include <QPushButton>
 #include <QRegularExpression>
@@ -41,6 +43,7 @@
 #include <QStackedWidget>
 #include <QStatusBar>
 #include <QThread>
+#include <QUrl>
 #include <QVBoxLayout>
 
 #include "utils/Log.h"
@@ -104,6 +107,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent)
 {
     setWindowTitle(tr("TruePBR Manager"));
     resize(1280, 800);
+    setAcceptDrops(true);
 
     // Restore saved window geometry
     auto geom = AppSettings::instance().windowGeometry();
@@ -170,6 +174,8 @@ void MainWindow::setupMenuBar()
                                   else
                                       statusBar()->showMessage(tr("Base texture path set to: %1").arg(path));
                               });
+    m_registerAssocAction =
+        m_fileMenu->addAction(tr("Register .tpbr File &Association"), this, &MainWindow::onRegisterFileAssociation);
     m_fileMenu->addSeparator();
     m_exitAction = m_fileMenu->addAction(tr("E&xit"), this, &QWidget::close, QKeySequence::Quit);
 
@@ -206,14 +212,7 @@ void MainWindow::rebuildRecentProjectsMenu()
                         rebuildRecentProjectsMenu();
                         return;
                     }
-                    AppSettings::instance().setLastProjectDir(QFileInfo(path).absolutePath());
-                    m_project = Project::load(path.toStdString());
-                    m_projectFilePath = path.toStdString();
-                    m_currentSetIndex = -1;
-                    AppSettings::instance().addRecentProject(path);
-                    rebuildRecentProjectsMenu();
-                    refreshUI();
-                    statusBar()->showMessage(tr("Opened: %1").arg(path));
+                    openProjectFromPath(path);
                 });
     }
 
@@ -884,6 +883,9 @@ void MainWindow::restore3DPreviewSettings()
 
 void MainWindow::onNewProject()
 {
+    if (!confirmProjectClose())
+        return;
+
     m_project = Project{};
     m_project.name = "Untitled";
     m_projectFilePath.clear();
@@ -900,15 +902,7 @@ void MainWindow::onOpenProject()
     if (path.isEmpty())
         return;
 
-    AppSettings::instance().setLastProjectDir(QFileInfo(path).absolutePath());
-    AppSettings::instance().addRecentProject(path);
-    m_project = Project::load(path.toStdString());
-    m_projectFilePath = path.toStdString();
-    m_currentSetIndex = -1;
-    TextureCache::instance().clear();
-    rebuildRecentProjectsMenu();
-    refreshUI();
-    statusBar()->showMessage(tr("Opened: %1").arg(path));
+    openProjectFromPath(path);
 }
 
 void MainWindow::onSaveProject()
@@ -2502,6 +2496,7 @@ void MainWindow::retranslateUi()
     m_importModAction->setText(tr("&Import PBR Mod..."));
     m_convertVanillaAction->setText(tr("Convert &Vanilla Textures..."));
     m_baseTexturePathAction->setText(tr("Set &Base Texture Path..."));
+    m_registerAssocAction->setText(tr("Register .tpbr File &Association"));
     m_exitAction->setText(tr("E&xit"));
 
     // Language menu title
@@ -2568,6 +2563,128 @@ void MainWindow::retranslateUi()
 
     // Placeholders – update only if currently visible
     updateEditorState();
+}
+
+// ─── File Association Registration ─────────────────────────
+
+void MainWindow::onRegisterFileAssociation()
+{
+    if (FileAssociation::registerAssociation())
+    {
+        QMessageBox::information(this, tr("File Association"), tr("File association registered successfully."));
+    }
+    else
+    {
+        QMessageBox::warning(this, tr("File Association"), tr("Failed to register file association."));
+    }
+}
+
+// ─── Project Open & Close Confirmation ─────────────────────
+
+bool MainWindow::confirmProjectClose()
+{
+    // If the project is essentially empty (no sets, not saved, and name is the placeholder),
+    // there is nothing to lose — skip the confirmation.
+    const bool hasContent = !m_project.textureSets.empty() || !m_projectFilePath.empty();
+    if (!hasContent)
+        return true;
+
+    QMessageBox msgBox(this);
+    msgBox.setWindowTitle(tr("Save Changes?"));
+    msgBox.setText(tr("The current project has unsaved changes.\n\nDo you want to save before continuing?"));
+    msgBox.setStandardButtons(QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
+    msgBox.setDefaultButton(QMessageBox::Save);
+    msgBox.button(QMessageBox::Save)->setText(tr("Save"));
+    msgBox.button(QMessageBox::Discard)->setText(tr("Discard"));
+    msgBox.button(QMessageBox::Cancel)->setText(tr("Cancel"));
+
+    int result = msgBox.exec();
+    switch (result)
+    {
+    case QMessageBox::Save:
+        onSaveProject();
+        return true;
+    case QMessageBox::Discard:
+        return true;
+    case QMessageBox::Cancel:
+    default:
+        return false;
+    }
+}
+
+bool MainWindow::openProjectFromPath(const QString& filePath)
+{
+    if (!confirmProjectClose())
+        return false;
+
+    if (!QFileInfo::exists(filePath))
+    {
+        QMessageBox::warning(this, tr("Open Project"),
+                             tr("File not found:\n%1\n\nIt will be removed from the recent list.").arg(filePath));
+        AppSettings::instance().removeRecentProject(filePath);
+        rebuildRecentProjectsMenu();
+        return false;
+    }
+
+    AppSettings::instance().setLastProjectDir(QFileInfo(filePath).absolutePath());
+    AppSettings::instance().addRecentProject(filePath);
+    m_project = Project::load(filePath.toStdString());
+    m_projectFilePath = filePath.toStdString();
+    m_currentSetIndex = -1;
+    TextureCache::instance().clear();
+    rebuildRecentProjectsMenu();
+    refreshUI();
+    statusBar()->showMessage(tr("Opened: %1").arg(filePath));
+    return true;
+}
+
+// ─── Drag & Drop (.tpbr files) ─────────────────────────────
+
+void MainWindow::dragEnterEvent(QDragEnterEvent* event)
+{
+    if (!event->mimeData()->hasUrls())
+    {
+        event->ignore();
+        return;
+    }
+
+    // Accept if at least one URL is a .tpbr file
+    for (const QUrl& url : event->mimeData()->urls())
+    {
+        if (url.isLocalFile() && url.toLocalFile().endsWith(QStringLiteral(".tpbr"), Qt::CaseInsensitive))
+        {
+            event->acceptProposedAction();
+            return;
+        }
+    }
+    event->ignore();
+}
+
+void MainWindow::dragMoveEvent(QDragMoveEvent* event)
+{
+    // Required on Windows for the drop cursor to appear correctly
+    event->acceptProposedAction();
+}
+
+void MainWindow::dropEvent(QDropEvent* event)
+{
+    if (!event->mimeData()->hasUrls())
+    {
+        event->ignore();
+        return;
+    }
+
+    // Find the first .tpbr file in the drop
+    for (const QUrl& url : event->mimeData()->urls())
+    {
+        if (url.isLocalFile() && url.toLocalFile().endsWith(QStringLiteral(".tpbr"), Qt::CaseInsensitive))
+        {
+            event->acceptProposedAction();
+            openProjectFromPath(url.toLocalFile());
+            return;
+        }
+    }
+    event->ignore();
 }
 
 } // namespace tpbr

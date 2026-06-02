@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QApplication>
+#include <QString>
 
 namespace tpbr
 {
@@ -19,6 +20,10 @@ class Application
 
     void initLogging();
     void initStyle();
+    void checkFirstLaunchAssociation();
+
+    /// Extracted .tpbr file path from command-line arguments (empty if none).
+    QString m_startupProjectPath;
 };
 
 } // namespace tpbr

@@ -167,7 +167,16 @@
       "Overwrite All": "全部覆盖",
       "Keep Existing": "保留现有",
       "Auto-detect: %1 textures imported": "自动检测：已导入 %1 个纹理",
-      "Auto-detect: no new textures imported (all kept existing)": "自动检测：未导入新纹理（全部保留现有）"
+      "Auto-detect: no new textures imported (all kept existing)": "自动检测：未导入新纹理（全部保留现有）",
+      "Register .tpbr File &Association": "注册 .tpbr 文件关联(&A)",
+      "File Association": "文件关联",
+      "File association registered successfully.": "文件关联注册成功。",
+      "Failed to register file association.": "文件关联注册失败。",
+      "Would you like to register .tpbr files to open with TruePBR Manager?": "是否将 .tpbr 文件注册为使用 TruePBR Manager 打开？",
+      "Save Changes?": "保存更改？",
+      "The current project has unsaved changes.\n\nDo you want to save before continuing?": "当前项目有未保存的更改。\n\n是否在继续前保存？",
+      "Save": "保存",
+      "Discard": "放弃"
     },
     "tpbr::TextureSetPanel": {
       "Add": "添加",

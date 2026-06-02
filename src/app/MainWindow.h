@@ -5,6 +5,8 @@
 #include <QActionGroup>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDragEnterEvent>
+#include <QDropEvent>
 #include <QLabel>
 #include <QMainWindow>
 #include <QLineEdit>
@@ -32,6 +34,11 @@ class MainWindow : public QMainWindow
     explicit MainWindow(QWidget* parent = nullptr);
     ~MainWindow() override;
 
+    /// Open a .tpbr project file from a given path.
+    /// Shows a confirmation dialog if a project is already loaded.
+    /// Returns true if the project was opened successfully.
+    bool openProjectFromPath(const QString& filePath);
+
   private slots:
     void onNewProject();
     void onOpenProject();
@@ -41,6 +48,7 @@ class MainWindow : public QMainWindow
     void onExportMod();
     void onBrowseExportFolder();
     void onExportPathEdited();
+    void onRegisterFileAssociation();
 
     void onTextureSetSelected(int index);
     void onAddTextureSet();
@@ -80,6 +88,10 @@ class MainWindow : public QMainWindow
     void rebuildRecentProjectsMenu();
     void retranslateUi();
     void changeEvent(QEvent* event) override;
+    void dragEnterEvent(QDragEnterEvent* event) override;
+    void dragMoveEvent(QDragMoveEvent* event) override;
+    void dropEvent(QDropEvent* event) override;
+    bool confirmProjectClose();
     bool saveProjectToPath(const QString& path);
     QString promptProjectSavePath() const;
     void updateEditorState();
@@ -156,6 +168,7 @@ class MainWindow : public QMainWindow
     QAction* m_importModAction = nullptr;
     QAction* m_convertVanillaAction = nullptr;
     QAction* m_baseTexturePathAction = nullptr;
+    QAction* m_registerAssocAction = nullptr;
     QAction* m_exitAction = nullptr;
 
     // Inline labels that need retranslation
